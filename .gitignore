@@ -1,12 +1,4 @@
 __pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-build/
-dist/
 .pytest_cache/
 .ruff_cache/
-# Downloaded market data and the local cache: never committed.
-data/
-.env*
+changes/.hook-log.jsonl

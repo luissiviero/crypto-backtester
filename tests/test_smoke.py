@@ -1,5 +1,5 @@
-import backtester
+import app
 
 
-def test_package_imports_with_a_version() -> None:
-    assert backtester.__version__ == "0.1.0"
+def test_package_imports() -> None:
+    assert app.__version__ == "0.1.0"
