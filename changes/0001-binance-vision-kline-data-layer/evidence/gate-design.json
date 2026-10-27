@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "change_id": "0001",
+  "slug": "binance-vision-kline-data-layer",
+  "phase": "design",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:design-ready",
+  "head": "8bab7390db810111a16f75c1c8ed082360de9032",
+  "at": "2026-10-27T13:10:49Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 3,
+        "panel_cap": 4,
+        "elapsed_minutes": 11.9,
+        "spend_usd": null,
+        "spend_usd_total": null,
+        "spend_entries": 0,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0001-binance-vision-kline-data-layer/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "CLAUDE.local.md",
+          "changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.json",
+          "changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.model.json",
+          "changes/0001-binance-vision-kline-data-layer/evidence/diff-design.patch",
+          "changes/0001-binance-vision-kline-data-layer/evidence/hook-log.jsonl"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof_items",
+      "ok": true,
+      "reason": "the Proof items follow the grammar",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "3 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "concern",
+            "decision": "Keep data-api.binance.vision as the fixed spot REST host (no switch) and refused fills (451, any non-418 4xx) as gaps with the status; the weight pause must treat a missing X-MBX-USED-WEIGHT-1M as unknown and pause conservatively, pinned by an offline no-header test."
+          },
+          {
+            "n": 2,
+            "kind": "concern",
+            "decision": "Keep one zstd level-3 Parquet file per day as the intent requires (line 59); the build commits the generator that produces evidence/storage-measurement.md (per-day vs one yearly file, plus a higher zstd level) so the figure is reproducible and labelled synthetic, and the spec gives the owner the real-data check (download BTCUSDT 1m for one year, then cache-info) with a reopen threshold of more than 20% over a single yearly file."
+          },
+          {
+            "n": 3,
+            "kind": "concern",
+            "decision": "A1\u2013A12 accepted as written, A10 keeps raising KlineGapError by default; Gap.reason tells a candle missing inside a source file apart from a day absent from both sources, and plan.md Proof gains a test with a fixture missing two consecutive candles that asserts the exact Gap start/end/candles/reason and the .frame rows in schema; no allow_gaps keyword is added"
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}

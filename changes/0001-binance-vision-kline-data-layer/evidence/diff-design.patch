@@ -1,21 +1,883 @@
  .../evidence/.gitkeep                              |   0
- .../evidence/hook-log.jsonl                        |  21 ++
+ .../evidence/adversarial-review-design.json        |  30 +
+ .../evidence/adversarial-review-design.model.json  |  14 +
+ .../evidence/decisions-design.json                 |  70 +++
+ .../evidence/decisions-design.md                   |   9 +
+ .../evidence/diff-design.patch                     | 691 +++++++++++++++++++++
+ .../evidence/hook-log.jsonl                        |  71 +++
+ .../evidence/panel/design-1-advocate.md            |   9 +
+ .../evidence/panel/design-1-advocate.model.json    |  14 +
+ .../evidence/panel/design-1-conciliator.json       |  11 +
+ .../evidence/panel/design-1-reviewer.md            |  19 +
+ .../evidence/panel/design-2-advocate.md            |  10 +
+ .../evidence/panel/design-2-advocate.model.json    |  14 +
+ .../evidence/panel/design-2-conciliator.json       |  12 +
+ .../evidence/panel/design-2-reviewer.md            |  21 +
+ .../evidence/panel/design-3-advocate.md            |   9 +
+ .../evidence/panel/design-3-advocate.model.json    |  14 +
+ .../evidence/panel/design-3-conciliator.json       |  11 +
+ .../evidence/panel/design-3-reviewer.md            |  21 +
+ .../evidence/panel/design-items.json               |  44 ++
  .../evidence/run-design.json                       |   5 +
- .../0001-binance-vision-kline-data-layer/intent.md | 174 ++++++++++++++
- .../0001-binance-vision-kline-data-layer/plan.md   | 149 ++++++++++++
- .../0001-binance-vision-kline-data-layer/spec.md   | 259 +++++++++++++++++++++
- .../status.yaml                                    |  34 +++
- 7 files changed, 642 insertions(+)
+ .../0001-binance-vision-kline-data-layer/intent.md | 174 ++++++
+ .../0001-binance-vision-kline-data-layer/plan.md   | 173 ++++++
+ .../0001-binance-vision-kline-data-layer/spec.md   | 287 +++++++++
+ .../status.yaml                                    |  34 +
+ 25 files changed, 1767 insertions(+)
 
 diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/.gitkeep b/changes/0001-binance-vision-kline-data-layer/evidence/.gitkeep
 new file mode 100644
 index 0000000..e69de29
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.json b/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.json
+new file mode 100644
+index 0000000..a905ba1
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.json
+@@ -0,0 +1,30 @@
++{
++  "schema_version": 1,
++  "phase": "design",
++  "head": "dfe5caa713344b9a03ded3ba6bbe44867b7606d5",
++  "verdict": "continue",
++  "reasons": [],
++  "classification": "non-routine",
++  "classification_reasons": [
++    "Spec tightness: acceptance is measurable, but three flagged concerns are still open (spot REST host default with no switch, storage layout/zstd level unmeasured and moved to the build on synthetic data, assumptions A1-A12 with A10 the weightiest), and the intent's open question 3 is carried forward rather than answered.",
++    "Blast radius: a new package of eight modules plus two test modules and fixtures, the project's first runtime dependency (polars) in pyproject.toml, a change to the project CI install step, outbound network to three Binance hosts, and file writes/deletes in the owner's cache directory outside the repository. No risk-list item is touched.",
++    "Test coverage: nothing existing covers this code (app/ holds only __version__ and tests/ only the smoke test); every proof test is new in this change.",
++    "Sequencing: the design branch predates the owner's commit 801dc74 (commands.setup gains polars); this checkout's sdlc.yaml still reads 'python -m pip install pytest ruff'. The build must start from a base that holds 801dc74, which a design gate that waits for the owner's merge guarantees."
++  ],
++  "attempted": [
++    "Intent: compared every intent bullet (two markets, Vision then REST fill, gap reporting, polars frame with the 11 kline columns, us/ms normalisation across 2025-01-01, Parquet-only cache, cache root priority, layout, atomic write, no-cache mode, cache-info/cache-clear, closed-day REST caching, CLI subcommands, 4-thread pool, timeouts, retries, 404/418 handling, REST pacing, urllib with injectable fetch, offline tests) to R1-R13, Design and Acceptance: each is covered; nothing nearby substituted. Not a quick intent, so no 'Assumed from the quick intent' list applies.",
++    "Intent open questions: Q1 (spot host, refused fill) answered by design choice and flagged; Q2 (gap shape) answered with KlineGapError carrying .gaps and .frame, consistent with 'never a silently short frame'; Q3 (daily vs larger files) carried forward to a build-time synthetic measurement and flagged; Q4 (codec) zstd level 3 and flagged. The intent asked the design to measure real BTCUSDT 1m; synthetic random-walk data may compress differently from real data, which the flagged concern covers for the owner.",
++    "Spec and plan: every requirement maps to a module in plan.md 'Files that change' and to a step in 'Order of work'; acceptance items map to the 16 named proof tests plus the per-module tests of steps 2-7. Flagged concerns are open, which is the panel's business under deferred review, not a reason here.",
++    "Proof: design phase, no toolchain logs or verifier report expected; the committed diff holds only the change folder (intent, spec, plan, status, hook log, run record). Runner records (run-design.json) not cited.",
++    "Blast radius: diff touches only changes/0001-.../ (no guardrail file, no source). The plan's future touches are pyproject.toml, .github/workflows/ci.yml (not a guardrail: sdlc.yaml protected_paths is [] and the always-protected list excludes it), app/data/**, tests/**. No risk-list item (auth, data migrations, money movement, production config) applies: public read-only market data, deploy.action none, no schema migration. Plan Risks name the CLAUDE.md staleness ('1 passed', setup line) per REVIEW.md's 'flag when CLAUDE.md is outdated' and leave the edit to the owner.",
++    "Policies: coding-standards rule 5 and security-baseline rule 6 (new dependency) have a plan.md Risks line; security-baseline rule 2 (validated params before URL/path, size bounds on zip body and member, checksum, member-name allow, REST JSON shape check, path containment, cache-clear restricted to the day-file pattern) is designed in; rule 3 no secrets (public endpoints); rule 7 tests offline through stub Fetch. data-conventions: all fields public market data, schema defined once, no migration. definition-of-done design items present except closed concerns (deferred to the panel).",
++    "Tests (design): proof tests as planned could pass with a bug in three places worth the build's attention, none a design defect: (a) 'spot and futures identical' only proves the floor conversion if the futures fixture uses ...999 ms close_time and the 2025 spot fixture ...999999 us; (b) the 429/5xx retry test must assert attempt count and recorded sleeps, not just eventual success; (c) the current-day test needs an injected clock, which step 8 names.",
++    "Skip markers: not checked at design (ratchets run at build and test).",
++    "Claims vs today's code (merge base = working tree at design): pyproject.toml has [project] with version 0.1.0, requires-python >=3.10, no dependencies, ruff line-length 100, testpaths ['tests'] - matches; app/__init__.py holds only __version__ = '0.1.0' - matches 'app/ has only __version__'; tests/test_smoke.py asserts app.__version__ == '0.1.0' - matches 'pins it'; .github/workflows/ci.yml installs pytest==9.1.1 ruff==0.16.9 then lint, test - matches 'pinned like them'; sdlc.yaml risk_list, sandbox.allowed_domains [], deploy.action none, plugin version 1.0.50 - match the spec header and policy text; policies/ holds only README.md and no .claude/skills overrides exist - matches 'overrides: none; policy sources: none'; no schemas/ folder - matches; docs/decisions/index.md does not exist in this project and the spec cites no project decision.",
++    "Claim 'commands.setup on the default branch is python -m pip install pytest ruff polars (801dc74)': this checkout's sdlc.yaml reads 'python -m pip install pytest ruff'; the delegation prompt confirms 801dc74 is on origin/main. The claim is about main, not this branch, and plan Risks says the build must take sdlc.yaml from main; consistent, recorded as a sequencing note in classification_reasons.",
++    "Claims vs external facts used by the design: spot Vision files in microseconds from 2025-01-01 (Binance public-data notice); spot REST limit max 1000, USD-M max 1500; per-minute weight limits 6000 spot, 2400 USD-M; X-MBX-USED-WEIGHT-1M header; 1s interval spot-only; um daily intervals 1m-1d; floor division of ...999999 us to ...999 ms equals the futures ms close_time; polars write_parquet(compression='zstd', compression_level=3) and Datetime('ms','UTC') exist. All consistent.",
++    "Feasibility note (not a reason): urllib.request.urlopen takes one timeout for connect and read; '10 s connect, 60 s read' needs a custom HTTPSConnection/handler that sets the socket timeout after connect, and the default fetch must convert urllib's HTTPError into HttpResponse(status=...) so the retry wrapper sees 4xx/5xx; header lookup for X-MBX-USED-WEIGHT-1M and Retry-After must be case-insensitive. All buildable within the plan's http.py.",
++    "Design soundness probes: gap grid vs current-day unfinished candle (dropped, A9); empty days not cached so pre-listing ranges re-request each load (accepted in Options not taken); A11 cache-clear defaulting to --market spot is a mild footgun for um data but deletes only matching day files under <cache>/binance-vision/ and is flagged; 418 cancels pending futures (running ones finish one request); Retry-After over 60 s stops instead of sleeping. None breaks behaviour, leaks data or breaches a policy.",
++    "Drive: commands.drive is empty; not applicable."
++  ]
++}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.model.json b/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.model.json
+new file mode 100644
+index 0000000..8bfef2b
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "a1d8106786e63392e",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-10-27T13:04:52Z",
++  "head": "dfe5caa713344b9a03ded3ba6bbe44867b7606d5",
++  "member": "reviewer",
++  "models": [
++    "claude-opus-5-5"
++  ],
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/42f8c0f2-d625-4762-a66b-ea92b7cf8a03/subagents/agent-a1d8106786e63392e.jsonl"
++}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/decisions-design.json b/changes/0001-binance-vision-kline-data-layer/evidence/decisions-design.json
+new file mode 100644
+index 0000000..d993a2a
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/decisions-design.json
+@@ -0,0 +1,70 @@
++{
++  "decisions": [
++    {
++      "advocate": "Keep `data-api.binance.vision` as the spot default, but do not close the concern as-is: the build must add an allow-listed host override and must not let the 418 guard depend on a header the mirror may not send.",
++      "at": "2026-10-27T13:07:34Z",
++      "cost_usd": null,
++      "decision": "Keep data-api.binance.vision as the fixed spot REST host (no switch) and refused fills (451, any non-418 4xx) as gaps with the status; the weight pause must treat a missing X-MBX-USED-WEIGHT-1M as unknown and pause conservatively, pinned by an offline no-header test.",
++      "head": "dfe5caa713344b9a03ded3ba6bbe44867b7606d5",
++      "item": "Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot",
++      "item_n": 1,
++      "key": "concern:55c4e0ec17343844",
++      "kind": "concern",
++      "n": 1,
++      "overturned": null,
++      "phase": "design",
++      "rationale": [
++        "Both verdicts agree on the mirror as default and on refusals-as-gaps; the intent names both hosts and proposes 'gaps with the reason', and 418 still stops the run.",
++        "The host override is not taken: the intent asks for no option, coding-standards rule 3 forbids unasked scope, and a later small change can add it if the owner wants it.",
++        "They disagree on the 418 guard; the safer reading wins: the intent's hard rule is never get the IP banned, and a pause keyed to a header the mirror may not send would be dead code.",
++        "A conservative no-header path plus a pinned test closes that gap without widening scope or touching any guardrail."
++      ],
++      "reviewer": "Accept the design as written (close the concern): `data-api.binance.vision` as the fixed spot default and 451/other-4xx refusals reported as gaps with the status."
++    },
++    {
++      "advocate": "Do not accept the deferral as written: close the concern at design with a reasoned decision on layout and codec level, and turn the build-time \"measurement\" into either reproducible evidence or an owner-run check after merge.",
++      "at": "2026-10-27T13:07:36Z",
++      "cost_usd": null,
++      "decision": "Keep one zstd level-3 Parquet file per day as the intent requires (line 59); the build commits the generator that produces evidence/storage-measurement.md (per-day vs one yearly file, plus a higher zstd level) so the figure is reproducible and labelled synthetic, and the spec gives the owner the real-data check (download BTCUSDT 1m for one year, then cache-info) with a reopen threshold of more than 20% over a single yearly file.",
++      "head": "eebc319ba89e2c17afcfc5bd027b36a10bfc1a68",
++      "item": "Storage layout and codec level not measured: the intent asked the design to measure one",
++      "item_n": 2,
++      "key": "concern:8428f0bb7ba60d43",
++      "kind": "concern",
++      "n": 2,
++      "overturned": null,
++      "phase": "design",
++      "rationale": [
++        "Both verdicts agree to keep per-day files; intent line 59 fixes one file per day written atomically, so a month or year layout would contradict a stated requirement.",
++        "Neither design nor build can fetch real BTCUSDT data (no allowed domains), so the intent's measurement (line 161) can only be synthetic in-run or real on the owner's machine.",
++        "They disagree on whether an uncommitted synthetic figure counts as evidence; the safer reading is the advocate's: commit the generator so a verifier can re-run it, and state that the data is synthetic.",
++        "The owner's real-data check with an explicit threshold gives the per-day choice a defined way to be reopened; zstd 3 stays as the default because the codec choice changes no schema or behaviour.",
++        "No limit, guardrail or risk-list item is touched; this only shapes the evidence for this item."
++      ],
++      "reviewer": "Accept the deferral and close the concern as decided: keep one zstd-3 file per day; the build records the measurement as planned (plan step 10) and the owner judges the figure. Not an Important finding."
++    },
++    {
++      "advocate": "Do not close A1\u2013A12 as \"design choices the owner accepts at merge\": A10 makes the exception the normal path for real Binance data and the Proof list never tests it; require an explicit, non-silent opt-in for intra-file holes and an acceptance test for A10 before the concern is closed.",
++      "at": "2026-10-27T13:07:37Z",
++      "cost_usd": null,
++      "decision": "A1\u2013A12 accepted as written, A10 keeps raising KlineGapError by default; Gap.reason tells a candle missing inside a source file apart from a day absent from both sources, and plan.md Proof gains a test with a fixture missing two consecutive candles that asserts the exact Gap start/end/candles/reason and the .frame rows in schema; no allow_gaps keyword is added",
++      "head": "a58af68e7d9b20b5d69d11715ac8593b64ee5bac",
++      "item": "Assumptions where the intent is silent (A1\u2013A12 in Design \u00a7 Assumptions), the weightiest",
++      "item_n": 3,
++      "key": "concern:d6a8c33dc520ee6a",
++      "kind": "concern",
++      "n": 3,
++      "overturned": null,
++      "phase": "design",
++      "rationale": [
++        "Both agree A10's raise is the intent's own rule (intent Sources: \"never a silently short frame\"); A1\u2013A9, A11 and A12 are uncontested.",
++        "The advocate's proof hole is a checkable fact: plan.md Proof lists only test_day_missing_from_both_sources_raises_gap_error, nothing for an in-file hole.",
++        "The safer reading closes the concern only with that behaviour proven, so the test and the distinct reason are required now.",
++        "The allow_gaps keyword is left out: KlineGapError.frame already gives a non-silent route to the partial data, and a new API surface is a scope change for the owner to request."
++      ],
++      "reviewer": "Accept A1\u2013A12 as written and have the owner close the concern as decided; no assumption breaks behaviour, leaks data or breaches a policy, and A10 is what the intent requires."
++    }
++  ],
++  "phase": "design",
++  "schema_version": 1
++}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/decisions-design.md b/changes/0001-binance-vision-kline-data-layer/evidence/decisions-design.md
+new file mode 100644
+index 0000000..af03f96
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/decisions-design.md
+@@ -0,0 +1,9 @@
++# Decisions taken for you — the design phase
++
++One line per panel decision (decision 21): the item, the reviewer's and the devil's advocate's verdicts, the conciliator's decision and rationale, the cost. A review comment on any of them overturns it (/sdlc-fix); an overturned line says so.
++
++- 1. [concern] Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot — reviewer: Accept the design as written (close the concern): `data-api.binance.vision` as the fixed spot default and 451/other-4xx refusals reported as gaps with the status.; devil's advocate: Keep `data-api.binance.vision` as the spot default, but do not close the concern as-is: the build must add an allow-listed host override and must not let the 418 guard depend on a header the mirror may not send.; decision: Keep data-api.binance.vision as the fixed spot REST host (no switch) and refused fills (451, any non-418 4xx) as gaps with the status; the weight pause must treat a missing X-MBX-USED-WEIGHT-1M as unknown and pause conservatively, pinned by an offline no-header test.; rationale: Both verdicts agree on the mirror as default and on refusals-as-gaps; the intent names both hosts and proposes 'gaps with the reason', and 418 still stops the run. The host override is not taken: the intent asks for no option, coding-standards rule 3 forbids unasked scope, and a later small change can add it if the owner wants it. They disagree on the 418 guard; the safer reading wins: the intent's hard rule is never get the IP banned, and a pause keyed to a header the mirror may not send would be dead code. A conservative no-header path plus a pinned test closes that gap without widening scope or touching any guardrail.; cost: n/a
++- 2. [concern] Storage layout and codec level not measured: the intent asked the design to measure one — reviewer: Accept the deferral and close the concern as decided: keep one zstd-3 file per day; the build records the measurement as planned (plan step 10) and the owner judges the figure. Not an Important finding.; devil's advocate: Do not accept the deferral as written: close the concern at design with a reasoned decision on layout and codec level, and turn the build-time "measurement" into either reproducible evidence or an owner-run check after merge.; decision: Keep one zstd level-3 Parquet file per day as the intent requires (line 59); the build commits the generator that produces evidence/storage-measurement.md (per-day vs one yearly file, plus a higher zstd level) so the figure is reproducible and labelled synthetic, and the spec gives the owner the real-data check (download BTCUSDT 1m for one year, then cache-info) with a reopen threshold of more than 20% over a single yearly file.; rationale: Both verdicts agree to keep per-day files; intent line 59 fixes one file per day written atomically, so a month or year layout would contradict a stated requirement. Neither design nor build can fetch real BTCUSDT data (no allowed domains), so the intent's measurement (line 161) can only be synthetic in-run or real on the owner's machine. They disagree on whether an uncommitted synthetic figure counts as evidence; the safer reading is the advocate's: commit the generator so a verifier can re-run it, and state that the data is synthetic. The owner's real-data check with an explicit threshold gives the per-day choice a defined way to be reopened; zstd 3 stays as the default because the codec choice changes no schema or behaviour. No limit, guardrail or risk-list item is touched; this only shapes the evidence for this item.; cost: n/a
++- 3. [concern] Assumptions where the intent is silent (A1–A12 in Design § Assumptions), the weightiest — reviewer: Accept A1–A12 as written and have the owner close the concern as decided; no assumption breaks behaviour, leaks data or breaches a policy, and A10 is what the intent requires.; devil's advocate: Do not close A1–A12 as "design choices the owner accepts at merge": A10 makes the exception the normal path for real Binance data and the Proof list never tests it; require an explicit, non-silent opt-in for intra-file holes and an acceptance test for A10 before the concern is closed.; decision: A1–A12 accepted as written, A10 keeps raising KlineGapError by default; Gap.reason tells a candle missing inside a source file apart from a day absent from both sources, and plan.md Proof gains a test with a fixture missing two consecutive candles that asserts the exact Gap start/end/candles/reason and the .frame rows in schema; no allow_gaps keyword is added; rationale: Both agree A10's raise is the intent's own rule (intent Sources: "never a silently short frame"); A1–A9, A11 and A12 are uncontested. The advocate's proof hole is a checkable fact: plan.md Proof lists only test_day_missing_from_both_sources_raises_gap_error, nothing for an in-file hole. The safer reading closes the concern only with that behaviour proven, so the test and the distinct reason are required now. The allow_gaps keyword is left out: KlineGapError.frame already gives a non-silent route to the partial data, and a new API surface is a scope change for the owner to request.; cost: n/a
++
++Total panel cost: n/a
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/diff-design.patch b/changes/0001-binance-vision-kline-data-layer/evidence/diff-design.patch
+new file mode 100644
+index 0000000..bffd4d6
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/diff-design.patch
+@@ -0,0 +1,691 @@
++ .../evidence/.gitkeep                              |   0
++ .../evidence/hook-log.jsonl                        |  21 ++
++ .../evidence/run-design.json                       |   5 +
++ .../0001-binance-vision-kline-data-layer/intent.md | 174 ++++++++++++++
++ .../0001-binance-vision-kline-data-layer/plan.md   | 149 ++++++++++++
++ .../0001-binance-vision-kline-data-layer/spec.md   | 259 +++++++++++++++++++++
++ .../status.yaml                                    |  34 +++
++ 7 files changed, 642 insertions(+)
++
++diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/.gitkeep b/changes/0001-binance-vision-kline-data-layer/evidence/.gitkeep
++new file mode 100644
++index 0000000..e69de29
++diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/hook-log.jsonl b/changes/0001-binance-vision-kline-data-layer/evidence/hook-log.jsonl
++new file mode 100644
++index 0000000..c46362d
++--- /dev/null
+++++ b/changes/0001-binance-vision-kline-data-layer/evidence/hook-log.jsonl
++@@ -0,0 +1,21 @@
+++{"at": "2026-10-27T12:52:10Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:52:10Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "shell_guard", "reason": "Shell guard: the write target `$S/sdlc.yaml` is not a literal path (a variable, command substitution, backtick, `~`, a glob, a brace expansion or a git pathspec-magic prefix), or the working directory it would resolve against is not tracked (`cd -`, a bare `cd`, `popd`/`Pop-Location`); write the literal path, from a tracked directory, so the guard can check it.", "tool": "Bash", "verdict": "block"}
+++{"at": "2026-10-27T12:52:16Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:52:18Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:52:23Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:52:40Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:52:44Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:58:55Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:58:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:59:14Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:59:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:59:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T12:59:18Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-10-27T13:02:12Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-27T13:02:12Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-27T13:02:12Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-27T13:02:13Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-27T13:02:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-27T13:02:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-27T13:02:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-10-27T13:02:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/run-design.json b/changes/0001-binance-vision-kline-data-layer/evidence/run-design.json
++new file mode 100644
++index 0000000..2f74b4b
++--- /dev/null
+++++ b/changes/0001-binance-vision-kline-data-layer/evidence/run-design.json
++@@ -0,0 +1,5 @@
+++{
+++  "phase": "design",
+++  "spend_usd": null,
+++  "started_at": "2026-10-27T12:58:57Z"
+++}
++\ No newline at end of file
++diff --git a/changes/0001-binance-vision-kline-data-layer/intent.md b/changes/0001-binance-vision-kline-data-layer/intent.md
++new file mode 100644
++index 0000000..82881dc
++--- /dev/null
+++++ b/changes/0001-binance-vision-kline-data-layer/intent.md
++@@ -0,0 +1,174 @@
+++# Intent: Binance Vision kline data layer
+++Author: owner (product owner). Change id: 0001. Entry route: idea.
+++
+++## Problem
+++The backtester has no market data. In the owner's words: "Download Binance Vision daily kline
+++(OHLCV) files for one symbol and interval, cache them locally, and load a date range into a
+++DataFrame, as the data layer for later backtests."
+++
+++Today every later feature (strategies, signals, performance reports) is blocked: there is no
+++way to get candles into the program, and fetching them by hand for each experiment is slow and
+++easy to get wrong (missing days, mixed intervals, re-downloading the same files). The owner's
+++disk space is limited, so the cache has to stay small.
+++
+++## Proposed outcome
+++A data module in `app/` that, for one symbol, one interval and one market at a time, does the
+++following.
+++
+++**Sources**
+++- Downloads the daily kline zip files that Binance Vision (`data.binance.vision`) publishes,
+++  for two markets:
+++  - spot (`data/spot/daily/klines/<SYMBOL>/<INTERVAL>/`);
+++  - USDⓈ-M futures (`data/futures/um/daily/klines/<SYMBOL>/<INTERVAL>/`).
+++- Fills the days Binance Vision does not have from the public Binance REST klines endpoint (no
+++  API key): spot `GET /api/v3/klines`, USDⓈ-M `GET /fapi/v1/klines`. These are mainly today
+++  and the last day or two before Vision publishes them. The REST rows go through the same
+++  normalisation as the files, so the result does not depend on the source.
+++- When neither source has data, the gap is reported, never hidden. This happens before a
+++  symbol was listed, after it was delisted, or for an unknown symbol. A requested range that
+++  comes back with fewer rows than it should raises a clear error or returns the list of gaps
+++  next to the data (the exact shape is settled in design), never a silently short frame.
+++
+++**The DataFrame**
+++- An inclusive date range loads into one **polars** DataFrame: one row per candle, sorted by
+++  open time, with no duplicate rows.
+++- It keeps all of Binance's kline columns for now (the owner may trim them later):
+++  - open time, open, high, low, close, volume;
+++  - close time, quote asset volume, number of trades;
+++  - taker buy base volume, taker buy quote volume.
+++  The unused "ignore" column may be dropped. Column names and dtypes are fixed in design and
+++  are the same whichever market or source the row comes from.
+++- **Timestamps are normalised.** Spot files from 2025-01-01 on give open and close times in
+++  microseconds; older spot files, the futures files and the REST API use milliseconds. The
+++  loader detects the unit of each file and converts every time to one UTC timestamp type. A
+++  range that crosses 2025-01-01 loads as one continuous series.
+++
+++**The cache (small and fast)**
+++- Each day is downloaded once. A repeated load of a cached range makes no network request.
+++- The cache stores **compressed Parquet**, not the original zip. Each zip is checked against
+++  its `.CHECKSUM` file, converted, then deleted. Parquet is the lighter and faster option: no
+++  CSV parsing on load, columnar compression, and only one copy on disk.
+++- Default location: the user's cache directory, outside the repository:
+++  `$XDG_CACHE_HOME/crypto-backtester/` (normally `~/.cache/crypto-backtester/`) on Linux and
+++  macOS, `%LOCALAPPDATA%\crypto-backtester\Cache\` on Windows. It is worked out with the
+++  standard library, with no new dependency.
+++- The location can be overridden, highest priority first: a `cache_dir` argument (API) or
+++  `--cache-dir` (CLI), then the environment variable `CRYPTO_BACKTESTER_CACHE_DIR`. This lets
+++  the owner point the cache at another drive.
+++- Layout: `<cache>/binance-vision/<market>/<SYMBOL>/<interval>/<SYMBOL>-<interval>-<YYYY-MM-DD>.parquet`.
+++  There is one file per day, written atomically (temporary file, then rename), so an
+++  interrupted run never leaves a half-written day behind.
+++- Ways to keep the cache small:
+++  - an option to load with no cache at all: download, convert in memory, return, keep nothing;
+++  - a CLI command that shows the cache size per market, symbol and interval;
+++  - a CLI command that deletes cached data for a symbol, interval or date range.
+++- REST-filled days are cached only when the day is closed (it ended in UTC). Today's partial
+++  day is always fetched again.
+++
+++**Ways to use it**
+++- **Python API**: one call (shape settled in design, for example
+++  `load_klines(symbol, interval, start, end, market="spot", cache_dir=None)`) that fetches
+++  only what is missing and returns the DataFrame.
+++- **CLI**: `python -m app.data` with these subcommands:
+++  - `download` fills the cache ahead of time and reports what it fetched, skipped (already
+++    cached), filled from REST, or could not find;
+++  - `cache-info` shows the cache size;
+++  - `cache-clear` deletes cached data.
+++  For example: `python -m app.data download BTCUSDT 1h 2024-01-01 2024-01-31 --market spot`.
+++
+++**Downloads**
+++- Up to 4 Vision files are downloaded in parallel, using a thread pool.
+++- Timeouts: 10 s to connect, 60 s to read.
+++- Retries: 3 at most, with exponential backoff (1 s, 2 s, 4 s, plus jitter), on connection
+++  errors, timeouts, HTTP 429 and 5xx responses. A `Retry-After` header is honoured. HTTP 418
+++  (Binance's IP ban) stops the run with a clear message.
+++- A 404 is not retried: it means the day is not on Vision, so it goes to the REST fill.
+++- REST requests run one at a time, ask for the maximum page size, and pause when the rate-limit
+++  weight headers come close to the limit.
+++- HTTP client: the standard library (`urllib.request`), with no new dependency. The fetch
+++  function can be injected so tests can stub it.
+++
+++How to check it is done:
+++- The automated tests run with no network access. They use small fixture files that have the
+++  real layouts (spot without a header row and in microseconds after 2025, futures with a
+++  header row, and REST JSON responses).
+++- The tests show that:
+++  - a multi-day range loads into the expected rows and schema;
+++  - a range that crosses 2025-01-01 has continuous UTC timestamps;
+++  - a Vision day returning 404 is filled from REST;
+++  - a day missing from both sources is reported as a gap;
+++  - a second load makes no fetch;
+++  - the cache holds Parquet files only (no zip);
+++  - spot and futures fixtures for the same candles load into identical DataFrames.
+++- `python -m app.data download …` and `cache-info` work against the stubbed transport.
+++- Build, test and lint stay green.
+++
+++## Affected users and systems
+++- The owner, as the person running backtests. Later changes (strategies, the backtest engine)
+++  will build on this module.
+++- `app/`: a new data package (`app/data/`, with a `__main__` for the CLI). `tests/`: a new
+++  `test_<area>.py` with offline fixtures.
+++- External services, all public and read-only, with no account or API key:
+++  - `data.binance.vision` (the files);
+++  - the Binance spot REST API (`api.binance.com`, or the market-data-only
+++    `data-api.binance.vision`);
+++  - the USDⓈ-M REST API (`fapi.binance.com`).
+++- The owner's local disk: the cache directory, outside the repo by default.
+++- Dependencies: **polars** becomes the project's first runtime dependency (`pyproject.toml`).
+++  There is no HTTP library dependency, because `urllib` is used.
+++- CI: `.github/workflows/ci.yml` installs only pytest and ruff today, so it must also install
+++  the project (`pip install -e .` or polars).
+++
+++## Constraints
+++- No secrets, accounts or API keys. Both Binance Vision and the REST klines endpoints are
+++  public.
+++- No personal data. Market data only.
+++- Tests never touch the network. The CI runner and the SDLC sandbox do not allow the Binance
+++  hosts (`sandbox.allowed_domains` is empty), so every fetch is tested through a stubbed
+++  transport and local fixtures.
+++- Treat downloaded files and REST responses as untrusted input:
+++  - check each zip against Binance's `.CHECKSUM`;
+++  - extract only the expected CSV, in memory or in a temporary location, and never write
+++    outside the cache directory;
+++  - validate symbol, interval, market and dates before building a URL or a path from them;
+++  - check the shape of REST JSON before using it.
+++- Do not commit cached data, and never write data into the repository by default.
+++- Respect Binance's rate limits. The data layer must never get the owner's IP banned (418).
+++- Python >= 3.10, type hints on public functions, ruff clean at line length 100, version kept
+++  in step between `app/__init__.py` and `pyproject.toml`.
+++- **Guardrail dependency.** `sdlc.yaml` `commands.setup` is `python -m pip install pytest
+++  ruff`, and `CLAUDE.md` documents the same. The framework's phase jobs run that command before
+++  each phase, so polars would not be installed there and the build gate's tests would fail. Both
+++  files are protected and only the owner can change them, in a reviewed PR. Before the build,
+++  `commands.setup` must also install the project's runtime dependencies (for example
+++  `python -m pip install -e . pytest ruff`). This change does not edit them.
+++- Out of scope:
+++  - monthly files, aggregated trades, COIN-M futures, other exchanges;
+++  - resampling between intervals;
+++  - several symbols in one call;
+++  - a size cap or automatic eviction of the cache (the clear command covers it for now);
+++  - a console script in `pyproject.toml` (can come later; `python -m app.data` works without
+++    installing).
+++
+++## Open questions
+++- REST access by region: `api.binance.com` and `fapi.binance.com` refuse some regions (HTTP
+++  451). For spot, `data-api.binance.vision` is a public market-data-only mirror; the futures
+++  API has none. Which spot host is the default, and what does the loader do when the REST fill
+++  is refused? (Proposed: report those days as gaps, with the reason.)
+++- How are gaps returned to the API caller: an exception listing them, or a result object with
+++  the frame and the gaps? The CLI prints them either way.
+++- Is one Parquet file per day small enough? A month or year per file saves per-file overhead
+++  but complicates updates. Design measures one year of BTCUSDT 1m both ways and picks one.
+++- Which Parquet compression codec and level (zstd is the expected choice)?
+++
+++## Examples/References
+++- Binance Vision bucket browser: https://data.binance.vision/
+++- Binance public data repository (file layouts, column list, checksum files, the 2025
+++  microsecond change): https://github.com/binance/binance-public-data
+++- Example file URLs:
+++  - spot: `https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1h/BTCUSDT-1h-2024-01-01.zip`
+++    (and `.zip.CHECKSUM` beside it);
+++  - USDⓈ-M: `https://data.binance.vision/data/futures/um/daily/klines/BTCUSDT/1h/BTCUSDT-1h-2024-01-01.zip`.
+++- REST klines documentation:
+++  - spot: https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints#klinecandlestick-data
+++  - USDⓈ-M: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data
++diff --git a/changes/0001-binance-vision-kline-data-layer/plan.md b/changes/0001-binance-vision-kline-data-layer/plan.md
++new file mode 100644
++index 0000000..ec426c0
++--- /dev/null
+++++ b/changes/0001-binance-vision-kline-data-layer/plan.md
++@@ -0,0 +1,149 @@
+++# Plan: Binance Vision kline data layer (from intent.md 2026-10-27, spec.md 2026-10-27)
+++
+++## Files that change
+++- `pyproject.toml` — add `dependencies = ["polars>=1.0"]` under `[project]`.
+++- `.github/workflows/ci.yml` — the install step also installs `polars==<version>`, the version
+++  the build ran its tests with (`python -c "import polars; print(polars.__version__)"`; 2.1.0
+++  in the runner image at design time).
+++- `app/data/__init__.py` — new: re-exports the public API (`load_klines`, `KlineGapError`,
+++  `Gap`, `Fetch`, `HttpResponse`, `InvalidRequestError`, `BinanceBanError`, `cache_info`,
+++  `clear_cache`) with `__all__`.
+++- `app/data/params.py` — new: market and interval sets, symbol pattern, date parsing and
+++  checks, `InvalidRequestError`, interval length in milliseconds.
+++- `app/data/http.py` — new: `HttpResponse`, `Fetch`, the default `urllib` fetch (10 s / 60 s
+++  timeouts, body size cap), the retry wrapper (backoff 1/2/4 s plus jitter, `Retry-After`,
+++  429/5xx/connection/timeout retried, 404 and other 4xx not, 418 → `BinanceBanError`,
+++  injectable `sleep`), and the REST weight pause.
+++- `app/data/schema.py` — new: column names and dtypes (one definition), unit detection,
+++  CSV-bytes → frame and REST-rows → frame normalisation.
+++- `app/data/vision.py` — new: Vision URL for a day, zip download, `.CHECKSUM` verification,
+++  in-memory extraction of the one expected CSV member with size bounds; returns a frame or a
+++  day outcome with its reason.
+++- `app/data/rest.py` — new: REST URL per market, paging over a range of missing days, JSON
+++  shape check, outcome on 4xx.
+++- `app/data/cache.py` — new: cache root resolution (argument, env var, platform default),
+++  day-file path with the inside-the-cache check, atomic Parquet write, read, `cache_info`,
+++  `clear_cache`.
+++- `app/data/loader.py` — new: `load_klines`, the day sync used by the loader and the CLI
+++  (`sync_days` returning one outcome per day: cached, fetched, rest, missing+reason), the
+++  thread pool, expected-candle grid, `Gap`, `KlineGapError`.
+++- `app/data/__main__.py` — new: argparse CLI with `download`, `cache-info`, `cache-clear`;
+++  `main(argv=None, fetch=None) -> int`.
+++- `tests/fixtures/binance/` — new: small text fixtures with the real layouts: a spot CSV
+++  before 2025 (ms, no header), a spot CSV from 2025-01-01 (µs, no header), a futures CSV
+++  (ms, header row) holding the same candles as the spot ones, REST JSON pages for spot and
+++  futures. Interval `1h`, a few days, synthetic prices. Zips and `.CHECKSUM` bodies are built
+++  from them inside the tests.
+++- `tests/test_data.py` — new: the loader, sources, cache and gap tests, with a stub `Fetch`
+++  that maps URLs to responses and records every call, and `tmp_path` as `cache_dir`.
+++- `tests/test_data_cli.py` — new: the CLI tests through `main(argv, fetch=stub)` and `capsys`.
+++- `changes/0001-binance-vision-kline-data-layer/evidence/storage-measurement.md` — new: the
+++  open-question-3 figures.
+++
+++## Order of work
+++1. `pyproject.toml` dependency and the CI install line; check `python -c "import polars"`.
+++2. `params.py` with tests for valid and invalid symbol, interval (`1s` on `um` refused),
+++   market and dates (end after today, start after end).
+++3. `schema.py` with tests: µs and ms files normalise to identical frames; header row
+++   detected; `ignore` dropped; dtypes as in spec § Schema; malformed row rejected.
+++4. `http.py` with tests on a stub transport and a recording `sleep`: retries and backoff
+++   count, `Retry-After` honoured and the over-60 s stop, 404 not retried, 418 raises, weight
+++   pause triggered at 80 %.
+++5. `vision.py` with tests: good zip, checksum mismatch, missing checksum, unexpected member
+++   names ignored, oversize member refused.
+++6. `rest.py` with tests: paging until an empty page, 451 outcome, malformed JSON outcome.
+++7. `cache.py` with tests: root priority (argument > env var > default via monkeypatched
+++   environment and `sys.platform`), layout path, atomic write leaves no temp file, path
+++   escaping refused, `cache_info` sizes, `clear_cache` deletes only matching day files.
+++8. `loader.py` with the spec's Acceptance tests: multi-day load, 2025-01-01 crossing, 404 →
+++   REST, missing day → `KlineGapError` with gaps and frame, second load makes no fetch,
+++   Parquet only, spot = futures, `cache=False` writes nothing, current day not cached and its
+++   unfinished candle dropped (clock injected or the current day built from `datetime.now`).
+++9. `__main__.py` and `test_data_cli.py`: `download` report lines and exit codes, `cache-info`
+++   table, `cache-clear`, an invalid parameter printing one stderr line with exit 2.
+++10. Storage measurement: generate one year of synthetic 1m candles (random walk prices,
+++    realistic volumes) in a throwaway script outside the repository, write 365 daily files and
+++    one yearly file with zstd level 3, record both totals in
+++    `evidence/storage-measurement.md`; commit no script and no data.
+++11. Run build, test and lint; paste their output.
+++
+++## Risks
+++- New dependency (coding-standards rule 5, security-baseline rule 6): polars becomes the
+++  project's first runtime dependency, as the intent asks; it is lower-bounded in
+++  `pyproject.toml` and pinned in CI. The SDLC phase jobs install it unpinned
+++  (`commands.setup` on main: `python -m pip install pytest ruff polars`), so a polars major
+++  release could break the phase jobs before CI; the owner can pin it there.
+++- The design branch was cut from the intent PR head, before the owner's commit 801dc74 on
+++  main that adds polars to `commands.setup`. The build branch must take `sdlc.yaml` from main
+++  (it does not touch it); the build gate reads the default branch's setup.
+++- `CLAUDE.md` documents `python -m pip install pytest ruff` and "healthy: `1 passed`"; after
+++  this change both are stale. It is a guardrail file: the owner updates it in a PR of their
+++  own. The run does not edit it.
+++- Riskiest step: the loader (step 8), where the Vision pass, the REST fill, the cache and the
+++  gap grid meet; an off-by-one in the grid (inclusive end, the current day's unfinished
+++  candle) or in REST paging (`endTime` inclusive in ms) would hide or invent gaps. Mitigation:
+++  the grid is computed from integer milliseconds only, and the tests assert exact gap
+++  boundaries.
+++- Thread pool and 418: a ban must stop every pending Vision download; the loader cancels
+++  pending futures and re-raises. Tests cover it with a stub that answers 418 on one day.
+++- Floor-converting µs to ms changes `close_time` of post-2025 spot files by 0.999 ms; this is
+++  intended (spec § Schema) and makes spot and futures rows identical.
+++- Untrusted input: zip bombs and oversized bodies are bounded (64 MiB body, 256 MiB member);
+++  no file is extracted to disk; `cache-clear` cannot delete outside
+++  `<cache>/binance-vision/`. A bug here could delete the owner's files: `clear_cache` matches
+++  the exact day-file name pattern and resolves every path before deleting.
+++- Callers: none yet (`app/` has only `__version__`); later strategy and engine changes build
+++  on `load_klines` and the schema, so renaming a column later is a breaking change.
+++- Real Binance behaviour is never exercised by the tests (no network in CI or the sandbox);
+++  the fixtures follow the published layouts. A layout drift on Binance's side would show only
+++  on the owner's machine.
+++
+++## Options not taken
+++- Return a result object `(frame, gaps)` instead of raising: rejected, a caller can ignore the
+++  gaps and get a silently short frame, which the intent forbids.
+++- Keep the original zip in the cache: rejected by the intent (Parquet only, one copy).
+++- One Parquet file per month or year: kept off until the build's measurement says otherwise;
+++  per-day files keep atomic writes and REST closed-day caching simple.
+++- `requests`/`httpx` or `platformdirs`: rejected by the intent (no new dependency besides
+++  polars).
+++- `Datetime("us")` for every time column: exact for all sources, but spot µs and futures ms
+++  `close_time` would differ by 999 µs for the same candle, breaking "identical frames".
+++- `api.binance.com` as the spot REST default: refused in more regions than the
+++  market-data-only mirror; kept out (spec Flagged concerns).
+++- `Decimal` prices: exact, but slow and awkward in polars for backtests; `Float64` keeps
+++  Binance's 8 decimals within double precision.
+++- Caching empty days: would stop re-asking for pre-listing days, but a temporary Vision or
+++  REST outage would then be cached as "no data" for good.
+++
+++Interrogation (plan-template):
+++1. Breaks: nothing existing calls the new package; touched shapes are `pyproject.toml`
+++   (dependency added) and the CI install step. Data shapes introduced: the schema, the cache
+++   layout, `Gap` and `KlineGapError`.
+++2. Most risky: step 8 (above).
+++3. Alternatives: the list above.
+++4. An engineer can implement it from spec.md and this plan: every URL, limit, dtype, path
+++   and exit code is stated in the spec; the fixtures are described by layout.
+++5. No item in Proof exists yet: every test below is to be written in this change.
+++
+++## Proof
+++All tests are new, written in this change, offline, through the stub `Fetch`:
+++- test: tests/test_data.py::test_multi_day_range_loads_expected_rows_and_schema
+++- test: tests/test_data.py::test_range_across_2025_has_continuous_utc_timestamps
+++- test: tests/test_data.py::test_vision_404_day_is_filled_from_rest
+++- test: tests/test_data.py::test_day_missing_from_both_sources_raises_gap_error
+++- test: tests/test_data.py::test_second_load_makes_no_fetch
+++- test: tests/test_data.py::test_cache_holds_parquet_files_only
+++- test: tests/test_data.py::test_spot_and_futures_fixtures_load_identically
+++- test: tests/test_data.py::test_checksum_mismatch_is_a_gap_and_not_cached
+++- test: tests/test_data.py::test_http_418_raises_ban_error
+++- test: tests/test_data.py::test_retries_on_429_and_5xx_but_not_404
+++- test: tests/test_data.py::test_invalid_parameters_raise_before_any_fetch
+++- test: tests/test_data.py::test_no_cache_mode_writes_nothing
+++- test: tests/test_data.py::test_current_day_is_not_cached
+++- test: tests/test_data_cli.py::test_download_reports_fetched_skipped_rest_and_missing
+++- test: tests/test_data_cli.py::test_cache_info_shows_sizes
+++- test: tests/test_data_cli.py::test_cache_clear_deletes_only_matching_day_files
+++
+++Target (spec Acceptance): build no output and exit 0; `python -m pytest` all passed, the smoke
+++test included; `python -m ruff check .` `All checks passed!`; the storage figures in
+++`evidence/storage-measurement.md`.
++diff --git a/changes/0001-binance-vision-kline-data-layer/spec.md b/changes/0001-binance-vision-kline-data-layer/spec.md
++new file mode 100644
++index 0000000..2d62956
++--- /dev/null
+++++ b/changes/0001-binance-vision-kline-data-layer/spec.md
++@@ -0,0 +1,259 @@
+++# Spec: Binance Vision kline data layer
+++Change id: 0001. Status: proposed. Produced by: sdlc plugin 1.0.50, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.50); overrides: none; policy sources: none
+++
+++## Requirements
+++
+++Function
+++- R1. A new package `app/data/` loads klines for one symbol, one interval and one market
+++  (`spot` or `um`, USDⓈ-M futures) per call, over an inclusive UTC date range.
+++- R2. Each day comes from the Binance Vision daily zip
+++  (`https://data.binance.vision/data/spot/daily/klines/<SYMBOL>/<INTERVAL>/…` or
+++  `…/data/futures/um/daily/klines/…`); a day Vision answers with 404 is filled from the public
+++  REST klines endpoint (spot `GET /api/v3/klines`, USDⓈ-M `GET /fapi/v1/klines`), with no API key.
+++- R3. The result is one polars DataFrame: one row per candle, sorted by `open_time`, no
+++  duplicate `open_time`, with the fixed schema of Design § Schema whatever the market or
+++  source.
+++- R4. Every time column is one UTC type; microsecond files (spot from 2025-01-01) and
+++  millisecond files (older spot, futures, REST) give the same values for the same candle, and a
+++  range crossing 2025-01-01 is one continuous series.
+++- R5. A requested range never comes back silently short: any missing candle is reported as a
+++  gap with its reason (Design § Gaps).
+++- R6. Each closed day is fetched at most once into the cache; loading a fully cached range
+++  makes no network request.
+++- R7. The cache holds zstd-compressed Parquet only, one file per day, at
+++  `<cache>/binance-vision/<market>/<SYMBOL>/<interval>/<SYMBOL>-<interval>-<YYYY-MM-DD>.parquet`,
+++  written atomically; no zip, CSV or temporary file stays behind.
+++- R8. Cache root, highest priority first: the `cache_dir` argument / `--cache-dir` option, the
+++  `CRYPTO_BACKTESTER_CACHE_DIR` environment variable, then the platform default
+++  (`%LOCALAPPDATA%\crypto-backtester\Cache\` on Windows; `$XDG_CACHE_HOME/crypto-backtester/`,
+++  else `~/.cache/crypto-backtester/`, elsewhere), worked out with the standard library.
+++- R9. `cache=False` loads with no cache: it neither reads nor writes any cache file.
+++- R10. REST-filled days are cached only when the UTC day has ended; the current day is always
+++  fetched again.
+++- R11. CLI `python -m app.data` with `download`, `cache-info` and `cache-clear` (Design § CLI).
+++- R12. Downloads: at most 4 Vision files in parallel; timeouts 10 s connect, 60 s read; at most
+++  3 retries with backoff 1 s, 2 s, 4 s plus jitter on connection errors, timeouts, 429 and 5xx;
+++  `Retry-After` honoured; 404 never retried; 418 stops the run with a clear message. REST
+++  calls run one at a time, at the maximum page size, and pause when the used-weight header nears
+++  the limit.
+++- R13. HTTP goes through the standard library (`urllib.request`); the fetch function is
+++  injectable so tests stub it. polars is the only new runtime dependency.
+++
+++Out of scope (intent): monthly files, aggregated trades, COIN-M, other exchanges, resampling,
+++several symbols per call, a cache size cap or eviction, a console script.
+++
+++Policies applied
+++- coding-standards: rule 1, `CLAUDE.md` conventions (Python >= 3.10, type hints on public
+++  functions, ruff at line length 100, one test module per area named `test_<area>.py`);
+++  rule 4, every behaviour ships with an offline test; rule 5, polars is a new dependency, so it
+++  gets a `plan.md` Risks line and rides on the owner's merge; rule 7, small single-purpose modules.
+++- security-baseline: rule 2 applies (downloads and REST bodies are untrusted input: schema,
+++  size bounds, no path built from unvalidated text; Design § Untrusted input); rule 3, no
+++  secret anywhere (the endpoints are public); rule 6, polars has its Risks line, TLS
+++  verification stays on, no `eval`/`exec`/`pickle` or shell on external data; rule 7, tests
+++  make no outbound call (`sandbox.allowed_domains` is empty), and the runtime calls only the
+++  three Binance hosts of Design § Sources. Rule 1 (authentication) does not apply: the change
+++  serves no endpoint. Rule 5 (audit) does not apply: the project has no audit log and the cache
+++  holds public data. Rule 8: no risk-list item is touched (below).
+++- data-conventions: rule 1, every stored field is public market data, no personal or sensitive
+++  field; rule 2, the schema is defined once, in the package (the project has no `schemas/`);
+++  rule 3, no migration (a new cache outside the repository); rule 4 does not apply (no event or
+++  external API is published); rule 5, the cache stores only the columns the intent asks for
+++  (the "ignore" column is dropped) and is kept until the owner clears it; rule 6, the dataset's
+++  owner is the repository owner and its freshness is "closed days are immutable, the current
+++  day is refetched".
+++- ux-and-brand: the change has no screen; rules 3 and 4 apply to CLI output and error
+++  messages (every command reports its outcome, errors say what happened and what to do next,
+++  no stack trace for an expected failure); rules 1, 2, 5, 6 and 7 do not apply (no mock, no
+++  component library, no visual loop).
+++- definition-of-done: build, test and lint stay green with their output pasted; tests never
+++  touch the network.
+++- Risk list (`sdlc.yaml`): none of `auth`, `data migrations`, `money movement`,
+++  `production config` applies: public read-only market data, no account, no order, no schema
+++  migration, `deploy.action: none`.
+++
+++## Design
+++
+++### Shape
+++`app/data/` is a package with one responsibility per module: parameter validation, HTTP
+++transport (retries, backoff, rate-limit pauses), the Vision source (URL, checksum, safe
+++extraction), the REST source (paging, JSON shape check), normalisation to the schema, the
+++cache (root, layout, atomic write, read, info, clear), the loader (orchestration and gaps) and
+++the CLI (`__main__`). Nothing outside `app/data/` changes in `app/`; `app.__version__` stays
+++`0.1.0` (the intent asks no release, and `tests/test_smoke.py` pins it).
+++
+++### Public API (`from app.data import …`)
+++- `load_klines(symbol: str, interval: str, start: date | str, end: date | str, *,
+++  market: str = "spot", cache_dir: str | Path | None = None, cache: bool = True,
+++  fetch: Fetch | None = None) -> pl.DataFrame` — fetches only what is missing; raises
+++  `KlineGapError` when any candle in the range is missing.
+++- `KlineGapError(Exception)` with `.gaps: tuple[Gap, ...]` and `.frame: pl.DataFrame` (the
+++  rows that were found, in the same schema).
+++- `Gap` (frozen dataclass): `start` and `end` (open times of the first and last missing candle,
+++  UTC), `candles: int`, `reason: str`.
+++- `Fetch` — a callable `(url: str) -> HttpResponse` with `HttpResponse(status: int,
+++  headers: Mapping[str, str], body: bytes)`; the default uses `urllib.request` with the
+++  timeouts of R12. Retries, backoff and rate-limit pauses wrap any `Fetch`, so the stub sees
+++  the same retry behaviour; the sleep function is injectable for tests.
+++- `cache_info(...)` and `clear_cache(...)`, which back the CLI.
+++- `InvalidRequestError(ValueError)` for bad parameters, `BinanceBanError` for HTTP 418.
+++
+++### Parameters (validated before any URL or path is built)
+++- `market` ∈ {`spot`, `um`}.
+++- `interval` ∈ {`1s` (spot only), `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`,
+++  `8h`, `12h`, `1d`}: the daily-file intervals, each dividing a UTC day exactly.
+++- `symbol`: upper-cased, then must match `^[A-Z0-9]{2,30}$`.
+++- `start`, `end`: ISO dates or `date`; `start <= end`; `end` no later than today (UTC).
+++
+++### Sources
+++- Vision: `https://data.binance.vision/data/<spot|futures/um>/daily/klines/<SYMBOL>/<INTERVAL>/<SYMBOL>-<INTERVAL>-<YYYY-MM-DD>.zip`
+++  and the `.zip.CHECKSUM` beside it. Days run through a pool of 4 threads.
+++- REST (sequential, after the Vision pass): spot `https://data-api.binance.vision/api/v3/klines`
+++  (limit 1000), USDⓈ-M `https://fapi.binance.com/fapi/v1/klines` (limit 1500). Consecutive
+++  missing days form one range, paged with `startTime`/`endTime` in milliseconds; an empty
+++  page ends the range. Before each call, when `X-MBX-USED-WEIGHT-1M` of the last response is at
+++  80 % or more of the documented per-minute limit (spot 6000, USDⓈ-M 2400), the run sleeps to
+++  the next minute boundary.
+++- Retries (both sources): R12. A `Retry-After` longer than 60 s stops the run with the wait
+++  in the message instead of sleeping. 418 raises `BinanceBanError` at once and cancels the
+++  pending Vision downloads. Any other 4xx from REST (400 for an unknown symbol, 451 for a
+++  refused region) ends the REST fill for that range; its days become gaps with the status in
+++  the reason.
+++
+++### Untrusted input
+++- Zip: the body is at most 64 MiB; its SHA-256 must equal the first token of the `.CHECKSUM`
+++  body; it must hold the member `<SYMBOL>-<INTERVAL>-<YYYY-MM-DD>.csv` (anything else is
+++  ignored), whose uncompressed size is at most 256 MiB; it is read in memory, never extracted
+++  to disk. A missing or mismatching checksum makes the day a gap ("checksum mismatch" /
+++  "checksum unavailable") and nothing is cached.
+++- CSV: an optional header row (first field not numeric) is skipped; each row needs 12 fields
+++  (the 12th, "ignore", is dropped); a row that does not parse makes the day a gap
+++  ("malformed Vision file").
+++- REST JSON: the body must be a list of lists of at least 11 items, with numeric times and
+++  numeric strings for prices and volumes; anything else ends the fill with a gap ("unexpected
+++  REST response").
+++- Paths: built only from validated parts; the final path is checked to lie inside
+++  `<cache>/binance-vision/`. `cache-clear` deletes only files matching the day-file name
+++  pattern under that subtree, never the cache root itself.
+++
+++### Schema
+++| column | dtype |
+++|---|---|
+++| `open_time` | `Datetime("ms", "UTC")` |
+++| `open`, `high`, `low`, `close`, `volume` | `Float64` |
+++| `close_time` | `Datetime("ms", "UTC")` |
+++| `quote_volume` | `Float64` |
+++| `trades` | `Int64` |
+++| `taker_buy_base_volume`, `taker_buy_quote_volume` | `Float64` |
+++
+++Unit detection per file: an `open_time` of 10^14 or more is microseconds. Times convert to
+++milliseconds by floor division, so a microsecond `close_time` ending `…999999` and the
+++millisecond `…999` of a futures or REST row become the same value; the same candle from any
+++market or source gives an identical row.
+++
+++### Cache
+++- Each day is a `DataFrame.write_parquet(compression="zstd", compression_level=3)` to a
+++  temporary file in the same directory, then `os.replace` onto the final name.
+++- A closed day is written whatever its source; the current UTC day is never written. A day
+++  with no data at all is not written, so it is asked for again on the next load.
+++- `load_klines` reads every cached day of the range, fetches the others, concatenates, sorts
+++  by `open_time` and drops duplicate `open_time`s.
+++
+++### Gaps
+++The expected candles are the interval grid from `start` 00:00 UTC to the end of `end`, or, for
+++the current day, up to the last candle whose `close_time` has passed (an unfinished candle is
+++dropped: it would leak a still-moving price into a backtest). Every expected open time absent
+++from the frame is missing; consecutive missing candles form one `Gap`, with the reason of its
+++day: "not on Vision (404) and REST returned no candles", "REST refused (HTTP 451)", "checksum
+++mismatch", "missing candles in source file", and so on. When any gap exists, `load_klines`
+++raises `KlineGapError` with the gaps and the partial frame.
+++
+++### CLI (`python -m app.data`, argparse)
+++- `download SYMBOL INTERVAL START END [--market spot|um] [--cache-dir DIR]` — fills the cache
+++  and prints one line per day group: fetched, skipped (already cached), filled from REST, or
+++  not found (with the gap reason), then a one-line total. Exit 0 when nothing is missing, 1
+++  when any gap was reported.
+++- `cache-info [--market M] [--symbol S] [--interval I] [--cache-dir DIR]` — a table of
+++  market, symbol, interval, day files and size (human-readable), and the total.
+++- `cache-clear SYMBOL [INTERVAL] [--market spot|um] [--start DATE] [--end DATE]
+++  [--cache-dir DIR]` — deletes the matching day files and prints how many and how much.
+++- Expected failures (invalid parameter, 418, a too-long `Retry-After`) print one line on
+++  stderr saying what happened and what to do, and exit 2; no traceback.
+++- `main(argv, fetch=None) -> int` is the entry point, so tests drive it with the stub.
+++
+++### Dependencies and CI
+++- `pyproject.toml` gains `dependencies = ["polars>=1.0"]`.
+++- The project CI (`.github/workflows/ci.yml`, not a guardrail) installs polars beside pytest
+++  and ruff, pinned like them. The SDLC phase jobs already install it: `commands.setup` on the
+++  default branch is `python -m pip install pytest ruff polars` (the owner's commit 801dc74),
+++  which settles the intent's "guardrail dependency" constraint.
+++
+++### What stays unchanged
+++`app/__init__.py`, `tests/test_smoke.py`, every guardrail file. No data is written into the
+++repository.
+++
+++### Assumptions (the intent is silent; see Flagged concerns)
+++A1 millisecond precision for every time column; A2 `Float64` for prices and volumes; A3 the
+++interval list and symbol pattern above; A4 the size bounds (64 MiB zip, 256 MiB CSV); A5 the
+++80 % weight threshold and the documented weight limits; A6 a `Retry-After` over 60 s stops
+++the run; A7 `cache=False` neither reads nor writes the cache; A8 a day with no data is not
+++cached; A9 the current day's unfinished candle is dropped; A10 a candle missing inside a source
+++file is a gap, so a known exchange outage raises unless the caller uses `KlineGapError.frame`;
+++A11 `cache-clear` defaults to `--market spot`; A12 `download` exits 1 when anything is missing.
+++
+++## Open questions from intent
+++- "Which spot host is the default, and what does the loader do when the REST fill is
+++  refused?" — answered by design choice, not by the codebase or a policy:
+++  `data-api.binance.vision` (the market-data-only mirror the intent names) is the spot
+++  default; USDⓈ-M has no mirror and uses `fapi.binance.com`. A refused fill (451, or any 4xx
+++  but 418) reports its days as gaps with the status in the reason, as the intent proposes.
+++  Open as a flagged concern, since it is a choice the owner did not make.
+++- "How are gaps returned to the API caller: an exception listing them, or a result object
+++  with the frame and the gaps?" — answered: both in one: `load_klines` returns the DataFrame
+++  when the range is complete and raises `KlineGapError` carrying `.gaps` and `.frame`
+++  otherwise (Design § Gaps). This keeps the one-call API returning a DataFrame (intent
+++  "Python API") and makes a short frame impossible to miss (intent: "never a silently short
+++  frame"); the intent delegates the shape to design.
+++- "Is one Parquet file per day small enough? … Design measures one year of BTCUSDT 1m both ways
+++  and picks one." — carried forward: the design run has no network (`sandbox.allowed_domains`
+++  is empty) and writes no code, so it cannot measure. The design keeps one file per day (the
+++  intent's own layout, its atomic per-day writes and its closed-day REST caching all assume
+++  it); the build measures one year of synthetic 1m candles with realistic price movement,
+++  one file per day against one file per year, and records the two sizes in the change's
+++  evidence. The owner decides on that figure; switching layout would be a later change.
+++- "Which Parquet compression codec and level (zstd is the expected choice)?" — zstd, as
+++  expected; level 3 (the zstd default) is a design choice, measured with the question above.
+++
+++## Flagged concerns
+++- Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot
+++  default with no option to switch, and turns a 451 or other 4xx REST refusal into reported
+++  gaps; the intent left the default open and only proposed the refusal behaviour.
+++- Storage layout and codec level not measured: the intent asked the design to measure one
+++  year of BTCUSDT 1m as daily against larger files; the design keeps one file per day with
+++  zstd level 3 unmeasured, and the measurement moves to the build on synthetic data.
+++- Assumptions where the intent is silent (A1–A12 in Design § Assumptions), the weightiest
+++  being A10: a candle missing inside a Vision file (a real exchange outage) raises
+++  `KlineGapError`, so a long range over a known outage always needs the caller to take
+++  `.frame`.
+++
+++## Acceptance
+++- An offline pytest module for the data layer, run through a stubbed `Fetch` and fixture
+++  files with the real layouts (spot without a header and in microseconds from 2025, futures
+++  with a header, REST JSON), proves:
+++  - a multi-day range loads into the expected rows, order and schema (Design § Schema);
+++  - a range crossing 2025-01-01 has continuous UTC `open_time`s, one interval apart;
+++  - a Vision 404 day is filled from REST;
+++  - a day missing from both sources raises `KlineGapError` with that day's gap and reason;
+++  - a second load of the same range makes zero fetch calls;
+++  - the cache holds `.parquet` files only, at the layout of R7;
+++  - spot and futures fixtures for the same candles load into identical DataFrames;
+++  - a checksum mismatch is a gap and caches nothing; 418 raises `BinanceBanError`; 429/5xx
+++    are retried at most 3 times and 404 never; invalid symbol, interval, market or dates
+++    raise `InvalidRequestError` before any fetch; `cache=False` writes nothing; the current
+++    day is not cached.
+++- `python -m app.data download …` and `cache-info` run against the stub (through
+++  `main(argv, fetch=…)`) and print the outcome; `cache-clear` deletes only matching day files.
+++- Build `python -m compileall -q .` (no output, exit 0), test `python -m pytest` (all pass,
+++  the smoke test included), lint `python -m ruff check .` (`All checks passed!`).
+++- The build's evidence records the size of one synthetic year of 1m candles as 365 daily files
+++  and as one file (open question 3).
++diff --git a/changes/0001-binance-vision-kline-data-layer/status.yaml b/changes/0001-binance-vision-kline-data-layer/status.yaml
++new file mode 100644
++index 0000000..ca62ee1
++--- /dev/null
+++++ b/changes/0001-binance-vision-kline-data-layer/status.yaml
++@@ -0,0 +1,34 @@
+++id: "0001"
+++slug: binance-vision-kline-data-layer
+++title: Binance Vision kline data layer
+++phase: design
+++entry_route: idea
+++change_type: feature
+++gate:
+++  phase: null
+++  result: null
+++  reason: null
+++  at: null
+++parked_reason: null
+++iterations: 0
+++panel_calls: 0
+++external_ref: null
+++risk_accepted: []
+++tests_locked: false
+++risk_accepted_by: []
+++iterations_reset_by: null
+++iterations_reset_at: null
+++tests_unlocked_by: null
+++runbook_authorized_by: null
+++abandoned_reason: null
+++build_pr: null
+++released_at: null
+++released_sha: null
+++released_pr: null
+++fast_lane:
+++  intent:
+++    sha: "50436e17262bebde8eff70b2703b5e463e0f16a8"
+++    pr: 4
+++created_at: "2026-10-27T04:20:51Z"
+++updated_at: "2026-10-27T13:02:55Z"
+++schema_version: 1
 diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/hook-log.jsonl b/changes/0001-binance-vision-kline-data-layer/evidence/hook-log.jsonl
 new file mode 100644
-index 0000000..c46362d
+index 0000000..ed7346b
 --- /dev/null
 +++ b/changes/0001-binance-vision-kline-data-layer/evidence/hook-log.jsonl
-@@ -0,0 +1,21 @@
+@@ -0,0 +1,71 @@
 +{"at": "2026-10-27T12:52:10Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
 +{"at": "2026-10-27T12:52:10Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "shell_guard", "reason": "Shell guard: the write target `$S/sdlc.yaml` is not a literal path (a variable, command substitution, backtick, `~`, a glob, a brace expansion or a git pathspec-magic prefix), or the working directory it would resolve against is not tracked (`cd -`, a bare `cd`, `popd`/`Pop-Location`); write the literal path, from a tracked directory, so the guard can check it.", "tool": "Bash", "verdict": "block"}
 +{"at": "2026-10-27T12:52:16Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
@@ -37,6 +899,343 @@ index 0000000..c46362d
 +{"at": "2026-10-27T13:02:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
 +{"at": "2026-10-27T13:02:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
 +{"at": "2026-10-27T13:02:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:02:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-27T13:02:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-10-27T13:04:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:04:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:04:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:04:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:05:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:05:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:05:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:05:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:05:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:05:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:05:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:05:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:06:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:29Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:29Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:29Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:07:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:08:50Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:08:50Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:08:50Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:08:50Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:09:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:09:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:09:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-10-27T13:09:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.md b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.md
+new file mode 100644
+index 0000000..4df58e3
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.md
+@@ -0,0 +1,9 @@
++## Verdict
++Keep `data-api.binance.vision` as the spot default, but do not close the concern as-is: the build must add an allow-listed host override and must not let the 418 guard depend on a header the mirror may not send.
++
++## The case against
++The intent's open question is "which spot host is the **default**", and it lists `api.binance.com` first, the mirror second: it presupposes two hosts and a choice. The design answers by deleting the alternative ("no option to switch", spec Flagged concerns; plan Options not taken). That betrays the question as asked: an owner whose network reaches `api.binance.com` but not the CloudFront-fronted `*.binance.vision` (a WAF 403, a CDN outage, a corporate proxy) has no recourse but a code change, and the design never states the one fact that would settle the choice, the owner's own region. The plan's reason ("refused in more regions than the mirror") is asserted, not sourced, and nothing in the repository or the intent backs it.
++The refusal behaviour compounds it. `um` has no mirror, and with A10 every refused fill raises `KlineGapError`; in a refused region every `load_klines` over a range that touches the last one or two days raises and every `download` exits 1, for futures always and for spot whenever the mirror is refused too. The intent proposed "gaps with the reason", so the raise is in scope, but combined with the fixed host it turns a regional refusal into a permanent failure mode the owner cannot route around.
++A quieter risk: the intent's hard constraint is "never get the owner's IP banned (418)", and the design's only guard is the 80 % pause keyed to `X-MBX-USED-WEIGHT-1M` on the last response. If the mirror does not forward that header, the pause is dead code and the constraint rests on nothing; the offline tests (stub `Fetch`, fixture headers) would pass either way, so a build that follows this design proves nothing about the host it actually calls. The 451-as-gap test likewise passes whatever host is hard-coded, since the stub maps the URL the code builds.
++What I would decide instead: keep the mirror as the default; add `rest_host` (API) / `CRYPTO_BACKTESTER_SPOT_REST_HOST` (env) validated against an allow-list of exactly `data-api.binance.vision` and `api.binance.com` (security-baseline rule 2: no URL from unvalidated external text; rule 7 unaffected, both are Binance hosts the intent names); and have the weight pause treat a missing header as "unknown" and pause conservatively (or at least report it) rather than skip.
++I would accept the obvious resolution if the owner states that the mirror is reachable from where backtests run and that a code change is an acceptable switch, and if the build's `http.py` tests pin the no-header case explicitly.
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.model.json b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.model.json
+new file mode 100644
+index 0000000..4c08bfd
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-advocate.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "a86ace0ee0668ac0a",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-10-27T13:06:38Z",
++  "member": "advocate",
++  "models": [
++    "claude-fable-5-1"
++  ],
++  "n": 1,
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/42f8c0f2-d625-4762-a66b-ea92b7cf8a03/subagents/agent-a86ace0ee0668ac0a.jsonl"
++}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-conciliator.json b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-conciliator.json
+new file mode 100644
+index 0000000..6d66fb6
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-conciliator.json
+@@ -0,0 +1,11 @@
++{
++  "reviewer": "accept as written: the mirror as the fixed spot default and 451/other non-418 4xx refusals reported as gaps with the status",
++  "advocate": "keep the mirror default but add an allow-listed spot host override and make the weight pause safe when the mirror omits X-MBX-USED-WEIGHT-1M",
++  "decision": "Keep data-api.binance.vision as the fixed spot REST host (no switch) and refused fills (451, any non-418 4xx) as gaps with the status; the weight pause must treat a missing X-MBX-USED-WEIGHT-1M as unknown and pause conservatively, pinned by an offline no-header test.",
++  "rationale": [
++    "Both verdicts agree on the mirror as default and on refusals-as-gaps; the intent names both hosts and proposes 'gaps with the reason', and 418 still stops the run.",
++    "The host override is not taken: the intent asks for no option, coding-standards rule 3 forbids unasked scope, and a later small change can add it if the owner wants it.",
++    "They disagree on the 418 guard; the safer reading wins: the intent's hard rule is never get the IP banned, and a pause keyed to a header the mirror may not send would be dead code.",
++    "A conservative no-header path plus a pinned test closes that gap without widening scope or touching any guardrail."
++  ]
++}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-reviewer.md b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-reviewer.md
+new file mode 100644
+index 0000000..70e78be
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-1-reviewer.md
+@@ -0,0 +1,19 @@
++## Verdict
++Accept the design as written (close the concern): `data-api.binance.vision` as the fixed spot default and 451/other-4xx refusals reported as gaps with the status.
++
++## Why
++- The intent names both spot hosts as acceptable (intent "Affected users and systems": "`api.binance.com`,
++  or the market-data-only `data-api.binance.vision`"), so the choice stays inside the owner's own list;
++  the mirror is the one refused in fewer regions (intent Open questions), the safer default.
++- The refusal behaviour is exactly the intent's proposal ("report those days as gaps, with the
++  reason"), and it satisfies the intent's hard rule "never a silently short frame": refused days
++  surface through `KlineGapError.gaps` (spec Design § Sources, § Gaps; R5).
++- 418 is carved out and still stops the run (spec § Sources; intent "Downloads"), so treating other
++  4xx as gaps cannot hide an IP ban, honouring the constraint "must never get the owner's IP banned".
++- No switch is not a defect by the rules: the intent asks for no host option, and adding one
++  unasked would widen scope (coding-standards rule 3). A fixed host set also keeps
++  security-baseline rule 7 tight: the runtime calls only the three hosts spec § Sources lists.
++- REVIEW.md "What Important means": nothing here breaks behaviour, leaks data or breaches a policy;
++  the adversarial review (evidence/adversarial-review-design.json) found no reason against it either.
++- Residual, for the owner only: if a spot fallback to `api.binance.com` is ever wanted, it is a
++  small later change; it does not block this design.
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.md b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.md
+new file mode 100644
+index 0000000..323b13f
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.md
+@@ -0,0 +1,10 @@
++## Verdict
++Do not accept the deferral as written: close the concern at design with a reasoned decision on layout and codec level, and turn the build-time "measurement" into either reproducible evidence or an owner-run check after merge.
++
++## The case against
++The obvious resolution ("keep one file per day, zstd 3, measure in the build, the owner decides later") answers the owner's question with a ritual, not a decision. The intent's reason for the question is on its first page: "the owner's disk space is limited, so the cache has to stay small". The design then picks, unmeasured, the layout with the most per-file overhead (365 Parquet footers per symbol-interval-year) and the lowest useful zstd level for a write-once, read-many cache, where a higher level costs one slower write per day and nothing on read.
++The build measurement cannot change anything: cache.py, `clear_cache`'s name pattern, closed-day REST caching and the atomic write are all built around per-day files first (plan steps 7-8), the measurement comes at step 10, and the spec itself says "switching layout would be a later change". A measurement that cannot alter the thing it measures is not the measurement the intent asked for.
++It also measures the wrong thing and leaves no proof. Synthetic random-walk floats do not compress like real BTCUSDT 1m (tick-size prices, repeated values, round volumes), so the figure answers neither "is per-day small enough" nor "which level". And plan step 10 generates the data in a throwaway script, outside the repository, committed nowhere: `evidence/storage-measurement.md` will be two numbers the writer typed, which no verifier, reviewer or future reader can reproduce. The spec's own Acceptance makes this unverifiable claim a pass criterion.
++Finally, the real measurement is impossible in any phase (no Binance host in the sandbox or CI, ever), so "carried forward to the build" is carried forward to nowhere; the only machine that can measure real data is the owner's.
++What I would decide instead: close the concern now with an estimate the design can stand on (1440 rows x 11 columns per 1m day is tens of KB after zstd; Parquet's per-file metadata is one or two KB, so per-day overhead is a few percent, acceptable against the atomicity and closed-day-caching benefits), pick the level on the write-once argument and state it, drop the synthetic figure from Acceptance, and give the owner the two commands that measure real data after merge (`download BTCUSDT 1m <year>` then `cache-info`) with the threshold that would reopen the layout (say, more than 20% over a monthly file).
++I would accept the obvious resolution if the owner says a synthetic figure is enough for them, or if the generator script is committed under `tests/` or `evidence/` so the figures are reproducible and the build run's verifier can re-run it.
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.model.json b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.model.json
+new file mode 100644
+index 0000000..5090c83
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-advocate.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "a915040e8a4c254aa",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-10-27T13:06:39Z",
++  "member": "advocate",
++  "models": [
++    "claude-fable-5-1"
++  ],
++  "n": 2,
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/42f8c0f2-d625-4762-a66b-ea92b7cf8a03/subagents/agent-a915040e8a4c254aa.jsonl"
++}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-conciliator.json b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-conciliator.json
+new file mode 100644
+index 0000000..f40c0a9
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-conciliator.json
+@@ -0,0 +1,12 @@
++{
++  "reviewer": "accept the deferral: keep one zstd-3 file per day and let the build record the measurement (plan step 10) for the owner to judge, noting the data is synthetic",
++  "advocate": "reject the deferral as written: decide layout and level at design on an estimate, since a synthetic, unreproducible build figure cannot change the layout, and give the owner a real-data check after merge",
++  "decision": "Keep one zstd level-3 Parquet file per day as the intent requires (line 59); the build commits the generator that produces evidence/storage-measurement.md (per-day vs one yearly file, plus a higher zstd level) so the figure is reproducible and labelled synthetic, and the spec gives the owner the real-data check (download BTCUSDT 1m for one year, then cache-info) with a reopen threshold of more than 20% over a single yearly file.",
++  "rationale": [
++    "Both verdicts agree to keep per-day files; intent line 59 fixes one file per day written atomically, so a month or year layout would contradict a stated requirement.",
++    "Neither design nor build can fetch real BTCUSDT data (no allowed domains), so the intent's measurement (line 161) can only be synthetic in-run or real on the owner's machine.",
++    "They disagree on whether an uncommitted synthetic figure counts as evidence; the safer reading is the advocate's: commit the generator so a verifier can re-run it, and state that the data is synthetic.",
++    "The owner's real-data check with an explicit threshold gives the per-day choice a defined way to be reopened; zstd 3 stays as the default because the codec choice changes no schema or behaviour.",
++    "No limit, guardrail or risk-list item is touched; this only shapes the evidence for this item."
++  ]
++}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-reviewer.md b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-reviewer.md
+new file mode 100644
+index 0000000..f071dbd
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-2-reviewer.md
+@@ -0,0 +1,21 @@
++## Verdict
++Accept the deferral and close the concern as decided: keep one zstd-3 file per day; the build records the measurement as planned (plan step 10) and the owner judges the figure. Not an Important finding.
++
++## Why
++- No rule is breached. REVIEW.md keeps Important for what would "break behavior, leak data or
++  breach a policy"; an unmeasured size figure does none of these. definition-of-done (design)
++  allows open questions "answered or carried forward". This one is carried forward with a reason
++  (spec.md lines 217-225).
++- The intent itself fixes the layout. intent.md line 58 sets one `.parquet` per day, written
++  atomically, and lines 65-66 cache closed REST days per day. Keeping daily files follows the
++  intent. A month or year layout would contradict it and would need a later change.
++- The design run could not measure. It writes no code, and `sandbox.allowed_domains` is empty
++  (intent line 126), so it could not fetch real BTCUSDT 1m data. Moving the measurement to the
++  build is the only feasible path, and spec Acceptance line 258 plus plan step 10 make it a
++  checked deliverable (`evidence/storage-measurement.md`).
++- zstd is the intent's own expected codec (line 162), and level 3 is the zstd default. That is
++  a reasonable choice, open to tuning, and it changes no schema or behaviour.
++- One residual gap: the intent said "BTCUSDT 1m", and synthetic random-walk data may compress
++  differently from real candles (the adversarial review notes the same). Safest reading: the build's
++  evidence file should state that the data is synthetic, so the owner weighs the figure knowing
++  that. It may also add a second zstd level as a cheap comparison. Neither is needed to proceed.
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.md b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.md
+new file mode 100644
+index 0000000..c8da674
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.md
+@@ -0,0 +1,9 @@
++## Verdict
++Do not close A1–A12 as "design choices the owner accepts at merge": A10 makes the exception the normal path for real Binance data and the Proof list never tests it; require an explicit, non-silent opt-in for intra-file holes and an acceptance test for A10 before the concern is closed.
++
++## The case against
++The easy answer is that A10 is the safe reading of the intent's "never a silently short frame". It is not safe; it is loud on every ordinary load. Binance publishes no candle for an interval with no trades (the public-data repository's issue tracker records it), so a 1m or 1s file for any symbol below the top tier has holes on normal days, and well-known outages (spot halted ~2 h on 2023-03-24; the 2021 futures halts) sit inside every long BTCUSDT range. Under A10 plus "a closed day is written whatever its source" (spec § Cache) such a day is cached with its hole, the REST fill never runs for it (REST is only for 404 days), and `load_klines` raises `KlineGapError` on every later load of that range, forever. The "one call returns a DataFrame" API the intent asked for (Ways to use it) becomes `try/except` boilerplate in every strategy, and `download` (A12) exits 1 on a prefetch of any such symbol, so a scripted warm-up loop fails on healthy data.
++The intent betrayed: it enumerates the missing-data cases it cares about (pre-listing, delisted, unknown symbol) and offers two shapes, "raises a clear error or returns the list of gaps next to the data". The design took "raise" and then widened "gap" to intra-file holes the intent never named, with no way to say "I know" except catching the error; that is the result-object option re-introduced through `.frame`, minus the honesty of a parameter.
++The proof hole: plan.md § Proof lists `test_day_missing_from_both_sources_raises_gap_error` and nothing for a candle missing inside a Vision file, nothing asserting `.frame` holds the found rows in schema, nothing on exact `Gap` boundaries despite Risks naming them the riskiest step. The weightiest assumption of the twelve would ship untested; a loader that silently fills the hole (forward-fill, or a grid off by one that hides it) passes every listed test.
++Decide instead: keep raise as the default; add an explicit keyword (`allow_gaps: bool = False`, or equivalent) that returns the partial frame when the caller has said so, with the gaps reported on the CLI either way; distinguish "day absent from both sources" from "hole inside a source file" in `Gap.reason`; add to Proof a test with a fixture missing two consecutive candles that asserts the exact `Gap.start`/`end`/`candles`, the `.frame` rows, and that the opt-in returns the same rows. A11 and A12 are minor and can stay.
++What would make me accept the obvious resolution: the owner stating that a backtest over an outage must fail loudly by design (then A10 stands) together with the A10 test in Proof; without the test, closing the concern accepts a behaviour nothing proves.
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.model.json b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.model.json
+new file mode 100644
+index 0000000..8a58b14
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-advocate.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "ae538dd95d0b8cd5f",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-10-27T13:07:06Z",
++  "member": "advocate",
++  "models": [
++    "claude-fable-5-1"
++  ],
++  "n": 3,
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/42f8c0f2-d625-4762-a66b-ea92b7cf8a03/subagents/agent-ae538dd95d0b8cd5f.jsonl"
++}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-conciliator.json b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-conciliator.json
+new file mode 100644
+index 0000000..bcecb96
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-conciliator.json
+@@ -0,0 +1,11 @@
++{
++  "reviewer": "accept A1–A12 as written; A10 is what the intent's \"never a silently short frame\" requires",
++  "advocate": "do not close yet: A10 is untested and makes raising the normal path, so add an allow_gaps opt-in, a distinct Gap.reason for in-file holes and an A10 test in Proof",
++  "decision": "A1–A12 accepted as written, A10 keeps raising KlineGapError by default; Gap.reason tells a candle missing inside a source file apart from a day absent from both sources, and plan.md Proof gains a test with a fixture missing two consecutive candles that asserts the exact Gap start/end/candles/reason and the .frame rows in schema; no allow_gaps keyword is added",
++  "rationale": [
++    "Both agree A10's raise is the intent's own rule (intent Sources: \"never a silently short frame\"); A1–A9, A11 and A12 are uncontested.",
++    "The advocate's proof hole is a checkable fact: plan.md Proof lists only test_day_missing_from_both_sources_raises_gap_error, nothing for an in-file hole.",
++    "The safer reading closes the concern only with that behaviour proven, so the test and the distinct reason are required now.",
++    "The allow_gaps keyword is left out: KlineGapError.frame already gives a non-silent route to the partial data, and a new API surface is a scope change for the owner to request."
++  ]
++}
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-reviewer.md b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-reviewer.md
+new file mode 100644
+index 0000000..9f93165
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-3-reviewer.md
+@@ -0,0 +1,21 @@
++## Verdict
++Accept A1–A12 as written and have the owner close the concern as decided; no assumption breaks behaviour, leaks data or breaches a policy, and A10 is what the intent requires.
++
++## Why
++- A10 is settled by the intent, not by taste: intent "Sources" says a short range "raises a clear error or
++  returns the list of gaps next to the data ... never a silently short frame". An in-file outage
++  is a short range, so raising `KlineGapError` with `.gaps` and `.frame` (spec § Gaps, § Public API)
++  is the intent's own rule; the partial frame keeps the outage case usable (plan "Options not taken").
++- A1 (ms, floor) follows from the intent's test "spot and futures fixtures ... load into identical
++  DataFrames"; µs would break it by 999 µs (plan "Options not taken"). A2 Float64 holds Binance's 8 decimals.
++- A7 matches intent "download, convert in memory, return, keep nothing"; A8 avoids caching an outage
++  as "no data"; A9 is consistent with "Today's partial day is always fetched again" (R10).
++- A5/A6 serve the intent constraint "never get the owner's IP banned (418)": 80 % of the documented
++  limits (6000 spot, 2400 USD-M; checked in the adversarial verdict) and stopping on a long `Retry-After`
++  still honours it (no early retry). A3/A4 are input bounds security-baseline rule 2 asks for; a 1s
++  spot day (86 400 rows) stays far below 256 MiB.
++- A11 (`cache-clear` defaults to spot) mirrors `load_klines(market="spot")`; it can delete only matching
++  day files under `<cache>/binance-vision/` (spec § Untrusted input), so at worst a nit under REVIEW.md.
++  A12 (exit 1 on gaps) fits ux-and-brand rules 3/4 (report the outcome).
++- spec-template "Concerns fail closed": only the product owner closes it, e.g.
++  `- decided: A1–A12 accepted as written; A10 per the intent's "never a silently short frame".`
+diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-items.json b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-items.json
+new file mode 100644
+index 0000000..b1570ae
+--- /dev/null
++++ b/changes/0001-binance-vision-kline-data-layer/evidence/panel/design-items.json
+@@ -0,0 +1,44 @@
++{
++  "decided": 0,
++  "gate": "park",
++  "items": [
++    {
++      "decided": false,
++      "item": "Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot",
++      "key": "concern:55c4e0ec17343844",
++      "kind": "concern",
++      "n": 1
++    },
++    {
++      "decided": false,
++      "item": "Storage layout and codec level not measured: the intent asked the design to measure one",
++      "key": "concern:8428f0bb7ba60d43",
++      "kind": "concern",
++      "n": 2
++    },
++    {
++      "decided": false,
++      "item": "Assumptions where the intent is silent (A1\u2013A12 in Design \u00a7 Assumptions), the weightiest",
++      "key": "concern:d6a8c33dc520ee6a",
++      "kind": "concern",
++      "n": 3
++    }
++  ],
++  "iterations": {
++    "cap": 2,
++    "left": 2,
++    "used": 0
++  },
++  "panel_calls": {
++    "cap": 4,
++    "left": 4,
++    "used": 0
++  },
++  "parks": [],
++  "pending": [
++    1,
++    2,
++    3
++  ],
++  "phase": "design"
++}
 diff --git a/changes/0001-binance-vision-kline-data-layer/evidence/run-design.json b/changes/0001-binance-vision-kline-data-layer/evidence/run-design.json
 new file mode 100644
 index 0000000..2f74b4b
@@ -231,10 +1430,10 @@ index 0000000..82881dc
 +  - USDⓈ-M: https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Kline-Candlestick-Data
 diff --git a/changes/0001-binance-vision-kline-data-layer/plan.md b/changes/0001-binance-vision-kline-data-layer/plan.md
 new file mode 100644
-index 0000000..ec426c0
+index 0000000..cac1b02
 --- /dev/null
 +++ b/changes/0001-binance-vision-kline-data-layer/plan.md
-@@ -0,0 +1,149 @@
+@@ -0,0 +1,173 @@
 +# Plan: Binance Vision kline data layer (from intent.md 2026-10-27, spec.md 2026-10-27)
 +
 +## Files that change
@@ -247,10 +1446,12 @@ index 0000000..ec426c0
 +  `clear_cache`) with `__all__`.
 +- `app/data/params.py` — new: market and interval sets, symbol pattern, date parsing and
 +  checks, `InvalidRequestError`, interval length in milliseconds.
-+- `app/data/http.py` — new: `HttpResponse`, `Fetch`, the default `urllib` fetch (10 s / 60 s
-+  timeouts, body size cap), the retry wrapper (backoff 1/2/4 s plus jitter, `Retry-After`,
-+  429/5xx/connection/timeout retried, 404 and other 4xx not, 418 → `BinanceBanError`,
-+  injectable `sleep`), and the REST weight pause.
++- `app/data/http.py` — new: `HttpResponse`, `Fetch`, the default `urllib` fetch (a connection
++  handler that applies the 10 s connect timeout and then sets the socket's 60 s read timeout;
++  `HTTPError` turned into an `HttpResponse`; body size cap), the retry wrapper (backoff 1/2/4 s
++  plus jitter, `Retry-After`, 429/5xx/connection/timeout retried, 404 and other 4xx not, 418 →
++  `BinanceBanError`, injectable `sleep`), case-insensitive header lookup, and the REST weight
++  pause (80 % of the limit → sleep to the next minute; header absent or unparsable → wait 1 s).
 +- `app/data/schema.py` — new: column names and dtypes (one definition), unit detection,
 +  CSV-bytes → frame and REST-rows → frame normalisation.
 +- `app/data/vision.py` — new: Vision URL for a day, zip download, `.CHECKSUM` verification,
@@ -263,19 +1464,26 @@ index 0000000..ec426c0
 +  `clear_cache`.
 +- `app/data/loader.py` — new: `load_klines`, the day sync used by the loader and the CLI
 +  (`sync_days` returning one outcome per day: cached, fetched, rest, missing+reason), the
-+  thread pool, expected-candle grid, `Gap`, `KlineGapError`.
++  thread pool, expected-candle grid, `Gap`, `KlineGapError`, and a module-level `utc_now()`
++  that tests monkeypatch to inject the clock.
 +- `app/data/__main__.py` — new: argparse CLI with `download`, `cache-info`, `cache-clear`;
 +  `main(argv=None, fetch=None) -> int`.
++- `scripts/measure_storage.py` — new: the storage measurement of spec § Storage measurement
++  (synthetic year with a fixed seed, or `--from-cache`); prints a markdown table of daily vs
++  yearly totals at zstd 3 and 9. Imports `app.data.schema` for the schema; writes only to a
++  temporary directory it deletes.
 +- `tests/fixtures/binance/` — new: small text fixtures with the real layouts: a spot CSV
-+  before 2025 (ms, no header), a spot CSV from 2025-01-01 (µs, no header), a futures CSV
-+  (ms, header row) holding the same candles as the spot ones, REST JSON pages for spot and
-+  futures. Interval `1h`, a few days, synthetic prices. Zips and `.CHECKSUM` bodies are built
-+  from them inside the tests.
++  before 2025 (ms, no header), a spot CSV from 2025-01-01 (µs, no header, `close_time`
++  ending `…999999`), a futures CSV (ms, header row, `close_time` ending `…999`) holding the
++  same candles as the spot ones, a spot CSV with two consecutive candles removed, REST JSON
++  pages for spot and futures. Interval `1h`, a few days, synthetic prices. Zips and
++  `.CHECKSUM` bodies are built from them inside the tests.
 +- `tests/test_data.py` — new: the loader, sources, cache and gap tests, with a stub `Fetch`
-+  that maps URLs to responses and records every call, and `tmp_path` as `cache_dir`.
++  that maps URLs to responses (with or without weight headers) and records every call, a
++  recording `sleep`, and `tmp_path` as `cache_dir`.
 +- `tests/test_data_cli.py` — new: the CLI tests through `main(argv, fetch=stub)` and `capsys`.
 +- `changes/0001-binance-vision-kline-data-layer/evidence/storage-measurement.md` — new: the
-+  open-question-3 figures.
++  output of `python scripts/measure_storage.py`, labelled synthetic with the seed.
 +
 +## Order of work
 +1. `pyproject.toml` dependency and the CI install line; check `python -c "import polars"`.
@@ -283,9 +1491,9 @@ index 0000000..ec426c0
 +   market and dates (end after today, start after end).
 +3. `schema.py` with tests: µs and ms files normalise to identical frames; header row
 +   detected; `ignore` dropped; dtypes as in spec § Schema; malformed row rejected.
-+4. `http.py` with tests on a stub transport and a recording `sleep`: retries and backoff
-+   count, `Retry-After` honoured and the over-60 s stop, 404 not retried, 418 raises, weight
-+   pause triggered at 80 %.
++4. `http.py` with tests on a stub transport and a recording `sleep`: the number of attempts
++   and the recorded backoff sleeps, `Retry-After` honoured and the over-60 s stop, 404 not
++   retried, 418 raises, weight pause at 80 %, 1 s wait when the weight header is absent.
 +5. `vision.py` with tests: good zip, checksum mismatch, missing checksum, unexpected member
 +   names ignored, oversize member refused.
 +6. `rest.py` with tests: paging until an empty page, 451 outcome, malformed JSON outcome.
@@ -293,15 +1501,14 @@ index 0000000..ec426c0
 +   environment and `sys.platform`), layout path, atomic write leaves no temp file, path
 +   escaping refused, `cache_info` sizes, `clear_cache` deletes only matching day files.
 +8. `loader.py` with the spec's Acceptance tests: multi-day load, 2025-01-01 crossing, 404 →
-+   REST, missing day → `KlineGapError` with gaps and frame, second load makes no fetch,
-+   Parquet only, spot = futures, `cache=False` writes nothing, current day not cached and its
-+   unfinished candle dropped (clock injected or the current day built from `datetime.now`).
++   REST, missing day → `KlineGapError`, two missing candles inside a file → one exact gap with
++   reason "missing candles in source file" and the rest in `.frame`, second load makes no
++   fetch, Parquet only, spot = futures, `cache=False` writes nothing, current day not cached
++   and its unfinished candle dropped (clock injected through `utc_now`).
 +9. `__main__.py` and `test_data_cli.py`: `download` report lines and exit codes, `cache-info`
 +   table, `cache-clear`, an invalid parameter printing one stderr line with exit 2.
-+10. Storage measurement: generate one year of synthetic 1m candles (random walk prices,
-+    realistic volumes) in a throwaway script outside the repository, write 365 daily files and
-+    one yearly file with zstd level 3, record both totals in
-+    `evidence/storage-measurement.md`; commit no script and no data.
++10. `scripts/measure_storage.py`; run it and commit its output as
++    `evidence/storage-measurement.md`; commit no data.
 +11. Run build, test and lint; paste their output.
 +
 +## Risks
@@ -323,34 +1530,47 @@ index 0000000..ec426c0
 +  boundaries.
 +- Thread pool and 418: a ban must stop every pending Vision download; the loader cancels
 +  pending futures and re-raises. Tests cover it with a stub that answers 418 on one day.
++- Rate limits: the market-data mirror may not send `X-MBX-USED-WEIGHT-1M`; without the 1 s
++  fallback the weight pause would never fire there (panel #1). A test pins the no-header path.
++- `urllib.request.urlopen` takes one timeout for connect and read alike; the separate 10 s /
++  60 s split needs the custom connection handler named above. If that proves brittle across
++  Python 3.10–3.12, the fallback is one 60 s timeout with the connect phase bounded by the
++  same retry policy; the build records the choice in this plan.
 +- Floor-converting µs to ms changes `close_time` of post-2025 spot files by 0.999 ms; this is
 +  intended (spec § Schema) and makes spot and futures rows identical.
 +- Untrusted input: zip bombs and oversized bodies are bounded (64 MiB body, 256 MiB member);
 +  no file is extracted to disk; `cache-clear` cannot delete outside
 +  `<cache>/binance-vision/`. A bug here could delete the owner's files: `clear_cache` matches
 +  the exact day-file name pattern and resolves every path before deleting.
++- A10 makes real outages raise `KlineGapError`; callers that want the partial data take
++  `.frame`. The CLI `download` reports such days as "not found" lines with the reason.
 +- Callers: none yet (`app/` has only `__version__`); later strategy and engine changes build
 +  on `load_klines` and the schema, so renaming a column later is a breaking change.
 +- Real Binance behaviour is never exercised by the tests (no network in CI or the sandbox);
 +  the fixtures follow the published layouts. A layout drift on Binance's side would show only
-+  on the owner's machine.
++  on the owner's machine, as would the real-data storage check.
 +
 +## Options not taken
 +- Return a result object `(frame, gaps)` instead of raising: rejected, a caller can ignore the
 +  gaps and get a silently short frame, which the intent forbids.
++- An `allow_gaps` keyword: not added (panel #3); `KlineGapError.frame` already gives a
++  non-silent route to the partial data.
++- A spot REST host option: not added (panel #1); the intent asks for none.
 +- Keep the original zip in the cache: rejected by the intent (Parquet only, one copy).
-+- One Parquet file per month or year: kept off until the build's measurement says otherwise;
++- One Parquet file per month or year: kept off until a measurement exceeds the reopen rule;
 +  per-day files keep atomic writes and REST closed-day caching simple.
 +- `requests`/`httpx` or `platformdirs`: rejected by the intent (no new dependency besides
 +  polars).
 +- `Datetime("us")` for every time column: exact for all sources, but spot µs and futures ms
 +  `close_time` would differ by 999 µs for the same candle, breaking "identical frames".
 +- `api.binance.com` as the spot REST default: refused in more regions than the
-+  market-data-only mirror; kept out (spec Flagged concerns).
++  market-data-only mirror.
 +- `Decimal` prices: exact, but slow and awkward in polars for backtests; `Float64` keeps
 +  Binance's 8 decimals within double precision.
 +- Caching empty days: would stop re-asking for pre-listing days, but a temporary Vision or
 +  REST outage would then be cached as "no data" for good.
++- An uncommitted throwaway measurement script: rejected (panel #2), the figure must be
++  reproducible.
 +
 +Interrogation (plan-template):
 +1. Breaks: nothing existing calls the new package; touched shapes are `pyproject.toml`
@@ -358,8 +1578,8 @@ index 0000000..ec426c0
 +   layout, `Gap` and `KlineGapError`.
 +2. Most risky: step 8 (above).
 +3. Alternatives: the list above.
-+4. An engineer can implement it from spec.md and this plan: every URL, limit, dtype, path
-+   and exit code is stated in the spec; the fixtures are described by layout.
++4. An engineer can implement it from spec.md and this plan: every URL, limit, dtype, path,
++   reason string and exit code is stated in the spec; the fixtures are described by layout.
 +5. No item in Proof exists yet: every test below is to be written in this change.
 +
 +## Proof
@@ -368,12 +1588,15 @@ index 0000000..ec426c0
 +- test: tests/test_data.py::test_range_across_2025_has_continuous_utc_timestamps
 +- test: tests/test_data.py::test_vision_404_day_is_filled_from_rest
 +- test: tests/test_data.py::test_day_missing_from_both_sources_raises_gap_error
++- test: tests/test_data.py::test_candles_missing_inside_file_raise_exact_gap_with_frame
 +- test: tests/test_data.py::test_second_load_makes_no_fetch
 +- test: tests/test_data.py::test_cache_holds_parquet_files_only
 +- test: tests/test_data.py::test_spot_and_futures_fixtures_load_identically
 +- test: tests/test_data.py::test_checksum_mismatch_is_a_gap_and_not_cached
 +- test: tests/test_data.py::test_http_418_raises_ban_error
 +- test: tests/test_data.py::test_retries_on_429_and_5xx_but_not_404
++- test: tests/test_data.py::test_rest_waits_when_weight_header_is_missing
++- test: tests/test_data.py::test_rest_pauses_when_weight_nears_limit
 +- test: tests/test_data.py::test_invalid_parameters_raise_before_any_fetch
 +- test: tests/test_data.py::test_no_cache_mode_writes_nothing
 +- test: tests/test_data.py::test_current_day_is_not_cached
@@ -383,13 +1606,13 @@ index 0000000..ec426c0
 +
 +Target (spec Acceptance): build no output and exit 0; `python -m pytest` all passed, the smoke
 +test included; `python -m ruff check .` `All checks passed!`; the storage figures in
-+`evidence/storage-measurement.md`.
++`evidence/storage-measurement.md`, produced by `python scripts/measure_storage.py`.
 diff --git a/changes/0001-binance-vision-kline-data-layer/spec.md b/changes/0001-binance-vision-kline-data-layer/spec.md
 new file mode 100644
-index 0000000..2d62956
+index 0000000..5ca53b3
 --- /dev/null
 +++ b/changes/0001-binance-vision-kline-data-layer/spec.md
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,287 @@
 +# Spec: Binance Vision kline data layer
 +Change id: 0001. Status: proposed. Produced by: sdlc plugin 1.0.50, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.50); overrides: none; policy sources: none
 +
@@ -427,7 +1650,7 @@ index 0000000..2d62956
 +  3 retries with backoff 1 s, 2 s, 4 s plus jitter on connection errors, timeouts, 429 and 5xx;
 +  `Retry-After` honoured; 404 never retried; 418 stops the run with a clear message. REST
 +  calls run one at a time, at the maximum page size, and pause when the used-weight header nears
-+  the limit.
++  the limit or is absent.
 +- R13. HTTP goes through the standard library (`urllib.request`); the fetch function is
 +  injectable so tests stub it. polars is the only new runtime dependency.
 +
@@ -472,7 +1695,8 @@ index 0000000..2d62956
 +extraction), the REST source (paging, JSON shape check), normalisation to the schema, the
 +cache (root, layout, atomic write, read, info, clear), the loader (orchestration and gaps) and
 +the CLI (`__main__`). Nothing outside `app/data/` changes in `app/`; `app.__version__` stays
-+`0.1.0` (the intent asks no release, and `tests/test_smoke.py` pins it).
++`0.1.0` (the intent asks no release, and `tests/test_smoke.py` pins it). A standalone
++storage-measurement script sits outside the package (Design § Storage measurement).
 +
 +### Public API (`from app.data import …`)
 +- `load_klines(symbol: str, interval: str, start: date | str, end: date | str, *,
@@ -485,8 +1709,9 @@ index 0000000..2d62956
 +  UTC), `candles: int`, `reason: str`.
 +- `Fetch` — a callable `(url: str) -> HttpResponse` with `HttpResponse(status: int,
 +  headers: Mapping[str, str], body: bytes)`; the default uses `urllib.request` with the
-+  timeouts of R12. Retries, backoff and rate-limit pauses wrap any `Fetch`, so the stub sees
-+  the same retry behaviour; the sleep function is injectable for tests.
++  timeouts of R12 and turns an `HTTPError` into an `HttpResponse` with its status. Retries,
++  backoff and rate-limit pauses wrap any `Fetch`, so the stub sees the same retry behaviour;
++  the sleep function is injectable for tests. Header names are matched case-insensitively.
 +- `cache_info(...)` and `clear_cache(...)`, which back the CLI.
 +- `InvalidRequestError(ValueError)` for bad parameters, `BinanceBanError` for HTTP 418.
 +
@@ -501,11 +1726,14 @@ index 0000000..2d62956
 +- Vision: `https://data.binance.vision/data/<spot|futures/um>/daily/klines/<SYMBOL>/<INTERVAL>/<SYMBOL>-<INTERVAL>-<YYYY-MM-DD>.zip`
 +  and the `.zip.CHECKSUM` beside it. Days run through a pool of 4 threads.
 +- REST (sequential, after the Vision pass): spot `https://data-api.binance.vision/api/v3/klines`
-+  (limit 1000), USDⓈ-M `https://fapi.binance.com/fapi/v1/klines` (limit 1500). Consecutive
-+  missing days form one range, paged with `startTime`/`endTime` in milliseconds; an empty
-+  page ends the range. Before each call, when `X-MBX-USED-WEIGHT-1M` of the last response is at
-+  80 % or more of the documented per-minute limit (spot 6000, USDⓈ-M 2400), the run sleeps to
-+  the next minute boundary.
++  (limit 1000; fixed, no host option), USDⓈ-M `https://fapi.binance.com/fapi/v1/klines`
++  (limit 1500). Consecutive missing days form one range, paged with `startTime`/`endTime` in
++  milliseconds; an empty page ends the range.
++- REST weight pause, before each REST call: when `X-MBX-USED-WEIGHT-1M` of the last response
++  is at 80 % or more of the documented per-minute limit (spot 6000, USDⓈ-M 2400), the run
++  sleeps to the next minute boundary; when the last response carries no such header, or it
++  does not parse as an integer, the weight is unknown and the run waits 1 s before the next
++  call (panel #1).
 +- Retries (both sources): R12. A `Retry-After` longer than 60 s stops the run with the wait
 +  in the message instead of sleeping. 418 raises `BinanceBanError` at once and cancels the
 +  pending Vision downloads. Any other 4xx from REST (400 for an unknown symbol, 451 for a
@@ -556,9 +1784,14 @@ index 0000000..2d62956
 +the current day, up to the last candle whose `close_time` has passed (an unfinished candle is
 +dropped: it would leak a still-moving price into a backtest). Every expected open time absent
 +from the frame is missing; consecutive missing candles form one `Gap`, with the reason of its
-+day: "not on Vision (404) and REST returned no candles", "REST refused (HTTP 451)", "checksum
-+mismatch", "missing candles in source file", and so on. When any gap exists, `load_klines`
-+raises `KlineGapError` with the gaps and the partial frame.
++day. The reason tells the two cases apart (panel #3):
++- a day with some candles whose file or REST answer lacks others: "missing candles in source
++  file" (Vision) or "missing candles in REST response" (REST);
++- a day with no candle from either source: "not on Vision (404) and REST returned no
++  candles", "REST refused (HTTP <status>)", "checksum mismatch", "checksum unavailable",
++  "malformed Vision file" or "unexpected REST response".
++When any gap exists, `load_klines` raises `KlineGapError` with the gaps and the partial frame;
++there is no keyword to suppress it.
 +
 +### CLI (`python -m app.data`, argparse)
 +- `download SYMBOL INTERVAL START END [--market spot|um] [--cache-dir DIR]` — fills the cache
@@ -572,6 +1805,18 @@ index 0000000..2d62956
 +- Expected failures (invalid parameter, 418, a too-long `Retry-After`) print one line on
 +  stderr saying what happened and what to do, and exit 2; no traceback.
 +- `main(argv, fetch=None) -> int` is the entry point, so tests drive it with the stub.
++
++### Storage measurement (open questions 3 and 4; panel #2)
++- A committed script, `python scripts/measure_storage.py`, generates one year of synthetic 1m
++  candles (seeded random-walk prices, realistic volumes, the schema above) and prints, as a
++  markdown table, the total size of 365 daily files and of one yearly file, each at zstd level
++  3 and level 9. The build runs it and commits its output as
++  `evidence/storage-measurement.md`, labelled synthetic with the seed.
++- With `--from-cache SYMBOL INTERVAL [--market M] [--cache-dir DIR]` the same script reads the
++  cached days instead and prints the same comparison: the owner's real-data check is
++  `python -m app.data download BTCUSDT 1m <a year>` then that command (and `cache-info`).
++- Reopen rule: if the daily files come out more than 20 % larger than one yearly file, the
++  layout is reopened in a later change; until then one zstd level-3 file per day stands.
 +
 +### Dependencies and CI
 +- `pyproject.toml` gains `dependencies = ["polars>=1.0"]`.
@@ -599,7 +1844,7 @@ index 0000000..2d62956
 +  `data-api.binance.vision` (the market-data-only mirror the intent names) is the spot
 +  default; USDⓈ-M has no mirror and uses `fapi.binance.com`. A refused fill (451, or any 4xx
 +  but 418) reports its days as gaps with the status in the reason, as the intent proposes.
-+  Open as a flagged concern, since it is a choice the owner did not make.
++  Flagged as a concern, since it is a choice the owner did not make; decided by panel #1.
 +- "How are gaps returned to the API caller: an exception listing them, or a result object
 +  with the frame and the gaps?" — answered: both in one: `load_klines` returns the DataFrame
 +  when the range is complete and raises `KlineGapError` carrying `.gaps` and `.frame`
@@ -610,20 +1855,20 @@ index 0000000..2d62956
 +  and picks one." — carried forward: the design run has no network (`sandbox.allowed_domains`
 +  is empty) and writes no code, so it cannot measure. The design keeps one file per day (the
 +  intent's own layout, its atomic per-day writes and its closed-day REST caching all assume
-+  it); the build measures one year of synthetic 1m candles with realistic price movement,
-+  one file per day against one file per year, and records the two sizes in the change's
-+  evidence. The owner decides on that figure; switching layout would be a later change.
++  it); the build measures a synthetic year with a committed script and the owner can repeat it
++  on real data, with a reopen rule (Design § Storage measurement; panel #2).
 +- "Which Parquet compression codec and level (zstd is the expected choice)?" — zstd, as
-+  expected; level 3 (the zstd default) is a design choice, measured with the question above.
++  expected; level 3 (the zstd default) is a design choice, measured against level 9 with the
++  question above.
 +
 +## Flagged concerns
-+- Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot
++- decided (by panel #1): Keep data-api.binance.vision as the fixed spot REST host (no switch) and refused fills (451, any non-418 4xx) as gaps with the status; the weight pause must treat a missing X-MBX-USED-WEIGHT-1M as unknown and pause conservatively, pinned by an offline no-header test. — Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot
 +  default with no option to switch, and turns a 451 or other 4xx REST refusal into reported
 +  gaps; the intent left the default open and only proposed the refusal behaviour.
-+- Storage layout and codec level not measured: the intent asked the design to measure one
++- decided (by panel #2): Keep one zstd level-3 Parquet file per day as the intent requires (line 59); the build commits the generator that produces evidence/storage-measurement.md (per-day vs one yearly file, plus a higher zstd level) so the figure is reproducible and labelled synthetic, and the spec gives the owner the real-data check (download BTCUSDT 1m for one year, then cache-info) with a reopen threshold of more than 20% over a single yearly file. — Storage layout and codec level not measured: the intent asked the design to measure one
 +  year of BTCUSDT 1m as daily against larger files; the design keeps one file per day with
 +  zstd level 3 unmeasured, and the measurement moves to the build on synthetic data.
-+- Assumptions where the intent is silent (A1–A12 in Design § Assumptions), the weightiest
++- decided (by panel #3): A1–A12 accepted as written, A10 keeps raising KlineGapError by default; Gap.reason tells a candle missing inside a source file apart from a day absent from both sources, and plan.md Proof gains a test with a fixture missing two consecutive candles that asserts the exact Gap start/end/candles/reason and the .frame rows in schema; no allow_gaps keyword is added — Assumptions where the intent is silent (A1–A12 in Design § Assumptions), the weightiest
 +  being A10: a candle missing inside a Vision file (a real exchange outage) raises
 +  `KlineGapError`, so a long range over a known outage always needs the caller to take
 +  `.frame`.
@@ -636,22 +1881,28 @@ index 0000000..2d62956
 +  - a range crossing 2025-01-01 has continuous UTC `open_time`s, one interval apart;
 +  - a Vision 404 day is filled from REST;
 +  - a day missing from both sources raises `KlineGapError` with that day's gap and reason;
++  - a Vision file missing two consecutive candles raises `KlineGapError` with one gap of
++    exactly those two candles (start, end, `candles == 2`, reason "missing candles in source
++    file") and a `.frame` holding every other row in the schema;
 +  - a second load of the same range makes zero fetch calls;
 +  - the cache holds `.parquet` files only, at the layout of R7;
-+  - spot and futures fixtures for the same candles load into identical DataFrames;
++  - spot and futures fixtures for the same candles (spot `close_time` ending `…999999` µs,
++    futures `…999` ms) load into identical DataFrames;
 +  - a checksum mismatch is a gap and caches nothing; 418 raises `BinanceBanError`; 429/5xx
-+    are retried at most 3 times and 404 never; invalid symbol, interval, market or dates
-+    raise `InvalidRequestError` before any fetch; `cache=False` writes nothing; the current
-+    day is not cached.
++    are retried at most 3 times with the recorded sleeps 1, 2, 4 s (plus jitter) and 404
++    never; invalid symbol, interval, market or dates raise `InvalidRequestError` before any
++    fetch; `cache=False` writes nothing; the current day is not cached (injected clock);
++  - REST responses without `X-MBX-USED-WEIGHT-1M` make the run wait 1 s between REST calls,
++    and a weight at 80 % of the limit sleeps to the next minute.
 +- `python -m app.data download …` and `cache-info` run against the stub (through
 +  `main(argv, fetch=…)`) and print the outcome; `cache-clear` deletes only matching day files.
 +- Build `python -m compileall -q .` (no output, exit 0), test `python -m pytest` (all pass,
 +  the smoke test included), lint `python -m ruff check .` (`All checks passed!`).
-+- The build's evidence records the size of one synthetic year of 1m candles as 365 daily files
-+  and as one file (open question 3).
++- `evidence/storage-measurement.md` holds the output of `python scripts/measure_storage.py`:
++  one synthetic year of 1m candles as 365 daily files and as one file, at zstd 3 and 9.
 diff --git a/changes/0001-binance-vision-kline-data-layer/status.yaml b/changes/0001-binance-vision-kline-data-layer/status.yaml
 new file mode 100644
-index 0000000..ca62ee1
+index 0000000..d14c158
 --- /dev/null
 +++ b/changes/0001-binance-vision-kline-data-layer/status.yaml
 @@ -0,0 +1,34 @@
@@ -668,7 +1919,7 @@ index 0000000..ca62ee1
 +  at: null
 +parked_reason: null
 +iterations: 0
-+panel_calls: 0
++panel_calls: 3
 +external_ref: null
 +risk_accepted: []
 +tests_locked: false
@@ -687,5 +1938,5 @@ index 0000000..ca62ee1
 +    sha: "50436e17262bebde8eff70b2703b5e463e0f16a8"
 +    pr: 4
 +created_at: "2026-10-27T04:20:51Z"
-+updated_at: "2026-10-27T13:02:55Z"
++updated_at: "2026-10-27T13:07:37Z"
 +schema_version: 1
