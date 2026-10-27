@@ -1,0 +1,200 @@
+# The release of the deploy gate: the merge of the build PR - by the merge App on the owner's
+# approving review (decision 36), or by the owner - runs the project's own
+# sdlc.yaml: deploy.command - after checking the approval - and nothing else.
+#
+# Contract: docs/OPERATING_MODEL.md sections 4 (the deploy gate: "merge of the build PR; plus a
+# release label only when sdlc.yaml declares a real production") and 4.2, build guide step 32
+# (task 32.3), decision 13; article p.32 (the framework takes a change through "everything up
+# to the production gate and nothing past it") and p.40 (CI/CD step 5: the deploy runs behind
+# the production gate). Installed into this project by /sdlc-init from the framework's
+# template/.github/workflows/; edit it here, not in the framework.
+#
+# Why two pull_request types:
+#   * closed - the merge (the merge App's events start runs, the workflow token's never
+#     would; whether its merge starts this workflow is to verify at the merge App's first merge, else
+#     the merge workflow dispatches it). Without a declared production
+#     (deploy.production_gate: false) the approval at the deploy gate is the release's and it runs now;
+#   * labeled - with deploy.production_gate: true the release also needs the label
+#     sdlc:release-approved, applied by a person on GitHub - the only route: a run cannot
+#     approve itself (decision 5), so no signed tag counts and no bot's label does. The
+#     owner may apply the label after merging, when the closed event has already fired and
+#     found no approval ("waiting", a green job); the labeled event re-runs the check. A
+#     label applied before the merge fires on an open PR and is skipped here; the merge then
+#     finds it.
+# Only that label re-runs the release: any other label on a merged PR is ignored, so tidying
+# labels never deploys twice.
+#
+# Not a phase run: no claude starts and no hook fires in this job, so release/cli.py checks
+# the approval itself with the production-gate hook's own function, then runs the command.
+# Exit 0 is done, skip or waiting; exit 1 is a failed release command, or a release whose
+# record could not be pushed (red).
+#
+# One release per change (0.3.1, issues #66 and #68): the release step releases only a
+# merged copy whose deploy gate has a result and whose gate record the runner's commands step
+# completed (a build PR merged while the deploy run still runs is skipped; the PR that run
+# opens afterwards releases), waits for sdlc:release-approved when the merged copy was parked
+# (the park reason is printed), and skips a change whose release is already recorded. After
+# a command that exited 0 the second job, record, commits released_at / released_sha /
+# released_pr into status.yaml on the change's work branch sdlc/<id>/build (or /c) and on
+# the ref refs/sdlc/released/<id> (which no branch deletion removes) - never on the default branch -
+# so a second merge of the same change, the label or a dispatch releases nothing again.
+#
+# Token rule: events caused by the GITHUB_TOKEN never start another workflow run - only
+# workflow_dispatch and repository_dispatch do. This workflow dispatches nothing. The release
+# job holds a read-only token: the project's own toolchain (commands.setup) and
+# deploy.command run there, and neither may push. Only the record job, which runs the
+# framework's record step and nothing of the project's, holds contents: write (the automation
+# identity's branch-only access). The deploy command's own credentials are the project's
+# secrets; add them to the env: of the release step below. Since 1.0.26 (R51) that step runs
+# the project's build, test and lint on the merge commit first, without any variable whose
+# name holds TOKEN, SECRET, PASSWORD, PASSPHRASE, PRIVATE, CREDENTIAL, AUTH or KEY: name the
+# deploy secrets so, or the targets see them. It keeps the workflow token, not
+# the App's (decision 33): the release record needs no CI run.
+#
+# /sdlc-init rewrote `branches: [main]` below to this project's default branch and filled
+# in the framework repository.
+name: SDLC release (deploy)
+
+on:
+  pull_request:
+    types: [closed, labeled]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "The merged build PR to release, e.g. 12"
+        required: true
+        type: string
+
+# Read only for the release job: it runs the project's own deploy.command and must not be
+# able to push. issues: read lets the approval check read who applied the release label (the
+# issue events of the PR). The record job below declares its own contents: write.
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+# One release at a time in the repository (R51, check 11 of the race analysis): the group is the
+# release job's, below, not the workflow's. A workflow-level group would take every label event
+# of every open PR before the job's `if:` is judged, and such a no-op run would replace a
+# pending release (NOTES §59); a skipped job never enters its group.
+
+jobs:
+  release:
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+      (github.event.action == 'closed' ||
+      github.event.label.name == 'sdlc:release-approved')) }}
+    # GitHub environment protection (required reviewers, wait timer, deployment branches)
+    # is the owner's to add: create the environment in the repository settings and
+    # uncomment the next line.
+    # environment: production
+    # With one group per pull request two merges ran deploy.command at once and the older could
+    # finish last. A newer pending release replaces an older pending one (NOTES §59): the newer
+    # merge commit holds the older one, and release/cli.py never deploys a merge commit that a
+    # recorded newer release already holds. A replaced release is recorded by dispatching this
+    # workflow with its pr_number: the run finds it inside the newer release and records it.
+    concurrency:
+      group: "sdlc-release"
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    # R51: the three targets on the merge commit (gate.command_timeout each, 15 minutes by
+    # default) before deploy.command (the same bound), and the setup steps: 45 + 15 + 15
+    timeout-minutes: 75
+    # The record job reads these: whether deploy.command ran and exited 0, which change, and
+    # the framework ref the pin step read.
+    outputs:
+      released: ${{ steps.release.outputs.released }}
+      change_id: ${{ steps.release.outputs.change_id }}
+      pin: ${{ steps.pin.outputs.ref }}
+      # decision 35: the risk-list items the owner's merge, or since R22 the owner's
+      # approving review, accepted (one status.yaml line)
+      risk_acceptance: ${{ steps.release.outputs.risk_acceptance }}
+    steps:
+      # The merge commit itself, not the event's default ref: a label applied long after
+      # the merge must release what was merged. A dispatch releases the default branch.
+      - name: Check out the project
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml, with its script
+        id: pin
+        env:
+          # a scheduled run's event payload may carry no repository (not verified live,
+          # NOTES section 16): there the checked-out ref is the default branch
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        shell: bash
+        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      # The documented deploy commands (`python -m build && twine upload dist/*`) need the
+      # project's own tools on a bare runner.
+      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+        run: python framework/plugin/ci/project_setup.py --root .
+
+      # GITHUB_TOKEN reads the PR and its label events (read-only). The step writes
+      # released=true and change_id=<id> to its outputs after a command that exited 0.
+      - name: Release the merged change (sdlc.yaml deploy)
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          EVENT_ACTION: ${{ github.event.action || 'closed' }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: python framework/plugin/release/cli.py run --root . --repo "$REPO" --pr "$PR_NUMBER" --event "$EVENT_ACTION" --merge-sha "$MERGE_SHA"
+
+  # The release record (0.3.1, issue #66): the only job with a write token, and it runs the
+  # framework's record step and nothing of the project's (no toolchain, no deploy.command).
+  # It commits released_at / released_sha / released_pr into status.yaml on the work branch
+  # sdlc/<id>/build or /c (when still there) and on refs/sdlc/released/<id>; the release
+  # step reads both before releasing. A push that fails is red: the release ran without its record.
+  # Decision 35 (1.0.15): it also runs when the merge accepted risk-list items the build
+  # PR's close-look banner showed, and commits that acceptance line (who merged, when, the
+  # items, whether the body showed the banner) the same way, with the release or alone,
+  # and after a failed deploy.command too (`!cancelled()`): `released` is written only after
+  # the command exited 0, so a failed release never records one.
+  record:
+    needs: release
+    if: ${{ !cancelled() && (needs.release.outputs.released == 'true' || needs.release.outputs.risk_acceptance != '') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ needs.release.outputs.pin }}
+          path: framework
+
+      - name: Record the release (status.yaml on the work branch and refs/sdlc/released)
+        env:
+          # the push's credential, in its environment only: no checkout persists one (R49)
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ needs.release.outputs.change_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          RELEASED: ${{ needs.release.outputs.released }}
+          RISK_ACCEPTANCE: ${{ needs.release.outputs.risk_acceptance }}
+        run: python framework/plugin/release/cli.py record --root . --id "$CHANGE_ID" --pr "$PR_NUMBER" --merge-sha "$MERGE_SHA" --released "$RELEASED" --acceptance "$RISK_ACCEPTANCE"

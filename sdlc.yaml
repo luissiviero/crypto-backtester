@@ -1,0 +1,268 @@
+# sdlc.yaml — the project's SDLC framework configuration (written by /sdlc-init).
+# Process lives in the pinned plugin; this file is the project content the plugin reads.
+# It is a protected path: only the owner edits it, in a reviewed PR.
+
+# --- the gates and judgment calls (OPERATING_MODEL section 3; decisions 18, 21, 30, 32, 37) ---
+# One behaviour for every project, with no key to set (decision 37): you merge the intent PR at
+# the intent gate and the spec+plan PR at the design gate, and approve the build PR at the
+# deploy gate (the merge App merges on that approval, decision 36); the build and test gates
+# are the confidence gate's. The fast lane (decision 30): your own intent PR needs no merge at
+# the intent gate (opening it starts the design), and the design gate waits for you only on a
+# non-routine plan (a routine one goes on to the build; you review intent, spec, plan and code
+# at the deploy gate). Inside a phase, a judgment item (an open flagged concern in spec.md, contradicting
+# policies, a park verdict of the adversarial reviewer, an Important review finding whose
+# fix the run cannot determine, a verifier disagreement) goes to a review panel - a reviewer
+# and a devil's advocate in blind fresh contexts, then a conciliator that decides - which
+# records it in changes/<id>-<slug>/evidence/decisions-<phase>.md; the run continues, you read
+# "Decisions taken for you (N)" at the top of the PR at the next human gate, and a review
+# comment on any of them overturns it (/sdlc-fix). What never goes to the panel and still
+# parks: the reviewer's park on a risk-list item (a hit itself parks nothing, decision 35), a
+# guardrail file change, a run limit, an infrastructure failure, a merge to main, a deploy.
+# Each panel call counts against gate.max_panel_calls, not the fix iterations. The keys
+# `profile` and `review` of older files are no longer read.
+
+# --- models (ROADMAP R7; plugin/panel/models.py) ----------------------------------------------
+# Each a full model id or a family alias (opus, sonnet, haiku, fable).
+# session_model: the CI session's model (--model), one model or `default` plus per-phase
+#   entries (intent, design, build, test, deploy, maintain; a fix round takes its change's
+#   phase; the triage of maintain and the weekly scan take `default`); unset = the CLI's default. The workflow's SDLC_MODEL wins.
+# adversarial_model: the adversarial reviewer's model; the gate parks a verdict whose
+#   writer did not run on it (check reviewer_model); unset = not checked.
+# panel_advocate_model: the devil's advocate's (a panel reduces variance, not bias: three
+#   judges on one model share its blind spots); the panel's reviewer and conciliator run
+#   on the session's model, and where the session runs on this one, the advocate runs on
+#   adversarial_model instead.
+# The phase commands start each sub-agent with the family alias (`panel/cli.py models`);
+# the runner pins what that alias resolves to (ANTHROPIC_DEFAULT_<FAMILY>_MODEL).
+session_model: claude-opus-5-5
+adversarial_model: claude-opus-5-5
+panel_advocate_model: claude-fable-5-1
+# --- second opinion (ROADMAP R8; plugin/external/cli.py) -------------------------------------
+# A model of another vendor reads the design in the design phase and the build in the deploy
+# phase and posts one advisory comment on the PR; it edits nothing, never parks and is not a
+# panel member. Off while this block is absent. On the fast lane the design PR is closed before
+# you read it, so in the deploy phase the design opinion is carried onto the build PR (1.0.24). A job of its own after the phase job holds
+# the repository secret GEMINI_API_KEY; no Claude session ever does. Check the id with
+# `cli.py models` first, and send project code only from a Google project with billing linked
+# (the paid tier's terms). Until plugin 1.0.44 the block was `external_review:` (R45,
+# decision 39).
+# second_opinion:
+#   model: gemini-4-argon
+#   phases: [design, deploy]
+#   max_chars: 400000   # what one call may read; a file past it is left out and named
+
+# --- feedback loop: one-command targets (build guide step 14; article p.27 step 1) --------
+# Each must exit non-zero on failure. /sdlc-init detects them for Python projects.
+commands:
+  build: "python -m compileall -q ."
+  test: "python -m pytest"
+  lint: "python -m ruff check ."
+  # one command that installs what test/build/lint need; the CI phase jobs run it before
+  # the phase; empty = nothing to install
+  setup: "python -m pip install pytest ruff"
+  # the optional fourth target (change 0004): one command that exercises the product headless
+  # and writes PNG screenshots and JSON or text state files into the folder named by the
+  # environment variable SDLC_PROOF_DIR (the absolute changes/<id>-<slug>/evidence/proof/),
+  # with SDLC_CHANGE_ID beside it; it exits non-zero when any step failed. The runner runs it
+  # after build, test and lint at the build, test and deploy gates, and the gate compares what it wrote
+  # with the plan's `state:` and `screenshot:` proof items. It runs on synthetic data, never
+  # personal data. A Playwright test writes its files to process.env.SDLC_PROOF_DIR; a line
+  # that names the variable itself is expanded by the platform shell ($SDLC_PROOF_DIR on the
+  # Linux runner and by hand on Linux or macOS; %SDLC_PROOF_DIR% by hand under cmd.exe).
+  # Empty = no drive.
+  drive: ""
+  # the repository secrets or variables (names only) the targets need, e.g. [TEST_DB_URL]
+  # (R61, plugin 1.0.29). /sdlc-init writes each into the setup and phase steps of the phase
+  # workflows, so the setup command, the model's session and the runner's build, test and
+  # lint read it. Those run code the session wrote, the targets outside the sandbox: name a
+  # test credential here, never a production one. A service a test needs is your edit of the
+  # workflow; the model credentials and the GitHub tokens are never passed.
+  env: []
+
+# --- phase adapters (OPERATING_MODEL section 9; decision 19) ---------------------------------
+deploy:
+  # what makes a merged change live: publish package | schedule job | regenerate report |
+  # promote to paper trading | deploy service | none
+  action: none
+  # true turns on the release label at the deploy gate, the production-gate hook and the approval
+  # check of the release workflow (build guide step 29; decision 13). The approval is the
+  # label sdlc:release-approved applied by the release manager on the build PR from GitHub, nothing
+  # else: a run cannot approve itself (decision 5, the automation identity), so no signed
+  # tag counts and the hook blocks any command that names the label. Until plugin 1.0.44
+  # the key was `production` (R45, decision 39), not read since 1.0.48
+  production_gate: false
+  # the one command the release workflow (.github/workflows/sdlc-release.yml) runs after the
+  # build PR's merge (and, when production_gate is true, after the release label): e.g.
+  # `python -m build && twine upload dist/*`, `python scripts/regenerate_report.py`.
+  # Empty = the release is prepared in the PR and nothing runs. Runs on the GitHub runner
+  # with the repository's secrets only.
+  command: ""
+  # command patterns (shell-style globs, case-insensitive, matched against every token suffix
+  # of each part of a command, so wrappers such as `python -m`, `nohup` or `bash -c` do not
+  # hide one) the production-gate hook blocks inside a Claude session until the
+  # release approval exists; added to the plugin's defaults for the adapter
+  # (plugin/hooks/production_gate.py DEFAULT_GUARDED) and to the article's own trigger, a
+  # command containing both `deploy` and `production` (p.36). `promote to paper trading` has
+  # no default: a paper-trading project lists its own promotion command here (e.g.
+  # "python scripts/promote.py"). Only read when production_gate is true.
+  guarded_commands: []
+maintain:
+  # the watched metric and where the detection script reads it (default: CI test failure
+  # rate from the CI API — decision 15). The bands and the 3-sigma tiers are bands.yaml
+  # beside this file (written by /sdlc-init since B2; read by the detection since B5, 0.2.19).
+  metric: ci_test_failure_rate
+  source: github-actions
+  # the project's own runbooks (plugin 0.2.19; plugin/detect/routes.py). bands.yaml names a
+  # route `runbook:<name>` with its authorization (decision 14: allow = CI-scoped and
+  # reversible, runs with no human in the path; ask = touches a running system, parks the
+  # incident PR with "Go" requested until the service owner applies sdlc:go; until plugin 1.0.44
+  # preapproved and go). The plugin ships
+  # quarantine-flaky-test and revert-pr; an entry here adds a `command` (no shell; steps
+  # joined by &&, run on the runner with the repository's own secrets) under that name.
+  # An `ask` here is stricter than the bands' value and wins. Decision 26: on a project with
+  # deploy.production_gate: true, a runbook whose name contains "rollback" and whose
+  # rehearsed_at is a date the owner set after a staging rehearsal is pre-approved.
+  # Since plugin 1.0.27 (R44) a runbook on the runner runs in a fresh tree of the default
+  # branch's commit (with changes/ copied in), never in the checkout the diagnosis session
+  # wrote in, and with an explicit environment: the system's basics, plus the variables
+  # you name under env: (the model credentials never). Nothing installed by commands.setup
+  # is in that tree: a command that needs its dependencies installs them itself
+  # ("npm ci && npm run rollback"). The output kept in the record is masked.
+  # - name: rollback-deploy
+  #   command: "python scripts/rollback.py"
+  #   env: [DEPLOY_TOKEN]      # the step's secrets this command may read
+  #   authorization: ask
+  #   rehearsed_at: null       # e.g. 2026-09-24, set by you after the rehearsal
+  runbooks: []
+
+# --- lessons (change 0003; plugin/lessons/index.py) -----------------------------------------
+# How long a lesson a fix writes (/sdlc-deploy step 0b) stays fresh before the generated
+# index marks its line (stale): default twelve months, written once at the lesson's creation.
+# Read only when you set it here; an existing lesson's own stale_after is never rewritten.
+# lessons:
+#   stale_after_months: 12
+
+# --- risk list (build guide step 5; decision 35) ---------------------------------------------
+# A hit does not park: it is a line of the "Needs your close look" banner on the PR you merge
+# anyway (the design PR at the design gate, the build PR at the deploy gate), with the gate's
+# reviewer's brief on the item, and your merge accepts it (at the deploy gate, your approving
+# review, decision 36), recorded in the
+# change's status.yaml. An item is its words, matched in the committed diff's paths and in
+# spec.md's "Flagged concerns", or
+# {item: <words>, paths: [<glob>, ...]}: the globs are matched on the committed diff and the
+# words in "Flagged concerns" only; no path under changes/ is matched. /sdlc-init proposed globs only
+# for folders this project has; keep or edit them in the change-0000 PR.
+risk_list:
+  - "auth"
+  - "data migrations"
+  - "money movement"
+  - "production config"
+
+# --- confidence gate and run limits (build guide steps 16 and 19; decision 11) ---------------
+# A gate failure or a limit hit parks the change (label sdlc:needs-human, "What I need from
+# you" in the PR) and requests the owner's review on the PR, the only notification. A
+# risk-list hit does not park (decision 35); the gate's reviewer's park on a risk item
+# does, and never goes to the review panel. `state/cli.py accept-risk` stays for accepting an
+# item by hand, where the commit's author is the act. Setting `paused: true` stops every run before it starts.
+paused: false
+gate:
+  max_iterations: 3              # fix iterations per change, one counter across the phases
+  max_iterations_non_routine: 2  # when the adversarial reviewer classes the plan non-routine
+  max_panel_calls: 4             # review-panel calls per change; not fix iterations
+  max_turns: 200                 # turns per session of every run but the build and fix runs
+  max_wall_clock_minutes: 120    # per phase run, from `gate/cli.py start-run`
+  build_max_turns: 400           # turns of the build run and of every fix round (decision 32)
+  build_max_wall_clock_minutes: 180  # wall clock of the build run and of every fix round
+  max_budget_usd: 150            # per change; binds CI runs only (a by-hand or cloud-session
+                                 # run has no figure); a run that reaches it parks; null = off
+  command_timeout: 900           # seconds per build/test/lint command run by the gate; also
+                                 # the CI session's Bash timeout (R61). `/sdlc-init` step 4
+                                 # sets it to three times the longest target's run
+  drive_timeout: 300             # seconds for commands.drive, read only when it is set; at
+                                 # most 600 at build and test: with the explain step's 5 minutes
+                                 # the test job is 190 + 10 <= 200 and the build and fix jobs
+                                 # 250 + 10 <= 260, so a larger value runs at 600 (the reason
+                                 # is in the run's JSON); at deploy its minutes come off the
+                                 # session's wall clock instead, never below 30
+  proof_image_kb: 50             # the largest image the drive may leave under evidence/proof/
+                                 # (at most ten a run); read only when commands.drive is set
+
+# --- automation identity (decision 5; gate check owner_actions) ----------------------------------
+# The gate honours a risk acceptance, an iteration reset or a test-lock lift only when the
+# commit that introduced it was not authored by the automation identity, or when the label
+# that made it was applied by a person (decision 24; the risk label retired with decision 35,
+# a risk is accepted by the merge): a run cannot approve itself. Default:
+# github-actions[bot] (plugin/gate/policy.py). Any <app>[bot] account, the project's GitHub
+# App included (decision 33), counts as the automation whatever this lists. Override only if
+# your CI commits under another name:
+# automation_identity:
+#   - github-actions[bot]
+
+# --- the owner's account (decision 34) -------------------------------------------------------
+# The account whose comments, reviews and approval labels count: unset on a personal repository
+# (its owner), set on an organization one; a guardrail edit, read from the default branch.
+# On a personal repository another login here would not work: the fix workflow's condition
+# lets only the repository owner's "Request changes" review through.
+# owner: your-login
+
+# --- test-file lock (build guide step 25; OPERATING_MODEL section 8) -------------------------
+# Globs of the project's test files. In a fix-type change the build run commits the reproducing
+# test first and locks these paths (status.yaml: tests_locked) for the rest of the change; the
+# hook denies any edit under them. Defaults per detected language are written by /sdlc-init.
+test_paths:
+  - "tests/**"
+  - "test/**"
+  - "**/test_*.py"
+  - "**/*_test.py"
+  - "**/conftest.py"
+
+# --- guardrails read by the plugin's hooks (build guide step 15) -----------------------------
+# Always protected, whatever is listed here: .claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml,
+# policies/** (the copies at the project root) and the plugin's own files. Add generated code, frozen packages,
+# migrations, infra. Entries follow gitignore rules: a bare name matches in any directory,
+# a leading slash anchors it to the project root (e.g. "**/CLAUDE.md" freezes nested copies).
+# /sdlc-init proposes the secret-shaped files it found (*.pem, *.key, credentials.json, ...;
+# R61, plugin 1.0.29; .npmrc and appsettings.*.json only when one holds a token, a password,
+# a secret or a connection string, since 1.0.32), with the same names as Read deny rules in .claude/settings.json; the CI
+# session cannot read a secret-shaped entry either (any other entry, such as migrations/,
+# stays readable there, since the sandbox hides a denied path from the tests too).
+protected_paths: []
+plan_sync:
+  # staged paths matching these globs do not require a plan.md update in the build phase
+  exempt:
+    - "*.md"
+hooks:
+  # The formatter and linter on each file Claude edits (R33, plugin 1.0.29; one behaviour,
+  # always on). An entry maps a glob, or a list of globs, to `fix` commands run in order on
+  # the changed file and `check` commands whose exit 1 is fed back to Claude; `{file}` is the
+  # file's path from the project root, already quoted for the shell (do not quote it again).
+  # The first matching entry wins. A .py or .pyi file no entry matches gets ruff (check
+  # --fix, format, check); any other file type with no entry is left alone. A missing tool, any other exit code or a timeout never blocks the edit.
+  # In a CI session the project's commands are not run (they run outside the sandbox, on code
+  # the session can write); the runner's lint target judges the change there.
+  # Keep to what is cheap per file: a whole-project check (clippy, a type check) belongs in
+  # commands.lint. /sdlc-init proposed what it found (black, yapf or autopep8 in
+  # pyproject.toml; prettier and eslint in package.json; rustfmt for Cargo.toml), e.g.
+  #   - glob: ["*.ts", "*.tsx"]
+  #     fix: ["npx --no prettier --write {file}", "npx --no eslint --fix {file}"]
+  #     check: ["npx --no eslint {file}"]
+  formatters: []
+
+# --- the CI session's sandbox (R61, plugin 1.0.29) -------------------------------------------
+# allowed_domains: hosts the sandboxed CI session may reach beyond the API, GitHub, PyPI and
+# npm (plugin/ci/settings.ci.json), such as the project's package registry; /sdlc-init
+# proposed the registries of the languages it found. The session may also run the commands
+# above: their Bash allow rules follow commands.build, test, lint and setup.
+sandbox:
+  allowed_domains: []
+
+# --- pinned process (decision 8) ----------------------------------------------------------
+plugin:
+  name: sdlc
+  marketplace: sdlc-framework
+  version: 1.0.50
+  # Claude Code CLI version the SDLC workflows install (`npm install -g
+  # @anthropic-ai/claude-code@<this>`). `--permission-prompts none` needs 2.1.259 or later;
+  # 2.1.304 is the CLI the jobs install and the framework's minimum: the first version read
+  # to run a sub-agent on a full model id (the framework's NOTES §54).
+  claude_code: "2.1.304"

@@ -1,0 +1,54 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(.env*)",
+      "Read(**/.env*)",
+      "Read(./secrets/**)",
+      "Read(**/secrets/**)",
+      "Edit(/.claude/**)",
+      "Edit(/CLAUDE.md)",
+      "Edit(/REVIEW.md)",
+      "Edit(/sdlc.yaml)",
+      "Edit(/.github/workflows/**)",
+      "Edit(/CLAUDE.local.md)",
+      "Edit(/.mcp.json)",
+      "Edit(/.git/config)",
+      "Edit(/.git/hooks/**)",
+      "Edit(/policies/**)",
+      "WebFetch",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ],
+    "allow": [
+      "Bash(git *)",
+      "Bash(python -m compileall *)",
+      "Bash(python -m pytest *)",
+      "Bash(python -m ruff *)"
+    ],
+    "disableBypassPermissionsMode": "disable"
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": false,
+    "allowUnsandboxedCommands": false,
+    "network": {
+      "allowedDomains": [
+        "github.com",
+        "*.github.com",
+        "pypi.org",
+        "files.pythonhosted.org"
+      ]
+    }
+  },
+  "extraKnownMarketplaces": {
+    "sdlc-framework": {
+      "source": {
+        "source": "github",
+        "repo": "luissiviero/sdlc-framework"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "sdlc@sdlc-framework": true
+  }
+}

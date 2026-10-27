@@ -1,0 +1,96 @@
+# The owner's @claude comment starts a fix round (decision 34; ROADMAP R17): a comment in a
+# pull request's conversation whose text starts with @claude, by the owner's account, starts
+# the same fix round as the owner's "Request changes" review, on every phase's pull request.
+# This workflow runs no model: it checks the comment and dispatches sdlc-fix.yml with the
+# change id, the pull request's head branch and the comment's link, as the owner does by hand
+# from the Actions tab. The comment is a trigger, never a verb (decisions 24 and 28): nothing
+# after the prefix is parsed here, and its words reach the round as a request like any other
+# review comment. One comment is one round; an edited comment starts nothing.
+#
+# Contract: docs/OPERATING_MODEL.md sections 4.2 (the trigger and dispatch table) and 5,
+# docs/notes/46.md (an issue_comment run, verified on the sample on 2026-10-17), article p.33
+# step 4 ("When a reviewer or the author tags @claude on a review comment, Claude addresses
+# the comment and pushes the fix"). Installed into this project by /sdlc-init from the
+# framework's template/.github/workflows/; edit it here, not in the framework.
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do, which is why the round is dispatched
+# explicitly (its actor is github-actions[bot], so the dispatch carries the comment's link).
+# The token holds exactly the permissions below (NOTES section 46): actions: write for the
+# dispatch, read elsewhere. No model, no secret but the workflow token. It keeps the workflow
+# token, not the App's (decision 33): it pushes nothing, and a dispatch starts a run anyway.
+#
+# Why the default branch: an issue_comment run uses the default branch's workflow file and
+# commit, never the pull request's head, and its payload carries no head (NOTES section 46).
+# The job checks out the default branch explicitly, so the pull request never supplies the
+# code or the sdlc.yaml that judge its own comment; the head is read from the API.
+#
+# Owner rule: the job condition below is a coarse filter (a pull request comment, the
+# prefix, not a [bot], a member of the repository: on an organization repository the
+# owner's association is not always OWNER). The exact check is comment_dispatch.py's: the
+# comment's author is the owner's account (sdlc.yaml: owner on an organization repository,
+# else the repository owner), the pull request is open, its head is in this repository (a
+# fork's head is refused) and it carries exactly one changes/<id>-<slug>/ folder; each
+# refusal is a green run that says why. GitHub still starts a run, skipped at once, for every
+# other comment on every issue and pull request (NOTES section 46).
+#
+# /sdlc-init filled in the framework repository.
+name: SDLC comment (fix round)
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  dispatch:
+    # The comment's text appears here and nowhere else in this file: never in env, with or
+    # run (a comment is untrusted input; plugin/skills/security-baseline rule 2).
+    if: >-
+      ${{ github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '@claude') &&
+      !endsWith(github.event.comment.user.login, '[bot]') &&
+      (github.event.comment.author_association == 'OWNER' ||
+      github.event.comment.author_association == 'MEMBER' ||
+      github.event.comment.author_association == 'COLLABORATOR') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The default branch, never the pull request's head: the owner's copies judge the
+      # comment (decision 34).
+      - name: Check out the default branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml, with its script
+        id: pin
+        env:
+          # a scheduled run's event payload may carry no repository (not verified live,
+          # NOTES section 16): there the checked-out ref is the default branch
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        shell: bash
+        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      # The payload is read from GITHUB_EVENT_PATH (GITHUB_EVENT_NAME names the event); a
+      # skip ends green with its reason, an API failure ends red.
+      - name: Check the comment and dispatch the fix round
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/comment_dispatch.py --root . --repo "$REPO"

@@ -1,0 +1,161 @@
+# The maintain phase: the owner's "Go" on an incident intent PR runs the runbook the diagnosis
+# proposed (build guide step 37; decisions 14 and 26; article p.49-50: "The rollback was
+# rehearsed in staging this morning; shall I run it?" - "Go.").
+#
+# Contract: docs/OPERATING_MODEL.md sections 4 (the triage gate), 4.2 and 6, article p.43-44 (a
+# route that touches a running system waits for a person; "the runbooks the agent may
+# trigger were approved in advance"). Installed into this project by /sdlc-init from the
+# framework's template/.github/workflows/; edit it here, not in the framework.
+#
+# A route whose bands.yaml authorization is `ask` parks the incident PR with "Go requested"
+# (label sdlc:needs-human, "What I need from you"). Applying the label sdlc:go on that PR
+# is the Go: this job checks that a person applied it (never the workflow token or a
+# [bot]), runs the runbook once, records the actor in status.yaml (runbook_authorized_by),
+# removes the label (one application is one act, like the un-park labels of decision 24),
+# re-runs the triage gate and refreshes the PR. A pre-approved route never comes here: it ran in
+# the detect workflow. Not a phase run: no claude starts and no model credential is read; a
+# project runbook with a command runs with the repository's own secrets (add them to the
+# env: of the Go step below).
+#
+# Token rule (decision 33): with the repository variable SDLC_APP_ID set, the job pushes and
+# opens the runbook's pull request with the project's GitHub App token, and the events the App
+# causes do start workflow runs (the project's CI on its head). The App is required
+# (R22, 1.0.18): without it the runner refuses the run. Past 50 minutes the job falls back to
+# the workflow token, and its commits and pull requests never start another workflow run.
+# Your label fires this workflow normally; the job skips a label a [bot] applied. The App's
+# private key reaches the mint step only.
+#
+# /sdlc-init filled in the framework repository.
+name: SDLC runbook (Go)
+
+on:
+  pull_request:
+    types: [labeled]
+
+# checks: write for the passing sdlc/review "not a build PR" on the pull request this job
+# opens, also after the in-job fallback to the workflow token (the R22 double check, F5).
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: write
+
+# Its own group (live, 2026-09-25): a label event also fires the fix, test and deploy workflows,
+# whose guards skip; on the shared sdlc-<head> group GitHub displaced one pending run at
+# random, and the Go must never be the one displaced (decision 14).
+concurrency:
+  group: "sdlc-runbook-${{ github.event.pull_request.head.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  go:
+    # the incident PR's head only: a Go label on a build PR (sdlc/<id>/build) would fail the
+    # setup step's outside-changes/ check every time and has no incident to park. A Go a
+    # [bot] applied never runs (R49: the App's own labels start workflows); detect/cli.py go
+    # checks the actor again.
+    if: ${{ github.event.label.name == 'sdlc:go' && !endsWith(github.event.sender.login, '[bot]') && startsWith(github.event.pull_request.head.ref, 'sdlc/') && endsWith(github.event.pull_request.head.ref, '/intent') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # Decision 33: the automation pushes and opens pull requests as the project's GitHub
+      # App, required since 1.0.18 (R22): without the repository variable SDLC_APP_ID this
+      # step is skipped, and the runner refuses the run before it pushes or opens anything
+      # (ci/app_token.py app_missing). The private key is read here only.
+      - name: Mint the App token (decision 33; skipped without vars.SDLC_APP_ID)
+        id: app
+        if: ${{ vars.SDLC_APP_ID != '' }}
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.SDLC_APP_ID }}
+          private-key: ${{ secrets.SDLC_APP_PRIVATE_KEY }}
+          # no more than this job's permissions: block grants the workflow token
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-checks: write
+
+      # The token expires an hour after it is minted (the action's README); past 50
+      # minutes the runner publishes with the workflow token instead (ci/app_token.py),
+      # counted from this time.
+      - name: Record when the App token was minted
+        if: steps.app.outcome == 'success'
+        run: python -c "import os, time; f = open(os.environ['GITHUB_ENV'], 'a'); f.write('SDLC_APP_TOKEN_MINTED_AT=%d\n' % time.time()); f.close()"
+
+      # The incident PR's head: sdlc/<id>/intent, which carries the detection record,
+      # the proposal and status.yaml.
+      - name: Check out the pull request's head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          token: ${{ steps.app.outputs.token || github.token }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml, with its script
+        id: pin
+        env:
+          # a scheduled run's event payload may carry no repository (not verified live,
+          # NOTES section 16): there the checked-out ref is the default branch
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        shell: bash
+        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Find the change this pull request carries
+        id: find
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
+          CHANGE_ID: ""
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
+
+      # The Go step below holds the runbook secrets: the head's copy of commands.setup is not
+      # the owner's approved one, so the install command is read from the default branch —
+      # fully qualified, so a tag named origin/<branch> cannot shadow the remote-tracking ref —
+      # and the step refuses a head that changed files outside changes/. A failure here is
+      # parked by the step after the Go, not left as a red run (continue-on-error keeps the
+      # job going; the Go step runs only on a success).
+      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup, from the default branch)"
+        id: setup
+        if: steps.find.outputs.change_id != ''
+        continue-on-error: true
+        env:
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/project_setup.py --root . --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Go — run the proposed runbook once, as the label's actor authorized
+        if: steps.find.outputs.change_id != '' && steps.setup.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/detect/cli.py go --root . --id "$CHANGE_ID" --repo "$REPO" --pr-number "$PR_NUMBER"
+
+      # A setup step that failed (an unreadable ref, a head that changed files outside
+      # changes/, an install that exited non-zero) is a park the owner finds on the PR:
+      # "What I need from you" with the step's error line, the Go label removed so the next
+      # application is a fresh act, sdlc:needs-human on the intent PR. No secret here.
+      - name: Park the incident when the setup step failed
+        if: steps.setup.outcome == 'failure'
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SETUP_ERROR: ${{ steps.setup.outputs.error }}
+        run: python framework/plugin/detect/cli.py park --root . --id "$CHANGE_ID" --repo "$REPO" --pr-number "$PR_NUMBER" --check setup --reason "$SETUP_ERROR"

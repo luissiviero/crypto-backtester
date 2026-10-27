@@ -1,0 +1,350 @@
+# The design phase, fired by the merge of the intent PR: the merged pull request that carries
+# the change's changes/<id>-<slug>/ folder, whatever its head branch is called.
+#
+# The fast lane (decision 30): an intent PR your own account opens
+# (or reopens) starts the design at once, without a merge - writing and pushing the intent is
+# your acceptance. The design branch is cut from the PR's head, and once the design PR exists
+# the intent PR is labelled sdlc:superseded and closed (no comment). The find step judges it
+# exactly (your account as the author and as the one who opened or reopened it,
+# one change folder at phase intent and nothing else, no design PR yet) and skips green otherwise; a
+# collaborator's or a bot's intent PR or reopen, a draft and a fork's head keep the intent gate,
+# the merge.
+#
+# Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
+# step 30, article p.39-41 ("Run Claude Code non-interactively inside the CI/CD pipeline,
+# sandbox the execution"). Installed into this project by /sdlc-init from the framework's
+# template/.github/workflows/; edit it here, not in the framework.
+#
+# Token rule (decision 33): with the repository variable SDLC_APP_ID set, the job pushes and
+# opens pull requests with the project's GitHub App token, and the events the App causes do
+# start workflow runs - the project's CI runs on its heads with no approval click. The App is
+# required (R22, 1.0.18): without it the runner refuses the run. Past 50 minutes the job falls
+# back to the workflow token, whose events never start another workflow run -
+# only workflow_dispatch and repository_dispatch do. The owner's merges and labels fire these
+# workflows normally; every automated transition stays an explicit workflow_dispatch that
+# run_phase.py sends with the change id, which the fallback needs. The App's private key
+# reaches the mint step only. The job holds no deploy secret and no production credential
+# (article p.40).
+#
+# /sdlc-init rewrote `branches: [main]` below to this project's default branch and filled
+# in the framework repository. The Claude Code version is read from sdlc.yaml at run time.
+name: SDLC design
+
+on:
+  workflow_dispatch:
+    inputs:
+      change_id:
+        description: "Four-digit change id, e.g. 0001"
+        required: true
+        type: string
+      head_ref:
+        description: "The change's work branch, e.g. sdlc/0001/build; it keys the concurrency group"
+        required: false
+        type: string
+  pull_request:
+    types: [opened, reopened, closed]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: write
+  actions: write
+
+# One change at a time, keyed on the change's own branch: sdlc/<id>/design for the design PR
+# merge, sdlc/<id>/build for build, test and deploy — the runs that must serialise
+# (OPERATING_MODEL section 4.2). run_phase.py passes head_ref on every dispatch, so an
+# automated hop lands in the same group as the PR-fired run of the same branch.
+concurrency:
+  group: "sdlc-${{ inputs.head_ref || github.event.pull_request.head.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  design:
+    # A closed pull request only counts when it was merged (into the default branch: the
+    # `branches:` filter above). The head name is not a filter any more: a web session pushes
+    # /sdlc-intent's intent to a branch of its own (claude/...), and the old sdlc/ head rule
+    # never fired for it (HANDOFF 4(a)). The first step finds the change from the merged
+    # pull request's changes/<id>-<slug>/ folder instead; a merge that carries none costs one
+    # green job of about 20 s, and every later step is skipped. Decision 30: an opened or
+    # reopened intent PR runs too when its head is in this repository, neither its author
+    # nor the event's sender is a [bot] and it is not a draft (a coarse check; the find
+    # step's is the exact one).
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.merged == true ||
+      ((github.event.action == 'opened' || github.event.action == 'reopened') &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !endsWith(github.event.pull_request.user.login, '[bot]') &&
+      !endsWith(github.event.sender.login, '[bot]') &&
+      github.event.pull_request.draft == false) }}
+    outputs:
+      change_id: ${{ steps.find.outputs.change_id }}
+      head_ref: ''
+    runs-on: ubuntu-latest
+    # 0.3.0: the session's wall clock (gate.max_wall_clock_minutes, 120 by default, plus
+    # 5 of grace) and then the gate's commands step, which runs the three targets after
+    # the session at gate.command_timeout each (900 s by default): 125 + 50 minutes
+    timeout-minutes: 200
+    steps:
+      # Decision 33: the automation pushes and opens pull requests as the project's GitHub
+      # App, required since 1.0.18 (R22): without the repository variable SDLC_APP_ID this
+      # step is skipped, and the runner refuses the run before it pushes or opens anything
+      # (ci/app_token.py app_missing). The private key is read here only.
+      - name: Mint the App token (decision 33; skipped without vars.SDLC_APP_ID)
+        id: app
+        if: ${{ vars.SDLC_APP_ID != '' }}
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ vars.SDLC_APP_ID }}
+          private-key: ${{ secrets.SDLC_APP_PRIVATE_KEY }}
+          # no more than this job's permissions: block grants the workflow token
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-checks: write
+          permission-actions: write
+
+      # The token expires an hour after it is minted (the action's README); past 50
+      # minutes the runner publishes with the workflow token instead (ci/app_token.py),
+      # counted from this time.
+      - name: Record when the App token was minted
+        if: steps.app.outcome == 'success'
+        run: python -c "import os, time; f = open(os.environ['GITHUB_ENV'], 'a'); f.write('SDLC_APP_TOKEN_MINTED_AT=%d\n' % time.time()); f.close()"
+
+      - name: Check out the project
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          token: ${{ steps.app.outputs.token || github.token }}
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml, with its script
+        id: pin
+        env:
+          # a scheduled run's event payload may carry no repository (not verified live,
+          # NOTES section 16): there the checked-out ref is the default branch
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        shell: bash
+        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      # --id wins (a dispatch), then a head sdlc/<id>/intent (or /a), then the one
+      # changes/<id>-<slug>/ folder the merged pull request touches. An empty change_id skips every step below.
+      # An opened intent PR (decision 30) is judged from the event payload and the default
+      # branch's sdlc.yaml; it also outputs start_point (the PR's head) and intent_pr.
+      - name: Find the change this merge carries
+        id: find
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ inputs.change_id }}
+          HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase design --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
+
+      - if: steps.find.outputs.change_id != ''
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+
+      # The version comes from the pin step at run time, so a bump in sdlc.yaml applies on
+      # the next run; re-install the workflows only when this file itself changes.
+      - name: Install the pinned Claude Code CLI
+        if: steps.find.outputs.change_id != ''
+        env:
+          CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}
+        run: npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"
+
+      - name: Prepare the runner for Claude Code's sandbox
+        if: steps.find.outputs.change_id != ''
+        run: python framework/plugin/ci/runner_setup.py
+
+      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+        id: setup
+        if: steps.find.outputs.change_id != ''
+        run: python framework/plugin/ci/project_setup.py --root . --out "$RUNNER_TEMP/sdlc-setup.json"
+
+      - name: Run the design phase
+        id: phase
+        if: steps.find.outputs.change_id != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
+          HEAD_REF: ${{ inputs.head_ref || github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # decision 30: set only for an intent PR on the fast lane (empty otherwise). Passed in
+          # the environment, never as flags: a framework pinned before the fast lane rejects an
+          # unknown flag and ignores an unknown variable
+          SDLC_START_POINT: ${{ steps.find.outputs.start_point }}
+          SDLC_INTENT_PR: ${{ steps.find.outputs.intent_pr }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase design --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --ref "$DEFAULT_BRANCH" --out "$RUNNER_TEMP/sdlc-run.json"
+
+      # R18: a failed run explains itself. After a failed setup or runner step, or a park
+      # with a log to read (the runner's explain=park output; a park ends the job green), the
+      # framework checkout the session could reach is replaced and the project checkout
+      # verified, as after the review pass; then the read-only explain session (Read only, no
+      # GitHub token, .git and /proc denied) reads the run's files. Its lines, model-written
+      # and scanned for secrets, join the park block or a failed-run record on
+      # refs/sdlc/failed-runs/, which the digest's "Failed runs" line reads. Neither step
+      # fails the job (plugin/ci/explain.py).
+      - name: Remove the framework checkout before the explain step
+        if: always() && steps.find.outputs.change_id != '' && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park' || steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled')
+        run: python -c "import shutil; shutil.rmtree('framework', ignore_errors=True)"
+
+      - name: Check out the pinned framework afresh for the explain step (public repository, no token)
+        if: always() && steps.find.outputs.change_id != '' && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park' || steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled')
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Verify the project checkout before the explain step
+        id: explain_checkout
+        if: always() && steps.find.outputs.change_id != '' && (steps.setup.outcome == 'failure' || steps.phase.outcome == 'failure' || steps.phase.outputs.explain == 'park' || steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled')
+        env:
+          PIN_REF: ${{ steps.pin.outputs.ref }}
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
+          ORIGIN_URL: ${{ github.server_url }}/${{ github.repository }}
+          FRAMEWORK_URL: ${{ github.server_url }}/luissiviero/sdlc-framework
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        run: python framework/plugin/ci/checkout_check.py --root . --framework framework --pin-ref "$PIN_REF" --origin "$ORIGIN_URL" --framework-origin "$FRAMEWORK_URL"
+
+      # Decision 41 (R67): a runner step GitHub cancelled, at the job's timeout-minutes or by
+      # hand, parks the change from the state the runner saved beside its --out file, with
+      # the reason, "what I need from you" and the review request, and no re-run; a fix
+      # round first keeps the session's uncommitted work in one commit, not gated. No model
+      # runs, and it comes before the explain steps: GitHub stops the job about five minutes
+      # past its timeout (docs/notes/62.md).
+      - name: Park the change after a cancelled run, before the explain steps (decision 41)
+        if: always() && steps.find.outputs.change_id != '' && steps.explain_checkout.outcome == 'success' && (steps.setup.outcome == 'cancelled' || steps.phase.outcome == 'cancelled')
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # the job's timeout-minutes, so the park can tell GitHub's cancel from the owner's
+          SDLC_JOB_TIMEOUT_MINUTES: 200
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase design --cancelled --repo "$REPO" --out "$RUNNER_TEMP/sdlc-run.json"
+
+      # The read-only half: the model credential and no GitHub token in its environment, so
+      # nothing the session reads, /proc included, holds one; its lines go to a file.
+      - name: Explain the failed or parked run (read-only, model-written)
+        if: always() && steps.explain_checkout.outcome == 'success'
+        continue-on-error: true
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase explain --out "$RUNNER_TEMP/sdlc-run.json" --setup "$RUNNER_TEMP/sdlc-setup.json" --lines "$RUNNER_TEMP/sdlc-explain.json"
+
+      # The writing half: the token and no model credential, no model run; the lines into
+      # the park block or a failed-run record (a missing file: a record with no lines).
+      - name: Publish the explanation (the park block, or a failed-run record)
+        if: always() && steps.explain_checkout.outcome == 'success'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          SDLC_WORKFLOW_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase explain --repo "$REPO" --out "$RUNNER_TEMP/sdlc-run.json" --setup "$RUNNER_TEMP/sdlc-setup.json" --publish "$RUNNER_TEMP/sdlc-explain.json"
+
+      # Build guide step 41.1 (article p.39): every hook decision of the run is one line of
+      # changes/<id>-<slug>/evidence/hook-log.jsonl (committed with the evidence) or of
+      # changes/.hook-log.jsonl; the artifact keeps them readable when a run never committed.
+      - name: Keep the hook log
+        if: steps.find.outputs.change_id != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sdlc-hook-log-${{ github.run_id }}
+          path: |
+            changes/**/evidence/hook-log.jsonl
+            changes/.hook-log.jsonl
+          if-no-files-found: ignore
+
+  # ROADMAP R8 (plugin 1.0.19): a second opinion on the design from a model of another vendor,
+  # advisory. Off unless the default branch's sdlc.yaml lists design under
+  # second_opinion.phases (external_review until plugin 1.0.44). A job
+  # of its own on a fresh runner after the design job: the
+  # Claude session never held the Gemini key and never shared this machine, and the key
+  # reaches only the one step that calls the API. The step reads the PR's head from git
+  # (never the session's working tree), posts one comment on the PR as the workflow token
+  # (a fix round never applies a bot's comment) and never fails: a failed call is "not run".
+  # 1.0.24: a framework pinned before 1.0.19 has no plugin/external/, and the step is skipped
+  # green (hashFiles is empty), so a project may carry these copies at any pin; with
+  # second_opinion off the command prints "off" and writes and posts nothing. On the fast
+  # lane the design PR is superseded before the owner reads it: the deploy job carries this
+  # opinion onto the build PR (sdlc-deploy.yml).
+  second-opinion:
+    needs: design
+    if: ${{ needs.design.outputs.change_id != '' || needs.design.outputs.head_ref != '' }}
+    runs-on: ubuntu-latest
+    # the client waits up to 15 minutes for the answer (Google's guide for "high" thinking)
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write  # a PR comment goes through the issues endpoint
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml, with its script
+        id: pin
+        env:
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        shell: bash
+        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Second opinion on the design (advisory; never fails the job)
+        if: ${{ hashFiles('framework/plugin/external/cli.py') != '' }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ needs.design.outputs.change_id }}
+          HEAD_REF: ${{ needs.design.outputs.head_ref }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        run: python framework/plugin/external/cli.py review --root . --id "$CHANGE_ID" --head-ref "$HEAD_REF" --phase design --repo "$REPO" --ref "$DEFAULT_BRANCH" --post --out second-opinion.json
+
+      - name: Keep the second opinion's record
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sdlc-second-opinion-${{ github.run_id }}
+          path: second-opinion.json
+          if-no-files-found: ignore

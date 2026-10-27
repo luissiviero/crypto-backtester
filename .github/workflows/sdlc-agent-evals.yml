@@ -1,0 +1,128 @@
+# The project's eval suite of the agent's configuration, named after the article's
+# .github/workflows/agent-evals.yml (p.30; R45 row 78: sdlc-evals.yml before plugin 1.0.46)
+# (build guide step 35; decision 17; article p.29-31: "a suite that
+# runs whenever the agent's configuration changes ... non-interactively in CI on a schedule
+# and on any change to CLAUDE.md, skills or hooks"; p.30 step 4 "Gate configuration changes
+# on the results").
+#
+# Contract: docs/OPERATING_MODEL.md section 4.2. Installed into this project by /sdlc-init
+# from the framework's template/.github/workflows/; edit it here, not in the framework.
+#
+# What one run does: the pinned framework's runner (plugin/evals/run.py; evals/check.py is
+# the same call by hand) runs every case of evals/cases/ in a copy of this checkout
+# with the project's CLAUDE.md, hooks and settings in force, applies the case's checks in
+# Python and exits non-zero when the pass rate is below the threshold - the red check on a
+# pull request that changes the agent's configuration is the gate the article asks for. The
+# suite starts empty (decision 17) and fills from incidents: an empty suite is a green job.
+# The report is an artifact; nothing is committed and nobody is notified.
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run.
+# This workflow starts nothing and writes nothing, so it keeps the workflow token, not the
+# App's (decision 33).
+#
+# Schedule note: cron is UTC, runs on the default branch, and an off-the-hour minute is less
+# delayed than :00. GitHub disables schedules in a public repository after 60 days without
+# activity; the workflow_dispatch trigger is how the owner re-enables it.
+#
+# /sdlc-init rewrote `branches: [main]` below to this project's default branch and filled
+# in the framework repository. The Claude Code version is read from sdlc.yaml at run time.
+name: SDLC agent evals
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "CLAUDE.md"
+      - ".claude/**"
+      - "evals/**"
+  schedule:
+    - cron: "37 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "sdlc-agent-evals-${{ github.event.pull_request.head.ref || github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml, with its script
+        id: pin
+        env:
+          # a scheduled run's event payload may carry no repository (not verified live,
+          # NOTES section 16): there the checked-out ref is the default branch
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        shell: bash
+        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+
+      - name: Install the pinned Claude Code CLI
+        env:
+          CLAUDE_CODE_VERSION: ${{ steps.pin.outputs.claude_code }}
+        run: npm install -g @anthropic-ai/claude-code@"$CLAUDE_CODE_VERSION"
+
+      # R44 (I1): the cases' sessions run sandboxed on a runner (plugin/evals/run.py
+      # CI_EVAL_SETTINGS), which needs bubblewrap and socat
+      - name: Prepare the runner for Claude Code's sandbox
+        run: python framework/plugin/ci/runner_setup.py
+
+      # R44 (the plugin security review of 2026-10-19, I1): on a pull request this checkout
+      # is the head, which a session may have written; the setup command is the default
+      # branch's, and the framework the install could reach is checked out afresh after it.
+      - name: "Install the project's own toolchain (sdlc.yaml: commands.setup)"
+        env:
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        run: python framework/plugin/ci/project_setup.py --root . --command-from "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Remove the framework checkout the install could reach
+        run: python -c "import shutil; shutil.rmtree('framework', ignore_errors=True)"
+
+      - name: Check out the pinned framework afresh (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      # The runner never adds --bare: the suite tests CLAUDE.md, the hooks and the settings,
+      # which bare mode skips. The runner passes only one of the two credentials on, the OAuth
+      # token when it is set and the API key otherwise (decision 38). R44 (I1): the pinned
+      # framework's runner is started directly, never the checkout's evals/check.py, which a
+      # session can rewrite; a case's command checks run without either credential
+      # (plugin/evals/run.py check_env).
+      - name: Run the eval suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: python framework/plugin/evals/run.py --root . --plugin-dir framework --report evals-report.json
+
+      - name: Keep the report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sdlc-agent-evals-report-${{ github.run_id }}
+          path: evals-report.json
+          if-no-files-found: ignore

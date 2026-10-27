@@ -1,0 +1,44 @@
+# bands.yaml — control bands for the maintain phase (build guide step 37; article p.43-44).
+# Written by /sdlc-init; project content the owner tunes. Read by the deterministic detection
+# script of the maintain phase (B5): "detection stays entirely deterministic, with no model involved".
+# Response tiers (p.43 step 3): at 1 sigma the script only logs, at 2 sigma it invokes Claude
+# read-only to diagnose, at 3 sigma Claude may act, only through a gated route.
+
+metric: ci_test_failure_rate
+source: github-actions
+baseline: rolling_30d
+rules: western_electric
+# Optional (plugin 0.2.19; plugin/detect/stats.py): `direction: above | below | both` - which
+# side of the mean is a breach (default above: a failure rate is worse when higher; a
+# throughput metric would say below); `min_sigma: 0.0` - a floor for the baseline's standard
+# deviation, so a perfectly flat baseline followed by one bad day is not an infinite breach
+# (the default 0 keeps the article's own example, p.45: one bad day after a clean month is
+# a 3-sigma breach). Statistics: the last 8 points of the window are judged against the mean
+# and sample standard deviation of the points before them; rules we1 (one point beyond 3σ)
+# → 3sigma, we2 (two of three beyond 2σ) and we4 (eight points on one side) → 2sigma, we3
+# (four of five beyond 1σ) → 1sigma.
+tiers:
+  1sigma:
+    action: log
+  2sigma:
+    action: diagnose
+    tools: "Read,Grep,Bash(gh run view *)"
+  3sigma:
+    action: propose
+    # Every route is one of the two authorization models of decision 14 (split by blast
+    # radius), named by the hook's verbs (p.36): allow = CI-scoped and reversible, runs with
+    # no human in the path; ask = touches a running system, parks with "what I need from you"
+    # until the service owner says Go (the label sdlc:go). A route not listed here is never taken.
+    # Until plugin 1.0.44 the values were preapproved and go (R45, decision 39).
+    routes:
+      - name: pull_request          # open an intent PR into the review queue (p.44 step 5)
+        authorization: allow
+      - name: runbook:quarantine-flaky-test
+        authorization: allow
+      - name: runbook:revert-pr
+        authorization: allow
+      - name: runbook:rollback-deploy
+        authorization: ask
+# Dismissals of findings tune these bands (p.44 step 6): widen a band before muting a metric.
+# A dismissal (closing an incident PR with a comment) mutes the metric+rule pair for one
+# baseline window (changes/.dismissed.json); a bands change is a pull request on this file.

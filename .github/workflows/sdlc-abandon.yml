@@ -1,0 +1,120 @@
+# Abandon (decision 25; build guide step 9): a pull request of the intent to deploy gates closed without a
+# merge ends its change. status.yaml says `phase: abandoned` on the closed PR's head and on
+# every other sdlc/<id>/* branch of the change on the remote; the branches are kept; every
+# workflow's guard skips the change from then on (OPERATING_MODEL sections 4 and 4.2).
+#
+# Contract: docs/OPERATING_MODEL.md section 4.2 (the trigger and dispatch table), build guide
+# step 30, article p.39-41 (the pipeline runs deterministic steps without a person). Installed
+# into this project by /sdlc-init from the framework's template/.github/workflows/; edit it
+# here, not in the framework.
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do. The owner's close fires this workflow
+# normally; the commits it pushes to the change's branches start nothing. Not a phase run: no
+# claude starts, no model credential is read, no deploy secret is held. It keeps the workflow
+# token, not the App's (decision 33): an end state and a dismissal record need no CI run.
+#
+# The change is found from the pull request's own files (its changes/<id>-<slug>/ folder),
+# never from the head name alone (a web-session intent PR carries a claude/... head). A
+# closed PR that carries no change folder costs one green job of about 20 s. A merged PR is
+# the intent, design or deploy gate passed and is never this workflow's.
+#
+# The fast lane (decision 30): the run closes the owner's intent PR once the design PR carries
+# it, and the design PR once the build PR carries it, each labelled sdlc:superseded first.
+# Such a close is not an abandon: the label goes on before the close, and the job skips a PR
+# that carries it (also once the runner's own close starts workflows, R49). Your own close of
+# a PR without the label abandons the change as before. A PR the runner labelled but could not
+# close stays open with the label; remove the label before you close it to abandon.
+#
+# The triage gate of maintain (decision 25, second half; build guide step 39; article p.47 step 4 "Dismiss with
+# a reason, so the dismissal is recorded and the same finding does not return as new on the
+# next run"): closing an incident intent PR also dismisses its finding. The last comment by
+# a person on the PR is the reason; detect/cli.py dismiss appends the finding's signature to
+# changes/.dismissed.json on a branch sdlc/<id>/dismiss and opens the dismissal PR against
+# the default branch for you to merge (the automation identity never writes to it). No
+# comment, no dismissal: the finding may return, and the job says so.
+#
+# /sdlc-init filled in the framework repository.
+name: SDLC abandon (closed without a merge)
+
+on:
+  pull_request:
+    types: [closed]
+
+# contents: write to commit the end state on the change's branches; checks: write for the
+# dismissal PR's passing sdlc/review "not a build PR", which no sdlc-merge.yml run posts on a
+# push by this workflow's token (decision 36, point 5; the R22 double check, F1).
+permissions:
+  contents: write
+  pull-requests: write
+  checks: write
+
+# Its own group (live run of 2026-09-25): the close also fires the merge-guarded design and
+# build workflows, and on the shared sdlc-<head> group GitHub displaced the pending abandon
+# run; those two still serialise with each other on sdlc-<head>.
+concurrency:
+  group: "sdlc-abandon-${{ github.event.pull_request.head.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  abandon:
+    if: >-
+      ${{ github.event.pull_request.merged == false &&
+      !contains(github.event.pull_request.labels.*.name, 'sdlc:superseded') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # The closed pull request's head: the branch that carries the change's status.yaml.
+      - name: Check out the pull request's head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml, with its script
+        id: pin
+        env:
+          # a scheduled run's event payload may carry no repository (not verified live,
+          # NOTES section 16): there the checked-out ref is the default branch
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        shell: bash
+        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Find the change this pull request carries
+        id: find
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ""
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/ci/run_phase.py --root . --plugin-dir framework --phase fix --id "$CHANGE_ID" --head-ref "$HEAD_REF" --repo "$REPO" --pr-number "$PR_NUMBER" --find-change
+
+      - name: Record the end state on the change's branches
+        if: steps.find.outputs.change_id != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python framework/plugin/state/cli.py abandon --root . --id "$CHANGE_ID" --reason "pull request $PR_NUMBER closed without a merge" --push --all-branches
+
+      # An incident intent PR closed with a comment: the finding is dismissed with that
+      # reason (the step is a no-op for a change without a finding record).
+      - name: Dismiss the finding with the closing comment as its reason
+        if: steps.find.outputs.change_id != ''
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHANGE_ID: ${{ steps.find.outputs.change_id }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: python framework/plugin/detect/cli.py dismiss --root . --id "$CHANGE_ID" --repo "$REPO" --pr-number "$PR_NUMBER" --open-pr

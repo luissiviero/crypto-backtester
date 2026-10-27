@@ -1,0 +1,77 @@
+# The daily review-queue digest (no phase run, no model call).
+#
+# Contract: docs/OPERATING_MODEL.md sections 4.2 and 7 ("a scheduled job posts a daily digest
+# of the queue. Nothing pushes to the owner"), build guide step 30, article p.39-41. Installed
+# into this project by /sdlc-init from the framework's template/.github/workflows/.
+#
+# Token rule: events caused by this workflow's GITHUB_TOKEN never start another workflow run
+# - only workflow_dispatch and repository_dispatch do. This workflow starts nothing; it edits
+# the body of one long-lived issue, which sends no notification. It holds no deploy secret
+# and needs no model credential. It keeps the workflow token, not the App's (decision 33):
+# it pushes nothing.
+#
+# Since plugin 0.2.19 the digest ends with the counters of build guide step 42.2
+# (pr/counters.py: first-pass merge share, fix iterations, incidents, dismissals), computed
+# from the change folders of this checkout - no API, no model.
+#
+# Schedule note: cron is UTC, runs on the default branch, and an off-the-hour minute is less
+# delayed than :00. GitHub disables schedules in a public repository after 60 days without
+# activity; the workflow_dispatch trigger is how the owner re-enables it.
+#
+# /sdlc-init filled in the framework repository. The Claude Code version is read from
+# sdlc.yaml at run time.
+name: SDLC review-queue digest
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read  # choice 250: the sdlc-merge environment's deployment branch policy
+  checks: read  # R22: the approved, unmerged build PR's line reads sdlc/review
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: "sdlc-digest"
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the project
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read the framework pin from the default branch's sdlc.yaml, with its script
+        id: pin
+        env:
+          # a scheduled run's event payload may carry no repository (not verified live,
+          # NOTES section 16): there the checked-out ref is the default branch
+          SDLC_DEFAULT_BRANCH: ${{ github.event.repository.default_branch || github.ref_name }}
+        shell: bash
+        run: git show "refs/remotes/origin/$SDLC_DEFAULT_BRANCH:.github/scripts/sdlc_pin.py" | python - --ref "refs/remotes/origin/$SDLC_DEFAULT_BRANCH"
+
+      - name: Check out the pinned framework (public repository, no token)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+          repository: "luissiviero/sdlc-framework"
+          ref: ${{ steps.pin.outputs.ref }}
+          path: framework
+
+      - name: Post the digest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # "true" when this job, which has no environment, sees the merge App's key: it is
+          # then a repository secret every workflow on every branch can read (choice 250);
+          # only the comparison reaches the step, never the key
+          SDLC_MERGE_KEY_IN_REPOSITORY: ${{ secrets.SDLC_MERGE_APP_PRIVATE_KEY != '' }}
+        run: python framework/plugin/pr/digest.py --repo "$REPO" --root .
