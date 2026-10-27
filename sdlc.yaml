@@ -59,7 +59,7 @@ commands:
   lint: "python -m ruff check ."
   # one command that installs what test/build/lint need; the CI phase jobs run it before
   # the phase; empty = nothing to install
-  setup: "python -m pip install pytest ruff"
+  setup: "python -m pip install pytest ruff polars"
   # the optional fourth target (change 0004): one command that exercises the product headless
   # and writes PNG screenshots and JSON or text state files into the folder named by the
   # environment variable SDLC_PROOF_DIR (the absolute changes/<id>-<slug>/evidence/proof/),
