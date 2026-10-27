@@ -231,7 +231,7 @@ A11 `cache-clear` defaults to `--market spot`; A12 `download` exits 1 when anyth
 - decided (by panel #2): Keep one zstd level-3 Parquet file per day as the intent requires (line 59); the build commits the generator that produces evidence/storage-measurement.md (per-day vs one yearly file, plus a higher zstd level) so the figure is reproducible and labelled synthetic, and the spec gives the owner the real-data check (download BTCUSDT 1m for one year, then cache-info) with a reopen threshold of more than 20% over a single yearly file. — Storage layout and codec level not measured: the intent asked the design to measure one
   year of BTCUSDT 1m as daily against larger files; the design keeps one file per day with
   zstd level 3 unmeasured, and the measurement moves to the build on synthetic data.
-- Assumptions where the intent is silent (A1–A12 in Design § Assumptions), the weightiest
+- decided (by panel #3): A1–A12 accepted as written, A10 keeps raising KlineGapError by default; Gap.reason tells a candle missing inside a source file apart from a day absent from both sources, and plan.md Proof gains a test with a fixture missing two consecutive candles that asserts the exact Gap start/end/candles/reason and the .frame rows in schema; no allow_gaps keyword is added — Assumptions where the intent is silent (A1–A12 in Design § Assumptions), the weightiest
   being A10: a candle missing inside a Vision file (a real exchange outage) raises
   `KlineGapError`, so a long range over a known outage always needs the caller to take
   `.frame`.

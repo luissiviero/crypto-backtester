@@ -42,6 +42,27 @@
         "No limit, guardrail or risk-list item is touched; this only shapes the evidence for this item."
       ],
       "reviewer": "Accept the deferral and close the concern as decided: keep one zstd-3 file per day; the build records the measurement as planned (plan step 10) and the owner judges the figure. Not an Important finding."
+    },
+    {
+      "advocate": "Do not close A1\u2013A12 as \"design choices the owner accepts at merge\": A10 makes the exception the normal path for real Binance data and the Proof list never tests it; require an explicit, non-silent opt-in for intra-file holes and an acceptance test for A10 before the concern is closed.",
+      "at": "2026-10-27T13:07:37Z",
+      "cost_usd": null,
+      "decision": "A1\u2013A12 accepted as written, A10 keeps raising KlineGapError by default; Gap.reason tells a candle missing inside a source file apart from a day absent from both sources, and plan.md Proof gains a test with a fixture missing two consecutive candles that asserts the exact Gap start/end/candles/reason and the .frame rows in schema; no allow_gaps keyword is added",
+      "head": "a58af68e7d9b20b5d69d11715ac8593b64ee5bac",
+      "item": "Assumptions where the intent is silent (A1\u2013A12 in Design \u00a7 Assumptions), the weightiest",
+      "item_n": 3,
+      "key": "concern:d6a8c33dc520ee6a",
+      "kind": "concern",
+      "n": 3,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both agree A10's raise is the intent's own rule (intent Sources: \"never a silently short frame\"); A1\u2013A9, A11 and A12 are uncontested.",
+        "The advocate's proof hole is a checkable fact: plan.md Proof lists only test_day_missing_from_both_sources_raises_gap_error, nothing for an in-file hole.",
+        "The safer reading closes the concern only with that behaviour proven, so the test and the distinct reason are required now.",
+        "The allow_gaps keyword is left out: KlineGapError.frame already gives a non-silent route to the partial data, and a new API surface is a scope change for the owner to request."
+      ],
+      "reviewer": "Accept A1\u2013A12 as written and have the owner close the concern as decided; no assumption breaks behaviour, leaks data or breaches a policy, and A10 is what the intent requires."
     }
   ],
   "phase": "design",
