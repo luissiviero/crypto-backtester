@@ -35,7 +35,7 @@ Function
   3 retries with backoff 1 s, 2 s, 4 s plus jitter on connection errors, timeouts, 429 and 5xx;
   `Retry-After` honoured; 404 never retried; 418 stops the run with a clear message. REST
   calls run one at a time, at the maximum page size, and pause when the used-weight header nears
-  the limit.
+  the limit or is absent.
 - R13. HTTP goes through the standard library (`urllib.request`); the fetch function is
   injectable so tests stub it. polars is the only new runtime dependency.
 
@@ -80,7 +80,8 @@ transport (retries, backoff, rate-limit pauses), the Vision source (URL, checksu
 extraction), the REST source (paging, JSON shape check), normalisation to the schema, the
 cache (root, layout, atomic write, read, info, clear), the loader (orchestration and gaps) and
 the CLI (`__main__`). Nothing outside `app/data/` changes in `app/`; `app.__version__` stays
-`0.1.0` (the intent asks no release, and `tests/test_smoke.py` pins it).
+`0.1.0` (the intent asks no release, and `tests/test_smoke.py` pins it). A standalone
+storage-measurement script sits outside the package (Design § Storage measurement).
 
 ### Public API (`from app.data import …`)
 - `load_klines(symbol: str, interval: str, start: date | str, end: date | str, *,
@@ -93,8 +94,9 @@ the CLI (`__main__`). Nothing outside `app/data/` changes in `app/`; `app.__vers
   UTC), `candles: int`, `reason: str`.
 - `Fetch` — a callable `(url: str) -> HttpResponse` with `HttpResponse(status: int,
   headers: Mapping[str, str], body: bytes)`; the default uses `urllib.request` with the
-  timeouts of R12. Retries, backoff and rate-limit pauses wrap any `Fetch`, so the stub sees
-  the same retry behaviour; the sleep function is injectable for tests.
+  timeouts of R12 and turns an `HTTPError` into an `HttpResponse` with its status. Retries,
+  backoff and rate-limit pauses wrap any `Fetch`, so the stub sees the same retry behaviour;
+  the sleep function is injectable for tests. Header names are matched case-insensitively.
 - `cache_info(...)` and `clear_cache(...)`, which back the CLI.
 - `InvalidRequestError(ValueError)` for bad parameters, `BinanceBanError` for HTTP 418.
 
@@ -109,11 +111,14 @@ the CLI (`__main__`). Nothing outside `app/data/` changes in `app/`; `app.__vers
 - Vision: `https://data.binance.vision/data/<spot|futures/um>/daily/klines/<SYMBOL>/<INTERVAL>/<SYMBOL>-<INTERVAL>-<YYYY-MM-DD>.zip`
   and the `.zip.CHECKSUM` beside it. Days run through a pool of 4 threads.
 - REST (sequential, after the Vision pass): spot `https://data-api.binance.vision/api/v3/klines`
-  (limit 1000), USDⓈ-M `https://fapi.binance.com/fapi/v1/klines` (limit 1500). Consecutive
-  missing days form one range, paged with `startTime`/`endTime` in milliseconds; an empty
-  page ends the range. Before each call, when `X-MBX-USED-WEIGHT-1M` of the last response is at
-  80 % or more of the documented per-minute limit (spot 6000, USDⓈ-M 2400), the run sleeps to
-  the next minute boundary.
+  (limit 1000; fixed, no host option), USDⓈ-M `https://fapi.binance.com/fapi/v1/klines`
+  (limit 1500). Consecutive missing days form one range, paged with `startTime`/`endTime` in
+  milliseconds; an empty page ends the range.
+- REST weight pause, before each REST call: when `X-MBX-USED-WEIGHT-1M` of the last response
+  is at 80 % or more of the documented per-minute limit (spot 6000, USDⓈ-M 2400), the run
+  sleeps to the next minute boundary; when the last response carries no such header, or it
+  does not parse as an integer, the weight is unknown and the run waits 1 s before the next
+  call (panel #1).
 - Retries (both sources): R12. A `Retry-After` longer than 60 s stops the run with the wait
   in the message instead of sleeping. 418 raises `BinanceBanError` at once and cancels the
   pending Vision downloads. Any other 4xx from REST (400 for an unknown symbol, 451 for a
@@ -164,9 +169,14 @@ The expected candles are the interval grid from `start` 00:00 UTC to the end of 
 the current day, up to the last candle whose `close_time` has passed (an unfinished candle is
 dropped: it would leak a still-moving price into a backtest). Every expected open time absent
 from the frame is missing; consecutive missing candles form one `Gap`, with the reason of its
-day: "not on Vision (404) and REST returned no candles", "REST refused (HTTP 451)", "checksum
-mismatch", "missing candles in source file", and so on. When any gap exists, `load_klines`
-raises `KlineGapError` with the gaps and the partial frame.
+day. The reason tells the two cases apart (panel #3):
+- a day with some candles whose file or REST answer lacks others: "missing candles in source
+  file" (Vision) or "missing candles in REST response" (REST);
+- a day with no candle from either source: "not on Vision (404) and REST returned no
+  candles", "REST refused (HTTP <status>)", "checksum mismatch", "checksum unavailable",
+  "malformed Vision file" or "unexpected REST response".
+When any gap exists, `load_klines` raises `KlineGapError` with the gaps and the partial frame;
+there is no keyword to suppress it.
 
 ### CLI (`python -m app.data`, argparse)
 - `download SYMBOL INTERVAL START END [--market spot|um] [--cache-dir DIR]` — fills the cache
@@ -180,6 +190,18 @@ raises `KlineGapError` with the gaps and the partial frame.
 - Expected failures (invalid parameter, 418, a too-long `Retry-After`) print one line on
   stderr saying what happened and what to do, and exit 2; no traceback.
 - `main(argv, fetch=None) -> int` is the entry point, so tests drive it with the stub.
+
+### Storage measurement (open questions 3 and 4; panel #2)
+- A committed script, `python scripts/measure_storage.py`, generates one year of synthetic 1m
+  candles (seeded random-walk prices, realistic volumes, the schema above) and prints, as a
+  markdown table, the total size of 365 daily files and of one yearly file, each at zstd level
+  3 and level 9. The build runs it and commits its output as
+  `evidence/storage-measurement.md`, labelled synthetic with the seed.
+- With `--from-cache SYMBOL INTERVAL [--market M] [--cache-dir DIR]` the same script reads the
+  cached days instead and prints the same comparison: the owner's real-data check is
+  `python -m app.data download BTCUSDT 1m <a year>` then that command (and `cache-info`).
+- Reopen rule: if the daily files come out more than 20 % larger than one yearly file, the
+  layout is reopened in a later change; until then one zstd level-3 file per day stands.
 
 ### Dependencies and CI
 - `pyproject.toml` gains `dependencies = ["polars>=1.0"]`.
@@ -207,7 +229,7 @@ A11 `cache-clear` defaults to `--market spot`; A12 `download` exits 1 when anyth
   `data-api.binance.vision` (the market-data-only mirror the intent names) is the spot
   default; USDⓈ-M has no mirror and uses `fapi.binance.com`. A refused fill (451, or any 4xx
   but 418) reports its days as gaps with the status in the reason, as the intent proposes.
-  Open as a flagged concern, since it is a choice the owner did not make.
+  Flagged as a concern, since it is a choice the owner did not make; decided by panel #1.
 - "How are gaps returned to the API caller: an exception listing them, or a result object
   with the frame and the gaps?" — answered: both in one: `load_klines` returns the DataFrame
   when the range is complete and raises `KlineGapError` carrying `.gaps` and `.frame`
@@ -218,11 +240,11 @@ A11 `cache-clear` defaults to `--market spot`; A12 `download` exits 1 when anyth
   and picks one." — carried forward: the design run has no network (`sandbox.allowed_domains`
   is empty) and writes no code, so it cannot measure. The design keeps one file per day (the
   intent's own layout, its atomic per-day writes and its closed-day REST caching all assume
-  it); the build measures one year of synthetic 1m candles with realistic price movement,
-  one file per day against one file per year, and records the two sizes in the change's
-  evidence. The owner decides on that figure; switching layout would be a later change.
+  it); the build measures a synthetic year with a committed script and the owner can repeat it
+  on real data, with a reopen rule (Design § Storage measurement; panel #2).
 - "Which Parquet compression codec and level (zstd is the expected choice)?" — zstd, as
-  expected; level 3 (the zstd default) is a design choice, measured with the question above.
+  expected; level 3 (the zstd default) is a design choice, measured against level 9 with the
+  question above.
 
 ## Flagged concerns
 - decided (by panel #1): Keep data-api.binance.vision as the fixed spot REST host (no switch) and refused fills (451, any non-418 4xx) as gaps with the status; the weight pause must treat a missing X-MBX-USED-WEIGHT-1M as unknown and pause conservatively, pinned by an offline no-header test. — Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot
@@ -244,16 +266,22 @@ A11 `cache-clear` defaults to `--market spot`; A12 `download` exits 1 when anyth
   - a range crossing 2025-01-01 has continuous UTC `open_time`s, one interval apart;
   - a Vision 404 day is filled from REST;
   - a day missing from both sources raises `KlineGapError` with that day's gap and reason;
+  - a Vision file missing two consecutive candles raises `KlineGapError` with one gap of
+    exactly those two candles (start, end, `candles == 2`, reason "missing candles in source
+    file") and a `.frame` holding every other row in the schema;
   - a second load of the same range makes zero fetch calls;
   - the cache holds `.parquet` files only, at the layout of R7;
-  - spot and futures fixtures for the same candles load into identical DataFrames;
+  - spot and futures fixtures for the same candles (spot `close_time` ending `…999999` µs,
+    futures `…999` ms) load into identical DataFrames;
   - a checksum mismatch is a gap and caches nothing; 418 raises `BinanceBanError`; 429/5xx
-    are retried at most 3 times and 404 never; invalid symbol, interval, market or dates
-    raise `InvalidRequestError` before any fetch; `cache=False` writes nothing; the current
-    day is not cached.
+    are retried at most 3 times with the recorded sleeps 1, 2, 4 s (plus jitter) and 404
+    never; invalid symbol, interval, market or dates raise `InvalidRequestError` before any
+    fetch; `cache=False` writes nothing; the current day is not cached (injected clock);
+  - REST responses without `X-MBX-USED-WEIGHT-1M` make the run wait 1 s between REST calls,
+    and a weight at 80 % of the limit sleeps to the next minute.
 - `python -m app.data download …` and `cache-info` run against the stub (through
   `main(argv, fetch=…)`) and print the outcome; `cache-clear` deletes only matching day files.
 - Build `python -m compileall -q .` (no output, exit 0), test `python -m pytest` (all pass,
   the smoke test included), lint `python -m ruff check .` (`All checks passed!`).
-- The build's evidence records the size of one synthetic year of 1m candles as 365 daily files
-  and as one file (open question 3).
+- `evidence/storage-measurement.md` holds the output of `python scripts/measure_storage.py`:
+  one synthetic year of 1m candles as 365 daily files and as one file, at zstd 3 and 9.
