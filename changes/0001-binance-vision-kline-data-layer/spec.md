@@ -225,7 +225,7 @@ A11 `cache-clear` defaults to `--market spot`; A12 `download` exits 1 when anyth
   expected; level 3 (the zstd default) is a design choice, measured with the question above.
 
 ## Flagged concerns
-- Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot
+- decided (by panel #1): Keep data-api.binance.vision as the fixed spot REST host (no switch) and refused fills (451, any non-418 4xx) as gaps with the status; the weight pause must treat a missing X-MBX-USED-WEIGHT-1M as unknown and pause conservatively, pinned by an offline no-header test. — Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot
   default with no option to switch, and turns a 451 or other 4xx REST refusal into reported
   gaps; the intent left the default open and only proposed the refusal behaviour.
 - Storage layout and codec level not measured: the intent asked the design to measure one

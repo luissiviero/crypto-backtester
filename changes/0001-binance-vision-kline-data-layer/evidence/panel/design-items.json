@@ -1,0 +1,44 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "Spot REST host and refused fills: the design picks `data-api.binance.vision` as the spot",
+      "key": "concern:55c4e0ec17343844",
+      "kind": "concern",
+      "n": 1
+    },
+    {
+      "decided": false,
+      "item": "Storage layout and codec level not measured: the intent asked the design to measure one",
+      "key": "concern:8428f0bb7ba60d43",
+      "kind": "concern",
+      "n": 2
+    },
+    {
+      "decided": false,
+      "item": "Assumptions where the intent is silent (A1\u2013A12 in Design \u00a7 Assumptions), the weightiest",
+      "key": "concern:d6a8c33dc520ee6a",
+      "kind": "concern",
+      "n": 3
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [],
+  "pending": [
+    1,
+    2,
+    3
+  ],
+  "phase": "design"
+}
