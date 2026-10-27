@@ -20,6 +20,28 @@
         "A conservative no-header path plus a pinned test closes that gap without widening scope or touching any guardrail."
       ],
       "reviewer": "Accept the design as written (close the concern): `data-api.binance.vision` as the fixed spot default and 451/other-4xx refusals reported as gaps with the status."
+    },
+    {
+      "advocate": "Do not accept the deferral as written: close the concern at design with a reasoned decision on layout and codec level, and turn the build-time \"measurement\" into either reproducible evidence or an owner-run check after merge.",
+      "at": "2026-10-27T13:07:36Z",
+      "cost_usd": null,
+      "decision": "Keep one zstd level-3 Parquet file per day as the intent requires (line 59); the build commits the generator that produces evidence/storage-measurement.md (per-day vs one yearly file, plus a higher zstd level) so the figure is reproducible and labelled synthetic, and the spec gives the owner the real-data check (download BTCUSDT 1m for one year, then cache-info) with a reopen threshold of more than 20% over a single yearly file.",
+      "head": "eebc319ba89e2c17afcfc5bd027b36a10bfc1a68",
+      "item": "Storage layout and codec level not measured: the intent asked the design to measure one",
+      "item_n": 2,
+      "key": "concern:8428f0bb7ba60d43",
+      "kind": "concern",
+      "n": 2,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree to keep per-day files; intent line 59 fixes one file per day written atomically, so a month or year layout would contradict a stated requirement.",
+        "Neither design nor build can fetch real BTCUSDT data (no allowed domains), so the intent's measurement (line 161) can only be synthetic in-run or real on the owner's machine.",
+        "They disagree on whether an uncommitted synthetic figure counts as evidence; the safer reading is the advocate's: commit the generator so a verifier can re-run it, and state that the data is synthetic.",
+        "The owner's real-data check with an explicit threshold gives the per-day choice a defined way to be reopened; zstd 3 stays as the default because the codec choice changes no schema or behaviour.",
+        "No limit, guardrail or risk-list item is touched; this only shapes the evidence for this item."
+      ],
+      "reviewer": "Accept the deferral and close the concern as decided: keep one zstd-3 file per day; the build records the measurement as planned (plan step 10) and the owner judges the figure. Not an Important finding."
     }
   ],
   "phase": "design",
