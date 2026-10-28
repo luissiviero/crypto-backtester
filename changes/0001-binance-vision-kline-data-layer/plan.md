@@ -79,6 +79,13 @@
   "Files that change". Until the owner adds `polars==2.1.0` (the version the build tested
   with) to the "Install the toolchain" step, the project CI's `python -m pytest` fails on
   `import polars`; the SDLC phase jobs are unaffected (`commands.setup` installs polars).
+- Build choices where the spec is silent (build run, 2026-10-28): (a) retries exhausted on a
+  connection error, 429 or 5xx raise `DownloadError` (the base of `BinanceBanError`, also
+  exported) rather than turning a passing outage into a gap; the CLI treats it as an expected
+  failure (one stderr line, exit 2). (b) A REST-filled closed day is cached only when it holds
+  every candle of the day: a fill cut short by a refusal mid-range would otherwise freeze a
+  partial day in the cache; Vision days are cached whatever they hold (the file is final).
+  (c) A Vision answer other than 200 or 404 makes the day a gap "Vision refused (HTTP <n>)".
 - New dependency (coding-standards rule 5, security-baseline rule 6): polars becomes the
   project's first runtime dependency, as the intent asks; it is lower-bounded in
   `pyproject.toml` and pinned in CI. The SDLC phase jobs install it unpinned

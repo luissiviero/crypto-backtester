@@ -5,15 +5,16 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import time
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import polars as pl
 import pytest
 
-from app.data import cache, http, rest, vision
+from app.data import Gap, KlineGapError, cache, http, load_klines, loader, rest, vision
 from app.data.http import BinanceBanError, DownloadError, HttpResponse, WeightPacer, with_retries
 from app.data.params import InvalidRequestError, KlineRequest, make_request
 from app.data.schema import SCHEMA, MalformedDataError, frame_from_csv, frame_from_rest
@@ -389,3 +390,178 @@ def test_cache_info_and_clear_touch_only_day_files(tmp_path: Path) -> None:
     assert cache.cache_info(tmp_path) == info[1:]
     with pytest.raises(InvalidRequestError):
         cache.clear_cache("../x", cache_dir=tmp_path)
+
+
+NOW = datetime(2025, 1, 2, 12, 0, tzinfo=timezone.utc)
+SPOT_DEC_31 = "spot-BTCUSDT-1h-2024-12-31.csv"
+SPOT_JAN_01 = "spot-BTCUSDT-1h-2025-01-01.csv"
+
+
+def utc(*args: int) -> datetime:
+    return datetime(*args, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch, sleeps: list[float]) -> None:
+    monkeypatch.setattr(loader, "utc_now", lambda: NOW)
+
+
+def load(fetch: http.Fetch, start: str, end: str, root: Path, **options: object) -> pl.DataFrame:
+    return load_klines("BTCUSDT", "1h", start, end, cache_dir=root, fetch=fetch, **options)
+
+
+def two_vision_days() -> Binance:
+    binance = Binance()
+    binance.vision("spot", "2024-12-31", SPOT_DEC_31)
+    binance.vision("spot", "2025-01-01", SPOT_JAN_01)
+    return binance
+
+
+def test_multi_day_range_loads_expected_rows_and_schema(clock: None, tmp_path: Path) -> None:
+    frame = load(two_vision_days(), "2024-12-31", "2025-01-01", tmp_path)
+    assert frame.schema == pl.Schema(SCHEMA)
+    assert frame.height == 48
+    assert frame["open_time"].is_sorted()
+    assert frame["open_time"][0] == utc(2024, 12, 31)
+    assert frame["open_time"][-1] == utc(2025, 1, 1, 23)
+    assert frame["close_time"][-1] == datetime(2025, 1, 1, 23, 59, 59, 999000, timezone.utc)
+    assert frame["trades"][:2].to_list() == [1000, 1001]
+
+
+def test_range_across_2025_has_continuous_utc_timestamps(clock: None, tmp_path: Path) -> None:
+    frame = load(two_vision_days(), "2024-12-31", "2025-01-01", tmp_path)
+    steps = frame["open_time"].diff().drop_nulls().unique().to_list()
+    assert steps == [timedelta(hours=1)]
+    assert frame["open_time"].dtype == pl.Datetime("ms", "UTC")
+
+
+def test_vision_404_day_is_filled_from_rest(clock: None, tmp_path: Path) -> None:
+    binance = Binance()
+    binance.vision("spot", "2025-01-01", SPOT_JAN_01)
+    binance.rest("rest-spot-BTCUSDT-1h-2024-12-31.json")
+    frame = load(binance, "2024-12-31", "2025-01-01", tmp_path)
+    assert frame.height == 48
+    assert frame.head(24).equals(frame_from_csv(fixture(SPOT_DEC_31)))
+    assert len(binance.rest_calls()) == 1
+    rest_day = tmp_path / "binance-vision/spot/BTCUSDT/1h/BTCUSDT-1h-2024-12-31.parquet"
+    assert rest_day.is_file()
+
+
+def test_day_missing_from_both_sources_raises_gap_error(clock: None, tmp_path: Path) -> None:
+    binance = Binance()
+    binance.vision("spot", "2024-12-31", SPOT_DEC_31)
+    with pytest.raises(KlineGapError) as caught:
+        load(binance, "2024-12-30", "2024-12-31", tmp_path)
+    reason = "not on Vision (404) and REST returned no candles"
+    assert caught.value.gaps == (Gap(utc(2024, 12, 30), utc(2024, 12, 30, 23), 24, reason),)
+    assert caught.value.frame.height == 24
+    assert not list(tmp_path.rglob("*2024-12-30*"))
+
+
+def test_candles_missing_inside_file_raise_exact_gap_with_frame(
+    clock: None, tmp_path: Path
+) -> None:
+    binance = Binance()
+    binance.vision("spot", "2024-12-30", "spot-BTCUSDT-1h-2024-12-30-missing-two.csv")
+    with pytest.raises(KlineGapError) as caught:
+        load(binance, "2024-12-30", "2024-12-30", tmp_path)
+    gap = Gap(utc(2024, 12, 30, 5), utc(2024, 12, 30, 6), 2, "missing candles in source file")
+    assert caught.value.gaps == (gap,)
+    frame = caught.value.frame
+    assert frame.schema == pl.Schema(SCHEMA)
+    assert frame.height == 22
+    hours = [moment.hour for moment in frame["open_time"]]
+    assert hours == [hour for hour in range(24) if hour not in (5, 6)]
+
+
+def test_second_load_makes_no_fetch(clock: None, tmp_path: Path) -> None:
+    first = load(two_vision_days(), "2024-12-31", "2025-01-01", tmp_path)
+    again = Binance()
+    assert load(again, "2024-12-31", "2025-01-01", tmp_path).equals(first)
+    assert again.calls == []
+
+
+def test_cache_holds_parquet_files_only(clock: None, tmp_path: Path) -> None:
+    load(two_vision_days(), "2024-12-31", "2025-01-01", tmp_path)
+    files = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
+    assert [file for file in files if not Path(tmp_path, file).is_dir()] == [
+        "binance-vision/spot/BTCUSDT/1h/BTCUSDT-1h-2024-12-31.parquet",
+        "binance-vision/spot/BTCUSDT/1h/BTCUSDT-1h-2025-01-01.parquet",
+    ]
+
+
+def test_spot_and_futures_fixtures_load_identically(clock: None, tmp_path: Path) -> None:
+    binance = Binance()
+    binance.vision("spot", "2025-01-01", SPOT_JAN_01)
+    binance.vision("um", "2025-01-01", "um-BTCUSDT-1h-2025-01-01.csv")
+    spot = load(binance, "2025-01-01", "2025-01-01", tmp_path)
+    futures = load(binance, "2025-01-01", "2025-01-01", tmp_path, market="um")
+    assert spot.equals(futures)
+    assert "/data/futures/um/daily/klines/" in binance.calls[-2]
+
+
+def test_checksum_mismatch_is_a_gap_and_not_cached(clock: None, tmp_path: Path) -> None:
+    binance = Binance()
+    binance.vision("spot", "2024-12-31", SPOT_DEC_31, checksum="ab" * 32)
+    with pytest.raises(KlineGapError) as caught:
+        load(binance, "2024-12-31", "2024-12-31", tmp_path)
+    assert [gap.reason for gap in caught.value.gaps] == ["checksum mismatch"]
+    assert binance.rest_calls() == []
+    assert not [path for path in tmp_path.rglob("*") if path.is_file()]
+
+
+def test_ban_stops_pending_vision_downloads(clock: None, tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def fetch(url: str) -> HttpResponse:
+        calls.append(url)
+        if "2024-12-01" in url:
+            return HttpResponse(418)
+        time.sleep(0.05)
+        return HttpResponse(404)
+
+    with pytest.raises(BinanceBanError):
+        load(fetch, "2024-12-01", "2024-12-20", tmp_path)
+    assert len(calls) <= 2 * loader.VISION_WORKERS
+
+
+@pytest.mark.parametrize(
+    ("symbol", "interval", "start", "end", "market"),
+    [
+        ("BTC-USDT", "1h", "2024-12-31", "2024-12-31", "spot"),
+        ("BTCUSDT", "2m", "2024-12-31", "2024-12-31", "spot"),
+        ("BTCUSDT", "1h", "2024-12-31", "2024-12-31", "futures"),
+        ("BTCUSDT", "1h", "2024-12-31", "2025-01-03", "spot"),
+    ],
+)
+def test_invalid_parameters_raise_before_any_fetch(
+    clock: None, tmp_path: Path, symbol: str, interval: str, start: str, end: str, market: str
+) -> None:
+    binance = Binance()
+    with pytest.raises(InvalidRequestError):
+        load_klines(symbol, interval, start, end, market=market, cache_dir=tmp_path, fetch=binance)
+    assert binance.calls == []
+    assert not list(tmp_path.iterdir())
+
+
+def test_no_cache_mode_writes_nothing(clock: None, tmp_path: Path) -> None:
+    binance = two_vision_days()
+    frame = load(binance, "2024-12-31", "2025-01-01", tmp_path, cache=False)
+    assert frame.height == 48
+    assert not list(tmp_path.iterdir())
+    per_load = len(binance.calls)
+    load(binance, "2024-12-31", "2025-01-01", tmp_path)
+    load(binance, "2024-12-31", "2025-01-01", tmp_path, cache=False)
+    assert len(binance.calls) == 3 * per_load
+
+
+def test_current_day_is_not_cached(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(loader, "utc_now", lambda: utc(2025, 1, 1, 5, 30))
+    binance = Binance()
+    binance.rest("rest-um-BTCUSDT-1h-2025-01-01.json")
+    frame = load(binance, "2025-01-01", "2025-01-01", tmp_path, market="um")
+    assert [moment.hour for moment in frame["open_time"]] == [0, 1, 2, 3, 4]
+    assert not [path for path in tmp_path.rglob("*") if path.is_file()]
+    load(binance, "2025-01-01", "2025-01-01", tmp_path, market="um")
+    assert len(binance.rest_calls()) == 2
+    assert binance.rest_calls()[0].startswith("https://fapi.binance.com/fapi/v1/klines?")
