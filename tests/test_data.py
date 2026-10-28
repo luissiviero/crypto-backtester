@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 import polars as pl
 import pytest
 
-from app.data import http, vision
+from app.data import http, rest, vision
 from app.data.http import BinanceBanError, DownloadError, HttpResponse, WeightPacer, with_retries
 from app.data.params import InvalidRequestError, KlineRequest, make_request
 from app.data.schema import SCHEMA, MalformedDataError, frame_from_csv, frame_from_rest
@@ -258,3 +258,65 @@ def test_vision_reads_only_the_expected_member(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(vision, "MAX_CSV_BYTES", len(data) - 1)
     with pytest.raises(MalformedDataError, match="size bound"):
         vision._extract_csv(body, "BTCUSDT-1h-2024-12-31.csv")
+
+
+DAY_MS = 86_400_000
+DEC_31_MS = 1_735_603_200_000
+
+
+@pytest.fixture
+def small_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    spot = rest.ENDPOINTS["spot"]
+    monkeypatch.setitem(rest.ENDPOINTS, "spot", rest.Endpoint(spot.url, 10, spot.weight_limit))
+
+
+def fetch_dec_31(fetch: http.Fetch, days: int = 1) -> rest.RestRange:
+    pacer = rest.pacer_for("spot")
+    return rest.fetch_range(fetch, pacer, spot_request(), DEC_31_MS, DEC_31_MS + days * DAY_MS)
+
+
+def test_rest_pages_until_an_empty_page(sleeps: list[float], small_pages: None) -> None:
+    binance = Binance()
+    binance.rest("rest-spot-BTCUSDT-1h-2024-12-31.json")
+    result = fetch_dec_31(binance, days=2)
+    assert result.failure is None
+    assert result.frame.height == 24
+    assert len(binance.rest_calls()) == 4
+    end_ms = DEC_31_MS + 2 * DAY_MS - 1
+    assert binance.rest_calls()[0] == (
+        "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h"
+        f"&startTime={DEC_31_MS}&endTime={end_ms}&limit=10"
+    )
+    assert sleeps == []
+
+
+@pytest.mark.parametrize(
+    ("answer", "failure"),
+    [
+        (HttpResponse(451, {WEIGHT: "1"}, b"{}"), "REST refused (HTTP 451)"),
+        (HttpResponse(400, {WEIGHT: "1"}, b"{}"), "REST refused (HTTP 400)"),
+        (HttpResponse(200, {WEIGHT: "1"}, b"{}"), "unexpected REST response"),
+        (HttpResponse(200, {WEIGHT: "1"}, b"[[1, 2"), "unexpected REST response"),
+    ],
+)
+def test_rest_failures_end_the_range(answer: HttpResponse, failure: str) -> None:
+    fetch, calls = sequence(answer)
+    result = fetch_dec_31(fetch)
+    assert result.failure == failure
+    assert result.frame.is_empty()
+    assert len(calls) == 1
+
+
+def test_rest_waits_when_weight_header_is_missing(sleeps: list[float], small_pages: None) -> None:
+    binance = Binance(rest_headers={})
+    binance.rest("rest-spot-BTCUSDT-1h-2024-12-31.json")
+    assert fetch_dec_31(binance).frame.height == 24
+    assert len(binance.rest_calls()) == 3
+    assert sleeps == [1.0, 1.0]
+
+
+def test_rest_pauses_when_weight_nears_limit(sleeps: list[float], small_pages: None) -> None:
+    binance = Binance(rest_headers={WEIGHT: "4800"})
+    binance.rest("rest-spot-BTCUSDT-1h-2024-12-31.json")
+    assert fetch_dec_31(binance).frame.height == 24
+    assert sleeps == [15.0, 15.0]
