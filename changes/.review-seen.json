@@ -1,0 +1,79 @@
+{
+  "0d24b3b8967d4d81": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "app/data/params.py",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:18:27Z",
+    "summary": "A datetime passes isinstance(value, date) and is accepted as start or end. It then raises a raw TypeError when compared with today's date or subtracted in day_start_ms, not InvalidRequestError."
+  },
+  "119794488fd007c2": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "app/data/loader.py",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:18:27Z",
+    "summary": "When Vision answers 200 with a CSV that has no data rows (an empty file or a header only), the day becomes a VISION outcome with an empty frame. Its gap then reads 'missing candles in source file', although the day has no candle at all, and REST is never tried for it."
+  },
+  "12a26f000f05549e": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "app/data/loader.py",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:18:27Z",
+    "summary": "When a REST range is refused partway (for example HTTP 451 on the second page), any day that already got some candles is reported as 'missing candles in REST response' and the HTTP status is lost. Every empty day in the range gets the refusal reason, even one whose page answered with no candles."
+  },
+  "192f90d781e7ed81": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": ".github/workflows/ci.yml",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:18:27Z",
+    "summary": "The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py and tests/test_data_cli.py on `import polars`, and CI goes red on the PR and on main. plan.md Risks records this as a departure, but the spec requirement is not met."
+  },
+  "6e2ecbec9d84080a": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "app/data/http.py",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:18:27Z",
+    "summary": "build_opener keeps urllib's default redirect and plain-HTTP handlers. A 3xx answer would be followed, including to an http:// URL, and that request skips the custom 10 s/60 s timeouts. I am not sure this matters: an attacker cannot inject the redirect while the hosts are reached over TLS."
+  },
+  "855ab0b4d0c179a4": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "CLAUDE.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:18:27Z",
+    "summary": "The change makes CLAUDE.md outdated. Setup still reads `python -m pip install pytest ruff` without polars, the healthy test output is still `1 passed` when 69 now pass, and line 4 still calls the project a package skeleton. The owner has to update these lines; the run may not edit the file."
+  },
+  "bf5cbdf659711a24": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "app/data/__main__.py",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:18:27Z",
+    "summary": "main() catches only InvalidRequestError, DownloadError and OSError. A CachePathError (a ValueError, for example from a symlinked directory under the cache) or a non-OSError polars write error therefore reaches the user as a traceback, not as one line on stderr. The spec does not list these as expected failures, so this is a nit."
+  }
+}

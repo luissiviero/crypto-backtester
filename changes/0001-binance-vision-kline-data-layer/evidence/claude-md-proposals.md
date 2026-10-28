@@ -1,0 +1,2 @@
+<!-- Proposed CLAUDE.md lines under "Things Claude gets wrong" (article p.34 step 5). The PR description quotes this file; only the owner edits CLAUDE.md. -->
+- The change makes CLAUDE.md outdated. Setup still reads `python -m pip install pytest ruff` without polars, the healthy test output is still `1 passed` when 69 now pass, and line 4 still calls the project a package skeleton. The owner has to update these lines; the run may not edit the file (change 0001; the owner edits CLAUDE.md)
