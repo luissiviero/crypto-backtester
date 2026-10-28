@@ -2,9 +2,6 @@
 
 ## Files that change
 - `pyproject.toml` — add `dependencies = ["polars>=1.0"]` under `[project]`.
-- `.github/workflows/ci.yml` — the install step also installs `polars==<version>`, the version
-  the build ran its tests with (`python -c "import polars; print(polars.__version__)"`; 2.1.0
-  in the runner image at design time).
 - `app/data/__init__.py` — new: re-exports the public API (`load_klines`, `KlineGapError`,
   `Gap`, `Fetch`, `HttpResponse`, `InvalidRequestError`, `BinanceBanError`, `cache_info`,
   `clear_cache`) with `__all__`.
@@ -50,7 +47,7 @@
   output of `python scripts/measure_storage.py`, labelled synthetic with the seed.
 
 ## Order of work
-1. `pyproject.toml` dependency and the CI install line; check `python -c "import polars"`.
+1. `pyproject.toml` dependency; check `python -c "import polars"`.
 2. `params.py` with tests for valid and invalid symbol, interval (`1s` on `um` refused),
    market and dates (end after today, start after end).
 3. `schema.py` with tests: µs and ms files normalise to identical frames; header row
@@ -76,6 +73,12 @@
 11. Run build, test and lint; paste their output.
 
 ## Risks
+- Departure (build run, 2026-10-28): `.github/workflows/ci.yml` is out of this run's reach —
+  the run's permission settings deny every edit under `.github/` (a workflow file also needs a
+  token with the `workflows` scope), so the CI install line was not changed and the file left
+  "Files that change". Until the owner adds `polars==2.1.0` (the version the build tested
+  with) to the "Install the toolchain" step, the project CI's `python -m pytest` fails on
+  `import polars`; the SDLC phase jobs are unaffected (`commands.setup` installs polars).
 - New dependency (coding-standards rule 5, security-baseline rule 6): polars becomes the
   project's first runtime dependency, as the intent asks; it is lower-bounded in
   `pyproject.toml` and pinned in CI. The SDLC phase jobs install it unpinned

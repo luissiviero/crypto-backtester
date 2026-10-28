@@ -3,6 +3,7 @@ name = "crypto-backtester"
 version = "0.1.0"
 description = "Trial project for the SDLC framework plugin."
 requires-python = ">=3.10"
+dependencies = ["polars>=1.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

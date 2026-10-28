@@ -1,7 +1,7 @@
 id: "0001"
 slug: binance-vision-kline-data-layer
 title: Binance Vision kline data layer
-phase: design
+phase: build
 entry_route: idea
 change_type: feature
 gate:
@@ -30,5 +30,5 @@ fast_lane:
     sha: "50436e17262bebde8eff70b2703b5e463e0f16a8"
     pr: 4
 created_at: "2026-10-27T04:20:51Z"
-updated_at: "2026-10-27T13:11:11Z"
+updated_at: "2026-10-28T16:36:07Z"
 schema_version: 1
