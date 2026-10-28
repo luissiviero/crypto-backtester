@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 import polars as pl
 import pytest
 
-from app.data import http, rest, vision
+from app.data import cache, http, rest, vision
 from app.data.http import BinanceBanError, DownloadError, HttpResponse, WeightPacer, with_retries
 from app.data.params import InvalidRequestError, KlineRequest, make_request
 from app.data.schema import SCHEMA, MalformedDataError, frame_from_csv, frame_from_rest
@@ -320,3 +320,72 @@ def test_rest_pauses_when_weight_nears_limit(sleeps: list[float], small_pages: N
     binance.rest("rest-spot-BTCUSDT-1h-2024-12-31.json")
     assert fetch_dec_31(binance).frame.height == 24
     assert sleeps == [15.0, 15.0]
+
+
+def test_cache_root_priority(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(cache.sys, "platform", "linux")
+    monkeypatch.setenv(cache.ENV_VAR, str(tmp_path / "env"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    assert cache.cache_root(tmp_path / "arg") == tmp_path / "arg"
+    assert cache.cache_root() == tmp_path / "env"
+    monkeypatch.delenv(cache.ENV_VAR)
+    assert cache.cache_root() == tmp_path / "xdg" / "crypto-backtester"
+    monkeypatch.setenv("XDG_CACHE_HOME", "relative")
+    assert cache.cache_root() == Path.home() / ".cache" / "crypto-backtester"
+    monkeypatch.setattr(cache.sys, "platform", "win32")
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    assert cache.cache_root() == tmp_path / "local" / "crypto-backtester" / "Cache"
+
+
+def test_day_path_layout_and_escape(tmp_path: Path) -> None:
+    request = spot_request()
+    path = cache.day_path(tmp_path, request, request.start)
+    expected = tmp_path / "binance-vision/spot/BTCUSDT/1h/BTCUSDT-1h-2024-12-31.parquet"
+    assert path == expected.resolve()
+    forged = KlineRequest("../../..", "1h", "spot", request.start, request.end)
+    with pytest.raises(cache.CachePathError):
+        cache.day_path(tmp_path, forged, request.start)
+
+
+def test_atomic_write_leaves_only_the_day_file(tmp_path: Path) -> None:
+    frame = frame_from_csv(fixture("spot-BTCUSDT-1h-2024-12-31.csv"))
+    path = cache.day_path(tmp_path, spot_request(), date(2024, 12, 31))
+    cache.write_day(path, frame)
+    assert [file.name for file in path.parent.iterdir()] == [path.name]
+    read = cache.read_day(path)
+    assert read is not None and read.equals(frame)
+    path.write_bytes(b"not parquet")
+    assert cache.read_day(path) is None
+
+
+def cached_days(root: Path, market: str, symbol: str, interval: str, days: list[str]) -> Path:
+    directory = root / "binance-vision" / market / symbol / interval
+    directory.mkdir(parents=True, exist_ok=True)
+    for day in days:
+        (directory / f"{symbol}-{interval}-{day}.parquet").write_bytes(b"x" * 100)
+    return directory
+
+
+def test_cache_info_and_clear_touch_only_day_files(tmp_path: Path) -> None:
+    spot = cached_days(tmp_path, "spot", "BTCUSDT", "1h", ["2024-01-01", "2024-01-02"])
+    cached_days(tmp_path, "um", "BTCUSDT", "1h", ["2024-01-01"])
+    (spot / "notes.txt").write_text("keep")
+    (spot / "ETHUSDT-1h-2024-01-01.parquet").write_text("keep")
+    info = cache.cache_info(tmp_path)
+    assert info == [
+        cache.CacheEntry("spot", "BTCUSDT", "1h", 2, 200),
+        cache.CacheEntry("um", "BTCUSDT", "1h", 1, 100),
+    ]
+    assert cache.cache_info(tmp_path, market="um", symbol="btcusdt") == info[1:]
+
+    result = cache.clear_cache("BTCUSDT", "1h", start="2024-01-02", cache_dir=tmp_path)
+    assert result == cache.ClearResult(1, 100)
+    assert sorted(file.name for file in spot.iterdir()) == [
+        "BTCUSDT-1h-2024-01-01.parquet",
+        "ETHUSDT-1h-2024-01-01.parquet",
+        "notes.txt",
+    ]
+    assert cache.clear_cache("BTCUSDT", cache_dir=tmp_path) == cache.ClearResult(1, 100)
+    assert cache.cache_info(tmp_path) == info[1:]
+    with pytest.raises(InvalidRequestError):
+        cache.clear_cache("../x", cache_dir=tmp_path)
