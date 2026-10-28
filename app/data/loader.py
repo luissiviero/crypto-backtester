@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -114,7 +114,7 @@ def sync_days(
     for day in request.days():
         outcome = outcomes[day]
         frame = _on_grid(outcome.frame, _expected_ms(request, day, now_ms))
-        outcome = DayOutcome(day, outcome.source, frame, outcome.reason)
+        outcome = replace(outcome, frame=frame)
         if root is not None and day < today and _worth_caching(request, outcome):
             day_cache.write_day(day_cache.day_path(root, request, day), frame)
         result.append(outcome)
@@ -122,25 +122,24 @@ def sync_days(
 
 
 def combine(outcomes: list[DayOutcome]) -> pl.DataFrame:
-    frames = [outcome.frame for outcome in outcomes]
-    frame = pl.concat(frames) if frames else empty_frame()
-    return frame.sort("open_time").unique(subset="open_time", keep="first", maintain_order=True)
+    """Join the days of sync_days: each is on its own grid, sorted and unique, in day order."""
+    return pl.concat([outcome.frame for outcome in outcomes])
 
 
 def find_gaps(request: KlineRequest, outcomes: list[DayOutcome], now: datetime) -> tuple[Gap, ...]:
     """Every expected open time absent from the frames; consecutive ones form one gap."""
     step = request.interval_ms
+    now_ms = _to_ms(now)
     runs: list[_Run] = []
     for outcome in outcomes:
         present = set(outcome.frame["open_time"].dt.epoch("ms").to_list())
         reason = _gap_reason(outcome)
-        for open_ms in _expected_ms(request, outcome.day, _to_ms(now)):
+        for open_ms in _expected_ms(request, outcome.day, now_ms):
             if open_ms in present:
                 continue
-            last = runs[-1] if runs else None
-            if last is not None and last.last_ms == open_ms - step and last.reason == reason:
-                last.last_ms = open_ms
-                last.candles += 1
+            if runs and runs[-1].last_ms == open_ms - step and runs[-1].reason == reason:
+                runs[-1].last_ms = open_ms
+                runs[-1].candles += 1
             else:
                 runs.append(_Run(open_ms, open_ms, 1, reason))
     return tuple(
@@ -192,14 +191,14 @@ def _vision_pass(fetch: Fetch, request: KlineRequest, days: list[date]) -> list[
 def _rest_pass(fetch: Fetch, request: KlineRequest, days: list[date]) -> dict[date, DayOutcome]:
     """Consecutive days form one REST range; ranges run one after the other."""
     pacer = rest.pacer_for(request.market)
+    open_ms = pl.col("open_time").dt.epoch("ms")
     outcomes = {}
     for first, last in _consecutive_ranges(days):
-        start_ms = day_start_ms(first)
-        answer = rest.fetch_range(fetch, pacer, request, start_ms, day_start_ms(last) + DAY_MS)
+        end_ms = day_start_ms(last) + DAY_MS
+        answer = rest.fetch_range(fetch, pacer, request, day_start_ms(first), end_ms)
         day = first
         while day <= last:
             day_ms = day_start_ms(day)
-            open_ms = pl.col("open_time").dt.epoch("ms")
             frame = answer.frame.filter((open_ms >= day_ms) & (open_ms < day_ms + DAY_MS))
             if frame.is_empty():
                 outcomes[day] = DayOutcome(day, MISSING, frame, answer.failure or NO_CANDLES)

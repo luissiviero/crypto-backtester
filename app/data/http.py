@@ -169,6 +169,6 @@ def _int_or_none(value: str | None) -> int | None:
     if value is None:
         return None
     try:
-        return int(value.strip())
+        return int(value)
     except ValueError:
         return None

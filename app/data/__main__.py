@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections import Counter
 from collections.abc import Sequence
 from itertools import groupby
 
@@ -80,9 +81,7 @@ def _download(args: argparse.Namespace, fetch: Fetch) -> int:
                 f"{gap.start:%Y-%m-%d %H:%M:%S} .. {gap.end:%Y-%m-%d %H:%M:%S} UTC  "
                 f"{_count(gap.candles, 'candle')} missing: {gap.reason}"
             )
-    counts = {source: 0 for source in (*SOURCE_LABELS, loader.MISSING)}
-    for outcome in outcomes:
-        counts[outcome.source] += 1
+    counts = Counter(outcome.source for outcome in outcomes)
     missing = sum(gap.candles for gap in gaps)
     print(
         f"Total for {request.symbol} {request.interval} {request.market}: "

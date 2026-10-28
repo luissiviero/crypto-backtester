@@ -12,13 +12,13 @@ from datetime import date
 
 import polars as pl
 
-from app.data.http import Fetch
+from app.data.http import MAX_BODY_BYTES, Fetch
 from app.data.params import KlineRequest
 from app.data.schema import MalformedDataError, frame_from_csv
 
 VISION_BASE = "https://data.binance.vision/data"
 MARKET_PATHS = {"spot": "spot", "um": "futures/um"}
-MAX_ZIP_BYTES = 64 * 1024 * 1024
+MAX_ZIP_BYTES = MAX_BODY_BYTES
 MAX_CSV_BYTES = 256 * 1024 * 1024
 
 NOT_ON_VISION = "not on Vision (404)"
@@ -73,9 +73,8 @@ def fetch_day(fetch: Fetch, request: KlineRequest, day: date) -> VisionDay:
 
 def _expected_sha256(body: bytes) -> str | None:
     tokens = body.decode("ascii", errors="replace").split()
-    if not tokens or not _SHA256.fullmatch(tokens[0].lower()):
-        return None
-    return tokens[0].lower()
+    digest = tokens[0].lower() if tokens else ""
+    return digest if _SHA256.fullmatch(digest) else None
 
 
 def _extract_csv(body: bytes, member: str) -> bytes:

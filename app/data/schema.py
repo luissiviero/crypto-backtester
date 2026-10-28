@@ -61,12 +61,12 @@ def frame_from_rest(rows: object) -> pl.DataFrame:
     for row in rows:
         if not isinstance(row, list) or len(row) < len(COLUMNS):
             raise MalformedDataError("a row is not a list of at least 11 items")
-        for index, value in enumerate(row[: len(COLUMNS)]):
-            if COLUMNS[index] in INT_COLUMNS:
+        for name, value in zip(COLUMNS, row):
+            if name in INT_COLUMNS:
                 if isinstance(value, bool) or not isinstance(value, int):
-                    raise MalformedDataError(f"{COLUMNS[index]} is not an integer")
+                    raise MalformedDataError(f"{name} is not an integer")
             elif not isinstance(value, str):
-                raise MalformedDataError(f"{COLUMNS[index]} is not a numeric string")
+                raise MalformedDataError(f"{name} is not a numeric string")
         fields.append([str(value) for value in row[: len(COLUMNS)]])
     return _frame_from_fields(fields)
 

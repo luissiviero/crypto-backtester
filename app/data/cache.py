@@ -21,6 +21,7 @@ from app.data.params import (
     validate_symbol,
 )
 from app.data.schema import SCHEMA
+from app.data.vision import file_name
 
 ENV_VAR = "CRYPTO_BACKTESTER_CACHE_DIR"
 APP_NAME = "crypto-backtester"
@@ -69,7 +70,7 @@ def cache_root(cache_dir: str | Path | None = None) -> Path:
 
 def day_path(root: Path, request: KlineRequest, day: date) -> Path:
     subtree = (root / SUBTREE).resolve()
-    name = f"{request.symbol}-{request.interval}-{day.isoformat()}.parquet"
+    name = f"{file_name(request, day)}.parquet"
     path = (subtree / request.market / request.symbol / request.interval / name).resolve()
     if not path.is_relative_to(subtree):
         raise CachePathError(f"{path} is outside {subtree}")
