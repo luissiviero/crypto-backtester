@@ -1,0 +1,18 @@
+{
+  "decided": 0,
+  "gate": "continue",
+  "items": [],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 1,
+    "used": 3
+  },
+  "parks": [],
+  "pending": [],
+  "phase": "build"
+}
