@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
+import zipfile
 from datetime import date, datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import polars as pl
 import pytest
 
-from app.data import http
+from app.data import http, vision
 from app.data.http import BinanceBanError, DownloadError, HttpResponse, WeightPacer, with_retries
-from app.data.params import InvalidRequestError, make_request
+from app.data.params import InvalidRequestError, KlineRequest, make_request
 from app.data.schema import SCHEMA, MalformedDataError, frame_from_csv, frame_from_rest
 
 FIXTURES = Path(__file__).parent / "fixtures" / "binance"
@@ -46,6 +50,51 @@ def sequence(*answers: HttpResponse | Exception) -> tuple[http.Fetch, list[str]]
         return answer
 
     return fetch, calls
+
+
+def zip_of(members: dict[str, bytes]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in members.items():
+            archive.writestr(name, data)
+    return buffer.getvalue()
+
+
+class Binance:
+    """A stub Fetch: Vision days built from fixtures, REST pages served from JSON fixtures.
+
+    Unknown URLs answer 404. Every URL asked for is recorded in `calls`.
+    """
+
+    def __init__(self, rest_headers: dict[str, str] | None = None) -> None:
+        self.responses: dict[str, HttpResponse] = {}
+        self.rest_rows: list[list[object]] = []
+        self.rest_headers = rest_headers if rest_headers is not None else {WEIGHT: "10"}
+        self.calls: list[str] = []
+
+    def vision(self, market: str, day: str, csv: str, *, checksum: str | None = None) -> None:
+        request = make_request("BTCUSDT", "1h", day, day, market, TODAY)
+        url = vision.day_url(request, request.start)
+        body = zip_of({f"BTCUSDT-1h-{day}.csv": fixture(csv)})
+        digest = checksum or hashlib.sha256(body).hexdigest()
+        self.responses[url] = HttpResponse(200, {}, body)
+        self.responses[f"{url}.CHECKSUM"] = HttpResponse(200, {}, f"{digest}  x.zip\n".encode())
+
+    def rest(self, name: str) -> None:
+        self.rest_rows.extend(json.loads(fixture(name)))
+
+    def rest_calls(self) -> list[str]:
+        return [url for url in self.calls if "/klines?" in url]
+
+    def __call__(self, url: str) -> HttpResponse:
+        self.calls.append(url)
+        if "/klines?" in url:
+            query = {key: values[0] for key, values in parse_qs(urlsplit(url).query).items()}
+            start, end = int(query["startTime"]), int(query["endTime"])
+            rows = [row for row in self.rest_rows if start <= row[0] <= end]
+            body = json.dumps(rows[: int(query["limit"])]).encode()
+            return HttpResponse(200, self.rest_headers, body)
+        return self.responses.get(url, HttpResponse(404))
 
 
 @pytest.mark.parametrize(
@@ -176,3 +225,36 @@ def test_weight_pacer(sleeps: list[float], headers: dict[str, str], expected: li
     pacer.record(HttpResponse(200, headers))
     pacer.wait()
     assert sleeps == expected
+
+
+def spot_request(day: str = "2024-12-31") -> KlineRequest:
+    return make_request("BTCUSDT", "1h", day, day, "spot", TODAY)
+
+
+def test_vision_day_checks_the_checksum() -> None:
+    binance = Binance()
+    binance.vision("spot", "2024-12-31", "spot-BTCUSDT-1h-2024-12-31.csv")
+    request = spot_request()
+    good = vision.fetch_day(binance, request, request.start)
+    assert good.reason is None and good.frame is not None and good.frame.height == 24
+    url = "https://data.binance.vision/data/spot/daily/klines/BTCUSDT/1h/BTCUSDT-1h-2024-12-31.zip"
+    assert binance.calls == [url, f"{url}.CHECKSUM"]
+
+    binance.vision("spot", "2024-12-31", "spot-BTCUSDT-1h-2024-12-31.csv", checksum="0" * 64)
+    assert vision.fetch_day(binance, request, request.start).reason == "checksum mismatch"
+
+    binance.responses.pop(binance.calls[1])
+    assert vision.fetch_day(binance, request, request.start).reason == "checksum unavailable"
+
+
+def test_vision_reads_only_the_expected_member(monkeypatch: pytest.MonkeyPatch) -> None:
+    data = fixture("spot-BTCUSDT-1h-2024-12-31.csv")
+    body = zip_of({"../../evil.csv": b"x", "BTCUSDT-1h-2024-12-31.csv": data})
+    assert vision._extract_csv(body, "BTCUSDT-1h-2024-12-31.csv") == data
+    with pytest.raises(MalformedDataError):
+        vision._extract_csv(zip_of({"other.csv": data}), "BTCUSDT-1h-2024-12-31.csv")
+    with pytest.raises(MalformedDataError):
+        vision._extract_csv(b"not a zip", "BTCUSDT-1h-2024-12-31.csv")
+    monkeypatch.setattr(vision, "MAX_CSV_BYTES", len(data) - 1)
+    with pytest.raises(MalformedDataError, match="size bound"):
+        vision._extract_csv(body, "BTCUSDT-1h-2024-12-31.csv")
