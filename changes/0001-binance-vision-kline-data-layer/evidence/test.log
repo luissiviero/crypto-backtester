@@ -1,4 +1,4 @@
-# python -m pytest — exit 0 — 1.2s — 2026-10-28T17:15:37Z
+# python -m pytest — exit 0 — 1.2s — 2026-10-28T17:23:35Z
 ============================= test session starts ==============================
 platform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0
 rootdir: /home/runner/work/crypto-backtester/crypto-backtester

@@ -8,7 +8,7 @@ gate:
   phase: deploy
   result: parked
   reason: "findings: 2 Important review finding(s) open"
-  at: "2026-10-28T17:22:57Z"
+  at: "2026-10-28T17:23:35Z"
 parked_reason: "findings: 2 Important review finding(s) open"
 iterations: 0
 panel_calls: 3
@@ -30,5 +30,5 @@ fast_lane:
     sha: "50436e17262bebde8eff70b2703b5e463e0f16a8"
     pr: 4
 created_at: "2026-10-27T04:20:51Z"
-updated_at: "2026-10-28T17:22:57Z"
+updated_at: "2026-10-28T17:23:35Z"
 schema_version: 1
