@@ -5,10 +5,10 @@ phase: test
 entry_route: idea
 change_type: feature
 gate:
-  phase: build
+  phase: test
   result: passed
   reason: null
-  at: "2026-10-28T17:09:44Z"
+  at: "2026-10-28T17:15:17Z"
 parked_reason: null
 iterations: 0
 panel_calls: 3
@@ -30,5 +30,5 @@ fast_lane:
     sha: "50436e17262bebde8eff70b2703b5e463e0f16a8"
     pr: 4
 created_at: "2026-10-27T04:20:51Z"
-updated_at: "2026-10-28T17:10:43Z"
+updated_at: "2026-10-28T17:15:17Z"
 schema_version: 1
