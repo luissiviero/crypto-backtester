@@ -1,0 +1,12 @@
+{
+  "reviewer": "accept the deferral: keep one zstd-3 file per day and let the build record the measurement (plan step 10) for the owner to judge, noting the data is synthetic",
+  "advocate": "reject the deferral as written: decide layout and level at design on an estimate, since a synthetic, unreproducible build figure cannot change the layout, and give the owner a real-data check after merge",
+  "decision": "Keep one zstd level-3 Parquet file per day as the intent requires (line 59); the build commits the generator that produces evidence/storage-measurement.md (per-day vs one yearly file, plus a higher zstd level) so the figure is reproducible and labelled synthetic, and the spec gives the owner the real-data check (download BTCUSDT 1m for one year, then cache-info) with a reopen threshold of more than 20% over a single yearly file.",
+  "rationale": [
+    "Both verdicts agree to keep per-day files; intent line 59 fixes one file per day written atomically, so a month or year layout would contradict a stated requirement.",
+    "Neither design nor build can fetch real BTCUSDT data (no allowed domains), so the intent's measurement (line 161) can only be synthetic in-run or real on the owner's machine.",
+    "They disagree on whether an uncommitted synthetic figure counts as evidence; the safer reading is the advocate's: commit the generator so a verifier can re-run it, and state that the data is synthetic.",
+    "The owner's real-data check with an explicit threshold gives the per-day choice a defined way to be reopened; zstd 3 stays as the default because the codec choice changes no schema or behaviour.",
+    "No limit, guardrail or risk-list item is touched; this only shapes the evidence for this item."
+  ]
+}

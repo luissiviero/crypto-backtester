@@ -1,0 +1,11 @@
+{
+  "reviewer": "accept as written: the mirror as the fixed spot default and 451/other non-418 4xx refusals reported as gaps with the status",
+  "advocate": "keep the mirror default but add an allow-listed spot host override and make the weight pause safe when the mirror omits X-MBX-USED-WEIGHT-1M",
+  "decision": "Keep data-api.binance.vision as the fixed spot REST host (no switch) and refused fills (451, any non-418 4xx) as gaps with the status; the weight pause must treat a missing X-MBX-USED-WEIGHT-1M as unknown and pause conservatively, pinned by an offline no-header test.",
+  "rationale": [
+    "Both verdicts agree on the mirror as default and on refusals-as-gaps; the intent names both hosts and proposes 'gaps with the reason', and 418 still stops the run.",
+    "The host override is not taken: the intent asks for no option, coding-standards rule 3 forbids unasked scope, and a later small change can add it if the owner wants it.",
+    "They disagree on the 418 guard; the safer reading wins: the intent's hard rule is never get the IP banned, and a pause keyed to a header the mirror may not send would be dead code.",
+    "A conservative no-header path plus a pinned test closes that gap without widening scope or touching any guardrail."
+  ]
+}

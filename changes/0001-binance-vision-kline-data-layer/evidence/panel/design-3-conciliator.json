@@ -1,0 +1,11 @@
+{
+  "reviewer": "accept A1–A12 as written; A10 is what the intent's \"never a silently short frame\" requires",
+  "advocate": "do not close yet: A10 is untested and makes raising the normal path, so add an allow_gaps opt-in, a distinct Gap.reason for in-file holes and an A10 test in Proof",
+  "decision": "A1–A12 accepted as written, A10 keeps raising KlineGapError by default; Gap.reason tells a candle missing inside a source file apart from a day absent from both sources, and plan.md Proof gains a test with a fixture missing two consecutive candles that asserts the exact Gap start/end/candles/reason and the .frame rows in schema; no allow_gaps keyword is added",
+  "rationale": [
+    "Both agree A10's raise is the intent's own rule (intent Sources: \"never a silently short frame\"); A1–A9, A11 and A12 are uncontested.",
+    "The advocate's proof hole is a checkable fact: plan.md Proof lists only test_day_missing_from_both_sources_raises_gap_error, nothing for an in-file hole.",
+    "The safer reading closes the concern only with that behaviour proven, so the test and the distinct reason are required now.",
+    "The allow_gaps keyword is left out: KlineGapError.frame already gives a non-silent route to the partial data, and a new API surface is a scope change for the owner to request."
+  ]
+}

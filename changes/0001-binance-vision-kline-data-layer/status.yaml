@@ -1,0 +1,34 @@
+id: "0001"
+slug: binance-vision-kline-data-layer
+title: Binance Vision kline data layer
+phase: design
+entry_route: idea
+change_type: feature
+gate:
+  phase: design
+  result: passed
+  reason: waiting for the owner at gate (design)
+  at: "2026-10-27T13:11:11Z"
+parked_reason: null
+iterations: 0
+panel_calls: 3
+external_ref: null
+risk_accepted: []
+tests_locked: false
+risk_accepted_by: []
+iterations_reset_by: null
+iterations_reset_at: null
+tests_unlocked_by: null
+runbook_authorized_by: null
+abandoned_reason: null
+build_pr: null
+released_at: null
+released_sha: null
+released_pr: null
+fast_lane:
+  intent:
+    sha: "50436e17262bebde8eff70b2703b5e463e0f16a8"
+    pr: 4
+created_at: "2026-10-27T04:20:51Z"
+updated_at: "2026-10-27T13:11:11Z"
+schema_version: 1
