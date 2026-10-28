@@ -1,0 +1,36 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "Important finding at .github/workflows/ci.yml:25: The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py (`import polars`) on every push to main and every PR; plan.md records the departure, but the spec requirement is unmet and CI goes red. [spec.md Design \u00a7 Dependencies and CI (CI installs polars, pinned); intent Affected systems (CI must install the project)]",
+      "key": "finding:192f90d781e7ed81",
+      "kind": "finding",
+      "n": 1
+    },
+    {
+      "decided": false,
+      "item": "Important finding at CLAUDE.md:5: The change makes CLAUDE.md outdated: it still calls the project a package skeleton with one smoke test, gives `python -m pip install pytest ruff` (no polars, 'declares no extras') as setup, and `1 passed` as the healthy test output (now 69 passed); the run cannot edit it, so the owner needs to update it in their own PR. [REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated]",
+      "key": "finding:266ff10a5f51b0f4",
+      "kind": "finding",
+      "n": 2
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 1,
+    "used": 3
+  },
+  "parks": [],
+  "pending": [
+    1,
+    2
+  ],
+  "phase": "deploy"
+}

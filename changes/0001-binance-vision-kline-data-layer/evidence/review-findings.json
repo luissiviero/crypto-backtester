@@ -1,75 +1,48 @@
 {
-  "at": "2026-10-28T17:18:04Z",
+  "at": "2026-10-28T17:22:16Z",
   "findings": [
     {
       "file": ".github/workflows/ci.yml",
-      "line": 24,
+      "line": 25,
       "pass": "compliance",
-      "rule": "spec.md Design \u00a7 Dependencies and CI: the project CI installs polars beside pytest and ruff, pinned like them",
+      "rule": "spec.md Design \u00a7 Dependencies and CI (CI installs polars, pinned); intent Affected systems (CI must install the project)",
       "severity": "important",
       "signature": "192f90d781e7ed81",
-      "summary": "The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py and tests/test_data_cli.py on `import polars`, and CI goes red on the PR and on main. plan.md Risks records this as a departure, but the spec requirement is not met."
+      "summary": "The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py (`import polars`) on every push to main and every PR; plan.md records the departure, but the spec requirement is unmet and CI goes red."
     },
     {
       "file": "CLAUDE.md",
-      "line": 9,
+      "line": 5,
       "pass": "compliance",
-      "rule": "REVIEW.md Framework rules: Flag when the change has made CLAUDE.md outdated",
+      "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
       "severity": "important",
-      "signature": "855ab0b4d0c179a4",
-      "summary": "The change makes CLAUDE.md outdated. Setup still reads `python -m pip install pytest ruff` without polars, the healthy test output is still `1 passed` when 69 now pass, and line 4 still calls the project a package skeleton. The owner has to update these lines; the run may not edit the file."
-    },
-    {
-      "file": "app/data/__main__.py",
-      "line": 27,
-      "pass": "compliance",
-      "rule": "ux-and-brand rule 4: no stack trace for an expected failure",
-      "severity": "nit",
-      "signature": "bf5cbdf659711a24",
-      "summary": "main() catches only InvalidRequestError, DownloadError and OSError. A CachePathError (a ValueError, for example from a symlinked directory under the cache) or a non-OSError polars write error therefore reaches the user as a traceback, not as one line on stderr. The spec does not list these as expected failures, so this is a nit."
+      "signature": "266ff10a5f51b0f4",
+      "summary": "The change makes CLAUDE.md outdated: it still calls the project a package skeleton with one smoke test, gives `python -m pip install pytest ruff` (no polars, 'declares no extras') as setup, and `1 passed` as the healthy test output (now 69 passed); the run cannot edit it, so the owner needs to update it in their own PR."
     },
     {
       "file": "app/data/http.py",
       "line": 78,
       "pass": "security",
-      "rule": "security-baseline rule 6: TLS verification stays on",
+      "rule": "security-baseline rule 7 as applied in spec.md (runtime calls only the three Binance hosts); R12 timeouts",
       "severity": "nit",
-      "signature": "6e2ecbec9d84080a",
-      "summary": "build_opener keeps urllib's default redirect and plain-HTTP handlers. A 3xx answer would be followed, including to an http:// URL, and that request skips the custom 10 s/60 s timeouts. I am not sure this matters: an attacker cannot inject the redirect while the hosts are reached over TLS."
-    },
-    {
-      "file": "app/data/loader.py",
-      "line": 225,
-      "pass": "bugs",
-      "rule": "spec.md Design \u00a7 Sources: a refused fill's days become gaps with the status in the reason",
-      "severity": "nit",
-      "signature": "12a26f000f05549e",
-      "summary": "When a REST range is refused partway (for example HTTP 451 on the second page), any day that already got some candles is reported as 'missing candles in REST response' and the HTTP status is lost. Every empty day in the range gets the refusal reason, even one whose page answered with no candles."
-    },
-    {
-      "file": "app/data/loader.py",
-      "line": 262,
-      "pass": "bugs",
-      "rule": "spec.md Design \u00a7 Gaps: a day with no candle from either source carries a no-candle reason",
-      "severity": "nit",
-      "signature": "119794488fd007c2",
-      "summary": "When Vision answers 200 with a CSV that has no data rows (an empty file or a header only), the day becomes a VISION outcome with an empty frame. Its gap then reads 'missing candles in source file', although the day has no candle at all, and REST is never tried for it."
+      "signature": "4293ca6feec9d572",
+      "summary": "build_opener keeps the default redirect handler and plain-HTTP handler, so a 3xx from a Binance host would be followed to any host, including over http:// with no timeout. That breaks the 'only the three Binance hosts' and 10 s/60 s timeout assumptions. It is unlikely in practice (doubt: Binance does not redirect these paths today)."
     },
     {
       "file": "app/data/params.py",
       "line": 78,
       "pass": "bugs",
-      "rule": "spec.md Design \u00a7 Parameters: validated before any URL or path is built",
+      "rule": "spec.md Design \u00a7 Parameters (validated before any URL or path is built)",
       "severity": "nit",
-      "signature": "0d24b3b8967d4d81",
-      "summary": "A datetime passes isinstance(value, date) and is accepted as start or end. It then raises a raw TypeError when compared with today's date or subtracted in day_start_ms, not InvalidRequestError."
+      "signature": "49e9f4984d810772",
+      "summary": "parse_date returns a `datetime` unchanged because datetime is a subclass of date, so `load_klines(..., start=datetime(...))` raises a bare TypeError from `end_day > today` (datetime vs date) instead of InvalidRequestError or a normalised `.date()`."
     }
   ],
-  "head": "d5e39f078243710500a9df7c16604348fab3d9cd",
+  "head": "faaad89ec0930ee4aecd22bd45606d57fc2d9fe0",
   "schema_version": 1,
   "tally": {
     "important": 2,
-    "nit": 5,
-    "nits_omitted": 2
+    "nit": 2,
+    "nits_omitted": 0
   }
 }

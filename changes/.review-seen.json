@@ -36,12 +36,45 @@
     "changes": [
       "0001"
     ],
-    "count": 1,
+    "count": 2,
     "file": ".github/workflows/ci.yml",
     "first_change": "0001",
     "last_change": "0001",
-    "last_seen": "2026-10-28T17:18:27Z",
-    "summary": "The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py and tests/test_data_cli.py on `import polars`, and CI goes red on the PR and on main. plan.md Risks records this as a departure, but the spec requirement is not met."
+    "last_seen": "2026-10-28T17:22:40Z",
+    "summary": "The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py (`import polars`) on every push to main and every PR; plan.md records the departure, but the spec requirement is unmet and CI goes red."
+  },
+  "266ff10a5f51b0f4": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "CLAUDE.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:22:40Z",
+    "summary": "The change makes CLAUDE.md outdated: it still calls the project a package skeleton with one smoke test, gives `python -m pip install pytest ruff` (no polars, 'declares no extras') as setup, and `1 passed` as the healthy test output (now 69 passed); the run cannot edit it, so the owner needs to update it in their own PR."
+  },
+  "4293ca6feec9d572": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "app/data/http.py",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:22:40Z",
+    "summary": "build_opener keeps the default redirect handler and plain-HTTP handler, so a 3xx from a Binance host would be followed to any host, including over http:// with no timeout. That breaks the 'only the three Binance hosts' and 10 s/60 s timeout assumptions. It is unlikely in practice (doubt: Binance does not redirect these paths today)."
+  },
+  "49e9f4984d810772": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "app/data/params.py",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-10-28T17:22:40Z",
+    "summary": "parse_date returns a `datetime` unchanged because datetime is a subclass of date, so `load_klines(..., start=datetime(...))` raises a bare TypeError from `end_day > today` (datetime vs date) instead of InvalidRequestError or a normalised `.date()`."
   },
   "6e2ecbec9d84080a": {
     "changes": [
