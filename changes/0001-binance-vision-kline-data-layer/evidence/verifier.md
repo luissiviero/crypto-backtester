@@ -1,97 +1,85 @@
-## Verifier report: change 0001 (Binance Vision kline data layer), build phase, re-verification
+# Verifier report: change 0001, binance-vision-kline-data-layer (test phase)
 
-I checked branch `sdlc/0001/build` at HEAD `7e0f606d2d9ec7136f8db733705c650dd1d5ecdb`. `SDLC_GATE_COMMANDS=runner` is set, so I did not run build, test or lint, nor pytest with `-k`. I read the previous phase's gate record instead.
+The change matches the plan. All 19 Proof tests exist under the names the plan gives, the code does what spec.md asks, and the build gate's run of the three targets was green. Two caveats, both below: permission prompts blocked my own stubbed runs of the loader, and the final tree's result belongs to the runner.
 
-**Blocked:** two of my commands were denied because they needed approval and this session cannot get it: `cat plan.md; cat spec.md`, and the first version of my exercise script, which wrote a file and then ran it. I read plan.md and spec.md with the Read tool instead, and ran the script inline as a single `python -c` command. Nothing was skipped because of the denials.
+## Commands run
 
-### Commands run
-I read the record of the design phase, `evidence/gate-design.json`: the runner's run on commit `8bab7390db810111a16f75c1c8ed082360de9032` of 2026-10-27T13:10:49Z. That is the tree the phase started from, not the final tree. The final tree's result belongs to the runner, which runs the three targets once after this session and shows the result in the check run `sdlc/test`. Nothing reported here stands in for it.
+This is a CI session (`SDLC_GATE_COMMANDS=runner`), so I did not run the targets. The results below are **read, not run**.
 
-- `commands` check: `ok: true`, `"build, test and lint exit 0"`, `details.ran_by: runner`, no `deferred` (read, not run)
-  - `python -m compileall -q .`: exit 0, output `""`
-  - `python -m pytest`: exit 0, last lines `collected 1 item` / `tests/test_smoke.py .  [100%]` / `1 passed in 0.01s`
-  - `python -m ruff check .`: exit 0, `All checks passed!`
-- The design gate record has no `evidence` check. No check carries `deferred: true`. The record's `result` is `wait`, with label `sdlc:design-ready`.
-- `evidence/test.log`, `build.log` and `lint.log` do not exist in this phase (`ls *.log`: no such file).
-- `gate-build.json` is not present, so there was no earlier round's record to set aside.
+**Which tree:** I read `evidence/gate-build.json`, the runner's run on commit `e8897a31937ec2f17d0069c4292d62bdb15413cd` of `2026-10-28T17:09:13Z`. That is the tree the test phase started from, not the final one. The final tree's result is the runner's: it runs the three targets once after this session and shows the result in the check run `sdlc/test` and in `gate-test.json`. A red target there starts the next fix round by itself, and nothing here stands in for it.
 
-### Behavior exercised
-I made direct calls through `tests/binance_stub.Binance`, with `loader.utc_now` set to 2025-01-02 12:00 UTC and `http.sleep` recording the waits. All caches went to temp dirs under `/tmp/claude-1001/v`.
+`git diff --stat e8897a3 HEAD` (HEAD is `6a949d9`) touches only files under `changes/0001-…/evidence/` and `status.yaml`. No code, test or fixture changed since that run.
 
-**Changed behaviour (plan Risks (d)):**
-- **418 during Vision:** Vision answered 2024-12-31 at once and gave 418 for 2025-01-01 after 0.2 s.
-  - Result: `BinanceBanError: Binance answered HTTP 418 for …2025-01-01.zip: this IP address is banned for a while; wait before running again`.
-  - Cache afterwards: `['BTCUSDT-1h-2024-12-31.parquet']`.
-  - Rerun with a good stub: 48 rows, calls `['BTCUSDT-1h-2025-01-01.zip', 'BTCUSDT-1h-2025-01-01.zip.CHECKSUM']`. The cached day was not refetched.
-- **Vision retries exhausted (503):**
-  - Result: `DownloadError: …2025-01-01.zip: HTTP 503 after 3 retries; check the network and run again`.
-  - Sleeps: `[1.08, 2.09, 4.25]`. Cache: `['BTCUSDT-1h-2024-12-31.parquet']`.
-  - Rerun called only the 2025-01-01 zip and its `.CHECKSUM`.
-- **REST retries exhausted on a later range:** 2024-12-29 came from REST, 2024-12-30 from Vision, and REST for 2024-12-31 gave 502.
-  - Result: `DownloadError: …klines?…startTime=1735603200000&endTime=1735689599999&limit=1000: HTTP 502 after 3 retries`.
-  - Cache: `['BTCUSDT-1h-2024-12-29.parquet', 'BTCUSDT-1h-2024-12-30.parquet']`.
-  - Rerun fetched only 12-31 (its zip, then REST). The only gap left was 12-30 05:00–06:00, 2 candles, reason "missing candles in source file". That gap is in the fixture itself and was served from the cache.
-- **Int64 bounds:**
+From `gate-build.json` (`result: continue`). Every check is `ok: true`, and none carries `details.deferred`. The `commands` entry has `ran_by: runner`:
+- `python -m compileall -q .`: exit 0, output `""`
+- `python -m pytest`: exit 0. Tail:
+  ```
+  tests/test_data.py ..................................................... [ 76%]
+  ......                                                                   [ 85%]
+  tests/test_data_cli.py .........                                         [ 98%]
+  tests/test_smoke.py .                                                    [100%]
+  ============================== 69 passed in 0.55s ==============================
+  ```
+- `python -m ruff check .`: exit 0, `All checks passed!`
+- The `evidence` check is `ok: true`, "evidence present: verifier.md".
 
-  | `trades` value | result |
-  |---|---|
-  | `9223372036854775807` | `[9223372036854775807]` |
-  | `-9223372036854775808` | `[-9223372036854775808]` |
-  | `9223372036854775808` | `MalformedDataError … does not fit a 64-bit integer` |
-  | `-9223372036854775809` | `MalformedDataError … does not fit a 64-bit integer` |
-  | `99999999999999999999` | `MalformedDataError … does not fit a 64-bit integer` |
+First lines of the logs. This session wrote these minutes ago as placeholders and the runner replaces them, so they are not failures:
+- `evidence/test.log`: `# python -m pytest — deferred to the runner — 2026-10-28T17:10:48Z`
+- `evidence/build.log`: `# python -m compileall -q . — deferred to the runner — 2026-10-28T17:10:48Z`
+- `evidence/lint.log`: `# python -m ruff check . — deferred to the runner — 2026-10-28T17:10:48Z`
 
-- **Unusable `--cache-dir`** (a regular file passed as the cache dir) with `download`: exit 2, one stderr line: `"error: [Errno 20] Not a directory: '…/file/binance-vision/spot/BTCUSDT/1h'; check the cache directory (--cache-dir)\n"`.
+## Behavior exercised
 
-**The earlier set:**
-- **Multi-day load:** 48 rows, schema as in spec § Schema (ms UTC Datetime, Float64, `trades` Int64), sorted.
-- **Crossing 2025-01-01:** the only step between rows is `timedelta(seconds=3600)`.
-- **Cache layout:** the two `.parquet` files only.
-- **Second load:** equal frame, `calls []`.
-- **404 → REST:** 48 rows, 1 REST call, both days cached.
-- **Day missing from both sources:** `Gap(2024-12-30 00:00, 23:00, 24, 'not on Vision (404) and REST returned no candles')`, frame 24 rows, 12-30 not cached.
-- **Two candles missing inside a file:** `Gap(05:00, 06:00, 2, 'missing candles in source file')`, frame 22 rows.
-- **`cache=False`:** no files.
-- **Current day** (synthetic 2025-01-02 CSV): 12 rows, last open 11:00, last close 11:59:59.999. Nothing cached, and a second load refetched (2 calls).
-- **Spot vs futures:** identical frames.
+**Proof tests exist.** I checked every `- test:` line in plan.md for `def <name>(` in the named file. All 19 are present: 16 in `tests/test_data.py` and 3 in `tests/test_data_cli.py`.
 
-**CLI** (`main(argv, fetch=stub)`):
-- `download` of 2025-01-01: `fetched from Vision (1 day)`, exit 0.
-- `download` of 2024-12-30..2025-01-01: not found / filled from REST / skipped lines plus the total, exit 1.
-- `cache-info`: table showing `spot BTCUSDT 1h 2 10.0 KiB`, exit 0.
-- `cache-clear BTCUSDT 1h --start/--end 2024-12-31`: `Deleted 1 day file (5.0 KiB)`, exit 0; only 2025-01-01 is left.
-- `download` with a 418: exit 2, one stderr line.
+**CLI runs.** These were direct, offline, with a scratch cache at `/tmp/claude/vc`:
+- `python -m app.data download BTC/USDT 1h 2024-12-31 2024-12-31 …` → exit 2, `error: invalid symbol 'BTC/USDT': use 2 to 30 letters or digits, for example BTCUSDT`
+- `python -m app.data download BTCUSDT 1s 2024-12-31 2024-12-31 --market um …` → exit 2, `error: interval '1s' exists on the spot market only`
+- `python -m app.data download BTCUSDT 1h 2099-01-01 2099-01-01 …` → exit 2, `error: end 2099-01-01 is in the future (today is 2026-10-28 UTC)`
+- `python -m app.data download BTCUSDT 1h 2024-12-31 2024-12-30 …` → exit 2, `error: start 2024-12-31 is after end 2024-12-30`
+- `python -m app.data cache-info --cache-dir /tmp/claude/vc` → `No cached klines under /tmp/claude/vc/binance-vision.`
+- `python -m app.data cache-clear BTCUSDT 1h --cache-dir /tmp/claude/vc` → `Nothing to delete: no cached day files match BTCUSDT 1h spot.`
 
-**Input just outside:** an end date of 2025-01-03 raises `InvalidRequestError end 2025-01-03 is in the future (today is 2025-01-02 UTC)` with `calls []`.
+Each failure was one stderr line, no traceback, exit 2, and no network call: validation happens before any fetch, as the spec asks.
 
-**Neighbouring flows:**
-- Package import: `app.__version__ 0.1.0`, and `app.data.__all__` holds the plan's names plus `DownloadError` (plan Risks (a) adds it).
-- `python scripts/measure_storage.py`: output is the same as `evidence/storage-measurement.md` (daily vs yearly +15.4 % at zstd 3, +20.0 % at zstd 9).
+**Blocked: stubbed loader runs.** I wanted to call `load_klines` through `tests/binance_stub.Binance` for each Acceptance item. The permission policy denied it twice: once for an inline stdin script ("brace with quote character"), and once for a compound shell command. There is no approval surface in this session. These items therefore rest on reading the code and the test bodies, not on calls I made.
 
-**Proof items:** all 19 test names in plan.md Proof are in `tests/test_data.py` (16) and `tests/test_data_cli.py` (3). Their results are the runner's to report.
+**Code read against spec.md.** In `app/data/`:
+- **Parameters:** `params.py` has the market and interval sets, `1s` on spot only, the symbol pattern, start ≤ end, and end ≤ today.
+- **Retries:** in `http.py`, at most 3 retries with sleeps of 1/2/4 s plus jitter. 404 and other 4xx are returned without a retry. 418 raises `BinanceBanError`, and a `Retry-After` over 60 s stops the run. Header lookup ignores case.
+- **Weight pause:** when the weight header is missing or does not parse, the run waits 1 s; at 80 % of the limit or more it sleeps to the next minute.
+- **Timeouts:** 10 s to connect, then 60 s per read.
+- **Vision files:** `vision.py` checks the SHA-256 against `.CHECKSUM` (missing or wrong → gap), reads only the named CSV member, and enforces the 64 MiB zip / 256 MiB CSV bounds in memory.
+- **REST:** `rest.py` uses `data-api.binance.vision` with limit 1000 for spot and `fapi.binance.com` with limit 1500 for um. It pages with an inclusive `endTime`; an empty page ends the range, and a non-200 answer becomes `REST refused (HTTP n)`.
+- **Schema:** `schema.py` gives ms UTC time columns, floors µs to ms, and detects the unit from 10^14.
+- **Cache:** in `cache.py`, the root comes from the argument, then the env var, then XDG / `~/.cache` / `%LOCALAPPDATA%`. Writes are atomic (temp file in the same directory, then `os.replace`), and paths are checked to stay inside `binance-vision/`. `clear_cache` deletes only files matching the day-file pattern and skips symlinks.
+- **Loader:** in `loader.py`, a pool of 4 threads runs the Vision pass, and a ban cancels pending downloads. The current day is never written, and its unfinished candles are dropped. Gap reasons match spec § Gaps.
 
-### Not exercised
-- The three targets on the final tree. That result is the runner's, in `sdlc/test`.
-- The new tests themselves under pytest (not run in CI).
-- The real `urllib_fetch`, its timeouts and TLS, and real Binance responses (no network).
-- Windows and macOS (cache root defaults, `os.replace` semantics). I ran on Linux only.
-- An `OSError` raised during a cache *write* after some days were already written (e.g. disk full); I tried only a non-directory root.
-- The 418 or retries-exhausted path through the CLI after some days were cached. I checked the cache contents only through `load_klines`.
-- The `um` market's REST fill and its weight pause; a `Retry-After` over 60 s.
-- Intervals other than `1h`.
+**Test bodies read.**
+- The two-missing-candles test asserts `Gap(12-30 05:00, 12-30 06:00, 2, "missing candles in source file")` and a 22-row frame in the schema.
+- The retry test asserts 4 calls with sleeps `[1.25, 2.25, 4.25]`, and a single call on 404.
+- The weight test asserts sleeps to the minute boundary at weight 4800 (80 % of 6000).
+- The current-day test asserts hours 0–4 only, no file written, and a second REST fetch on reload.
 
-### Mismatches with plan.md / spec.md
-None.
+## Not exercised
 
-One observation that is not a mismatch: `cache-info` and `cache-clear` with a `--cache-dir` that is a regular file exit 0 with "No cached klines …" and "Nothing to delete …". plan.md:95–96 and spec § CLI don't say how those two commands should behave on an unusable directory, and both outputs are true.
+- `load_klines` and `sync_days` against the stub, run by me. Permission was denied, so the Acceptance items rest on the runner's green test run at `e8897a3` and on reading the code.
+- `download` with a working fetch, `cache-info` with real files, and `cache-clear` deleting real files. These need the stub, which the CLI only takes through `main(argv, fetch=…)`, and that needs a script.
+- The real Binance endpoints. There is no network, so layout drift and real headers are untested.
+- The real urllib connection handler: the 10 s / 60 s timeouts in an actual socket.
+- Windows (`%LOCALAPPDATA%` path, `os.replace` semantics). I ran on Linux only.
+- `scripts/measure_storage.py`. I did not run it; `evidence/storage-measurement.md` is present in the diff.
+- The three targets on the final tree. That result is the runner's (`sdlc/test`).
 
-### Verdict
-`matches the plan`
+## Mismatches with plan.md / spec.md
 
-Files:
-- /home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/plan.md
-- /home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/spec.md
-- /home/runner/work/crypto-backtester/crypto-backtester/changes/0001-binance-vision-kline-data-layer/evidence/gate-design.json
-- /home/runner/work/crypto-backtester/crypto-backtester/app/data/loader.py
-- /home/runner/work/crypto-backtester/crypto-backtester/app/data/schema.py
-- /home/runner/work/crypto-backtester/crypto-backtester/app/data/__main__.py
+None. The build's departures are recorded in plan.md Risks:
+- `DownloadError` when retries run out.
+- REST days cached only when complete.
+- `Vision refused (HTTP n)`.
+- Each closed day cached as soon as its answer is in.
+- `.github/workflows/ci.yml` left without polars. The project CI's pytest will fail on `import polars` until the owner adds it; the SDLC jobs are unaffected.
+
+## Verdict
+
+**matches the plan**
