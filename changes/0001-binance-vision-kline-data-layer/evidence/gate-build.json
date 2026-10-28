@@ -75,10 +75,27 @@
     {
       "name": "commands",
       "ok": true,
-      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "reason": "build, test and lint exit 0",
       "need": "",
       "details": {
-        "deferred": true
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q .",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.13.5\ncollected 69 items\n\ntests/test_data.py ..................................................... [ 76%]\n......                                                                   [ 85%]\ntests/test_data_cli.py .........                                         [ 98%]\ntests/test_smoke.py .                                                    [100%]\n\n============================== 69 passed in 0.55s ==============================\n"
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n"
+          }
+        },
+        "ran_by": "runner"
       }
     },
     {

@@ -5,7 +5,13 @@
       "run": "design",
       "source": "claude-design.json",
       "usd": 7.635977700000001
+    },
+    {
+      "at": "2026-10-28T17:09:41Z",
+      "run": "build",
+      "source": "claude-build.json",
+      "usd": 12.190280799999996
     }
   ],
-  "total_usd": 7.635978
+  "total_usd": 19.826258
 }
