@@ -6,7 +6,7 @@ import hashlib
 import io
 import json
 import zipfile
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -21,6 +21,19 @@ WEIGHT = "X-MBX-USED-WEIGHT-1M"
 
 def fixture(name: str) -> bytes:
     return (FIXTURES / name).read_bytes()
+
+
+def utc(*args: int) -> datetime:
+    return datetime(*args, tzinfo=timezone.utc)
+
+
+def cached_days(root: Path, market: str, symbol: str, interval: str, days: list[str]) -> Path:
+    """Fake day files (100 bytes each) in the cache layout."""
+    directory = root / "binance-vision" / market / symbol / interval
+    directory.mkdir(parents=True, exist_ok=True)
+    for day in days:
+        (directory / f"{symbol}-{interval}-{day}.parquet").write_bytes(b"x" * 100)
+    return directory
 
 
 def sequence(*answers: HttpResponse | Exception) -> tuple[http.Fetch, list[str]]:

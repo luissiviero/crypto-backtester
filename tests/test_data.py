@@ -9,7 +9,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from binance_stub import TODAY, WEIGHT, Binance, fixture, sequence, zip_of
+from binance_stub import TODAY, WEIGHT, Binance, cached_days, fixture, sequence, utc, zip_of
 
 from app.data import Gap, KlineGapError, cache, http, load_klines, loader, rest, vision
 from app.data.http import BinanceBanError, DownloadError, HttpResponse, WeightPacer, with_retries
@@ -77,6 +77,7 @@ def test_rest_rows_normalise_like_the_vision_file() -> None:
         b"1735689600000,1,1,1,1,1,1735693199999,1,1,1,1\n",
         b"1735689600000,1,1,1,abc,1,1735693199999,1,1,1,1,0\n",
         b"1735689600000,1,1,1,nan,1,1735693199999,1,1,1,1,0\n",
+        b"1735689600000,1,1,1,1,1,1735693199999,1,99999999999999999999,1,1,0\n",
         (
             b"1735689600000,1,1,1,1,1,1735693199999,1,1,1,1,0\n"
             b"1735693200000000,1,1,1,1,1,1,1,1,1,1,0\n"
@@ -288,14 +289,6 @@ def test_atomic_write_leaves_only_the_day_file(tmp_path: Path) -> None:
     assert cache.read_day(path) is None
 
 
-def cached_days(root: Path, market: str, symbol: str, interval: str, days: list[str]) -> Path:
-    directory = root / "binance-vision" / market / symbol / interval
-    directory.mkdir(parents=True, exist_ok=True)
-    for day in days:
-        (directory / f"{symbol}-{interval}-{day}.parquet").write_bytes(b"x" * 100)
-    return directory
-
-
 def test_cache_info_and_clear_touch_only_day_files(tmp_path: Path) -> None:
     spot = cached_days(tmp_path, "spot", "BTCUSDT", "1h", ["2024-01-01", "2024-01-02"])
     cached_days(tmp_path, "um", "BTCUSDT", "1h", ["2024-01-01"])
@@ -324,10 +317,6 @@ def test_cache_info_and_clear_touch_only_day_files(tmp_path: Path) -> None:
 NOW = datetime(2025, 1, 2, 12, 0, tzinfo=timezone.utc)
 SPOT_DEC_31 = "spot-BTCUSDT-1h-2024-12-31.csv"
 SPOT_JAN_01 = "spot-BTCUSDT-1h-2025-01-01.csv"
-
-
-def utc(*args: int) -> datetime:
-    return datetime(*args, tzinfo=timezone.utc)
 
 
 @pytest.fixture
@@ -452,6 +441,21 @@ def test_ban_stops_pending_vision_downloads(clock: None, tmp_path: Path) -> None
     with pytest.raises(BinanceBanError):
         load(fetch, "2024-12-01", "2024-12-20", tmp_path)
     assert len(calls) <= 2 * loader.VISION_WORKERS
+
+
+def test_days_fetched_before_a_ban_stay_cached(clock: None, tmp_path: Path) -> None:
+    binance = Binance()
+    binance.vision("spot", "2024-12-31", SPOT_DEC_31)
+
+    def fetch(url: str) -> HttpResponse:
+        if "2025-01-01" in url:
+            time.sleep(0.1)
+            return HttpResponse(418)
+        return binance(url)
+
+    with pytest.raises(BinanceBanError):
+        load(fetch, "2024-12-31", "2025-01-01", tmp_path)
+    assert [path.name for path in tmp_path.rglob("*.parquet")] == ["BTCUSDT-1h-2024-12-31.parquet"]
 
 
 @pytest.mark.parametrize(

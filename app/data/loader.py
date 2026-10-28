@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
@@ -89,36 +90,43 @@ def load_klines(
 def sync_days(
     request: KlineRequest, *, fetch: Fetch, root: Path | None, now: datetime
 ) -> list[DayOutcome]:
-    """One outcome per day of the request; closed days fetched here are written to the cache."""
+    """One outcome per day of the request.
+
+    Each closed day fetched here is written to the cache as soon as its answer is in, so a
+    run stopped later (a ban, retries exhausted) keeps the days it already downloaded.
+    """
     fetch = with_retries(fetch)
     today = now.date()
+    now_ms = _to_ms(now)
     outcomes: dict[date, DayOutcome] = {}
+
+    def settle(outcome: DayOutcome) -> None:
+        frame = _on_grid(outcome.frame, _expected_ms(request, outcome.day, now_ms))
+        outcome = replace(outcome, frame=frame)
+        if root is not None and outcome.day < today and _worth_caching(request, outcome):
+            day_cache.write_day(day_cache.day_path(root, request, outcome.day), frame)
+        outcomes[outcome.day] = outcome
+
     to_fetch = []
     for day in request.days():
         cached = _read_cached(root, request, day) if day < today else None
         if cached is not None:
-            outcomes[day] = DayOutcome(day, CACHED, cached)
+            settle(DayOutcome(day, CACHED, cached))
         else:
             to_fetch.append(day)
     rest_days = []
-    for answer in _vision_pass(fetch, request, to_fetch):
+
+    def on_vision_answer(answer: vision.VisionDay) -> None:
         if answer.frame is not None:
-            outcomes[answer.day] = DayOutcome(answer.day, VISION, answer.frame)
+            settle(DayOutcome(answer.day, VISION, answer.frame))
         elif answer.reason == vision.NOT_ON_VISION:
             rest_days.append(answer.day)
         else:
-            outcomes[answer.day] = DayOutcome(answer.day, MISSING, empty_frame(), answer.reason)
-    outcomes.update(_rest_pass(fetch, request, sorted(rest_days)))
-    now_ms = _to_ms(now)
-    result = []
-    for day in request.days():
-        outcome = outcomes[day]
-        frame = _on_grid(outcome.frame, _expected_ms(request, day, now_ms))
-        outcome = replace(outcome, frame=frame)
-        if root is not None and day < today and _worth_caching(request, outcome):
-            day_cache.write_day(day_cache.day_path(root, request, day), frame)
-        result.append(outcome)
-    return result
+            settle(DayOutcome(answer.day, MISSING, empty_frame(), answer.reason))
+
+    _vision_pass(fetch, request, to_fetch, on_vision_answer)
+    _rest_pass(fetch, request, sorted(rest_days), settle)
+    return [outcomes[day] for day in request.days()]
 
 
 def combine(outcomes: list[DayOutcome]) -> pl.DataFrame:
@@ -166,10 +174,18 @@ class _Cancelled(Exception):
     """Raised in the pool's threads once one of them hit a stop (a ban)."""
 
 
-def _vision_pass(fetch: Fetch, request: KlineRequest, days: list[date]) -> list[vision.VisionDay]:
-    """Up to VISION_WORKERS days at a time; a stop in one cancels every pending download."""
+def _vision_pass(
+    fetch: Fetch,
+    request: KlineRequest,
+    days: list[date],
+    on_answer: Callable[[vision.VisionDay], None],
+) -> None:
+    """Up to VISION_WORKERS days at a time, each answer handed on as it completes.
+
+    A stop in one download (a ban) cancels every pending one and is raised.
+    """
     if not days:
-        return []
+        return
     stop = threading.Event()
 
     def guarded(url: str) -> HttpResponse:
@@ -180,7 +196,8 @@ def _vision_pass(fetch: Fetch, request: KlineRequest, days: list[date]) -> list[
     pool = ThreadPoolExecutor(max_workers=VISION_WORKERS)
     try:
         futures = [pool.submit(vision.fetch_day, guarded, request, day) for day in days]
-        return [future.result() for future in as_completed(futures)]
+        for future in as_completed(futures):
+            on_answer(future.result())
     except BaseException:
         stop.set()
         raise
@@ -188,11 +205,15 @@ def _vision_pass(fetch: Fetch, request: KlineRequest, days: list[date]) -> list[
         pool.shutdown(wait=True, cancel_futures=True)
 
 
-def _rest_pass(fetch: Fetch, request: KlineRequest, days: list[date]) -> dict[date, DayOutcome]:
+def _rest_pass(
+    fetch: Fetch,
+    request: KlineRequest,
+    days: list[date],
+    on_outcome: Callable[[DayOutcome], None],
+) -> None:
     """Consecutive days form one REST range; ranges run one after the other."""
     pacer = rest.pacer_for(request.market)
     open_ms = pl.col("open_time").dt.epoch("ms")
-    outcomes = {}
     for first, last in _consecutive_ranges(days):
         end_ms = day_start_ms(last) + DAY_MS
         answer = rest.fetch_range(fetch, pacer, request, day_start_ms(first), end_ms)
@@ -201,11 +222,10 @@ def _rest_pass(fetch: Fetch, request: KlineRequest, days: list[date]) -> dict[da
             day_ms = day_start_ms(day)
             frame = answer.frame.filter((open_ms >= day_ms) & (open_ms < day_ms + DAY_MS))
             if frame.is_empty():
-                outcomes[day] = DayOutcome(day, MISSING, frame, answer.failure or NO_CANDLES)
+                on_outcome(DayOutcome(day, MISSING, frame, answer.failure or NO_CANDLES))
             else:
-                outcomes[day] = DayOutcome(day, REST, frame)
+                on_outcome(DayOutcome(day, REST, frame))
             day += timedelta(days=1)
-    return outcomes
 
 
 def _consecutive_ranges(days: list[date]) -> list[tuple[date, date]]:

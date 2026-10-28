@@ -84,7 +84,7 @@ def _frame_from_fields(rows: Sequence[Sequence[str]]) -> pl.DataFrame:
     try:
         for index, name in enumerate(COLUMNS):
             if name in INT_COLUMNS:
-                columns[name] = [int(row[index]) for row in rows]
+                columns[name] = [_int64(row[index]) for row in rows]
             else:
                 columns[name] = [_finite(row[index]) for row in rows]
     except ValueError as exc:
@@ -96,6 +96,13 @@ def _frame_from_fields(rows: Sequence[Sequence[str]]) -> pl.DataFrame:
     return frame.with_columns(
         pl.col(name).cast(pl.Datetime("ms")).dt.replace_time_zone("UTC") for name in TIME_COLUMNS
     )
+
+
+def _int64(text: str) -> int:
+    value = int(text)
+    if not -(2**63) <= value < 2**63:
+        raise ValueError(f"{text!r} does not fit a 64-bit integer")
+    return value
 
 
 def _finite(text: str) -> float:

@@ -27,6 +27,9 @@ def main(argv: Sequence[str] | None = None, fetch: Fetch | None = None) -> int:
     except (InvalidRequestError, DownloadError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
+    except OSError as error:
+        print(f"error: {error}; check the cache directory (--cache-dir)", file=sys.stderr)
+        return 2
 
 
 def _parser() -> argparse.ArgumentParser:

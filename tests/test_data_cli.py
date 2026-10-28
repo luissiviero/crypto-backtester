@@ -117,6 +117,19 @@ def test_invalid_parameter_prints_one_line_and_exits_2(
     assert binance.calls == []
 
 
+def test_unusable_cache_dir_prints_one_line_and_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    binance = Binance()
+    binance.vision("spot", "2024-12-31", "spot-BTCUSDT-1h-2024-12-31.csv")
+    not_a_directory = tmp_path / "file"
+    not_a_directory.write_text("")
+    assert download(binance, not_a_directory, "2024-12-31", "2024-12-31") == 2
+    err = capsys.readouterr().err
+    assert len(err.splitlines()) == 1
+    assert err.startswith("error: ") and "check the cache directory (--cache-dir)" in err
+
+
 def test_ban_prints_one_line_and_exits_2(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
