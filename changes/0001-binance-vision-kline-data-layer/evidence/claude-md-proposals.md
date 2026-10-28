@@ -1,0 +1,2 @@
+<!-- Proposed CLAUDE.md lines under "Things Claude gets wrong" (article p.34 step 5). The PR description quotes this file; only the owner edits CLAUDE.md. -->
+- The change makes CLAUDE.md outdated: it still calls the project a package skeleton with one smoke test, gives `python -m pip install pytest ruff` (no polars, 'declares no extras') as setup, and `1 passed` as the healthy test output (now 69 passed); the run cannot edit it, so the owner needs to update it in their own PR (change 0001; the owner edits CLAUDE.md)

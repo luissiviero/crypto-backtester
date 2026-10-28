@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "change_id": "0001",
+  "slug": "binance-vision-kline-data-layer",
+  "phase": "deploy",
+  "human_gate": true,
+  "result": "park",
+  "label": "sdlc:needs-human",
+  "head": "faaad89ec0930ee4aecd22bd45606d57fc2d9fe0",
+  "at": "2026-10-28T17:22:57Z",
+  "dry_run": false,
+  "reason": "findings: 2 Important review finding(s) open",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 3,
+        "panel_cap": 4,
+        "elapsed_minutes": 3.8,
+        "spend_usd": null,
+        "spend_usd_total": 23.166511,
+        "spend_entries": 4,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "clean_tree",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder",
+      "need": "",
+      "details": {
+        "ignored": [
+          "CLAUDE.local.md",
+          "changes/.review-seen.json"
+        ]
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "0 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q .",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.13.5\ncollected 69 items\n\ntests/test_data.py ..................................................... [ 76%]\n......                                                                   [ 85%]\ntests/test_data_cli.py .........                                         [ 98%]\ntests/test_smoke.py .                                                    [100%]\n\n============================== 69 passed in 0.58s ==============================\n"
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "evidence",
+      "ok": true,
+      "reason": "evidence present: test.log, build.log, lint.log, verifier.md",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof",
+      "ok": true,
+      "reason": "no drive target: nothing to compare",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "findings",
+      "ok": false,
+      "reason": "2 Important review finding(s) open",
+      "need": "Fix every Important finding (or have the owner waive it in a review comment; the review panel may settle one the run cannot fix), then re-run the review pass so changes/0001-binance-vision-kline-data-layer/evidence/review-findings.json shows none.",
+      "details": {
+        "important": [
+          {
+            "file": ".github/workflows/ci.yml",
+            "line": 25,
+            "pass": "compliance",
+            "rule": "spec.md Design \u00a7 Dependencies and CI (CI installs polars, pinned); intent Affected systems (CI must install the project)",
+            "severity": "important",
+            "signature": "192f90d781e7ed81",
+            "summary": "The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py (`import polars`) on every push to main and every PR; plan.md records the departure, but the spec requirement is unmet and CI goes red."
+          },
+          {
+            "file": "CLAUDE.md",
+            "line": 5,
+            "pass": "compliance",
+            "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
+            "severity": "important",
+            "signature": "266ff10a5f51b0f4",
+            "summary": "The change makes CLAUDE.md outdated: it still calls the project a package skeleton with one smoke test, gives `python -m pip install pytest ruff` (no polars, 'declares no extras') as setup, and `1 passed` as the healthy test output (now 69 passed); the run cannot edit it, so the owner needs to update it in their own PR."
+          }
+        ],
+        "settled_by_panel": []
+      }
+    },
+    {
+      "name": "plan_sync",
+      "ok": true,
+      "reason": "every committed source file is in plan.md",
+      "need": "",
+      "details": {
+        "planned_but_unchanged": [],
+        "plan_growth": {
+          "added": [
+            "tests/binance_stub.py"
+          ],
+          "removed": [
+            ".github/workflows/ci.yml"
+          ]
+        }
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "test_lock",
+      "ok": true,
+      "reason": "not a fix-type change: no test-file lock",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "ratchets",
+      "ok": true,
+      "reason": "no undeclared test file or eval case drop",
+      "need": "",
+      "details": {
+        "hits": {},
+        "declared": [],
+        "skip_markers": [],
+        "accepted": []
+      }
+    },
+    {
+      "name": "lesson_and_eval",
+      "ok": true,
+      "reason": "not an incident change at gate (deploy): nothing to check",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "no adversarial verdict required at gate (deploy)",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "no readable verdict to check",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": "## What I need from you\nGate (deploy) parked change 0001 (binance-vision-kline-data-layer) on 2026-10-28T17:22:57Z.\n- **findings**: 2 Important review finding(s) open\n  - what I need: Fix every Important finding (or have the owner waive it in a review comment; the review panel may settle one the run cannot fix), then re-run the review pass so changes/0001-binance-vision-kline-data-layer/evidence/review-findings.json shows none.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0001 --phase deploy` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+}

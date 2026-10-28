@@ -1,15 +1,15 @@
 id: "0001"
 slug: binance-vision-kline-data-layer
 title: Binance Vision kline data layer
-phase: design
+phase: deploy
 entry_route: idea
 change_type: feature
 gate:
-  phase: design
-  result: passed
-  reason: waiting for the owner at gate (design)
-  at: "2026-10-27T13:11:11Z"
-parked_reason: null
+  phase: deploy
+  result: parked
+  reason: "findings: 2 Important review finding(s) open"
+  at: "2026-10-28T17:23:35Z"
+parked_reason: "findings: 2 Important review finding(s) open"
 iterations: 0
 panel_calls: 3
 external_ref: null
@@ -21,7 +21,7 @@ iterations_reset_at: null
 tests_unlocked_by: null
 runbook_authorized_by: null
 abandoned_reason: null
-build_pr: null
+build_pr: 6
 released_at: null
 released_sha: null
 released_pr: null
@@ -30,5 +30,5 @@ fast_lane:
     sha: "50436e17262bebde8eff70b2703b5e463e0f16a8"
     pr: 4
 created_at: "2026-10-27T04:20:51Z"
-updated_at: "2026-10-27T13:11:11Z"
+updated_at: "2026-10-28T17:23:35Z"
 schema_version: 1

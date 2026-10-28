@@ -1,0 +1,48 @@
+{
+  "at": "2026-10-28T17:22:16Z",
+  "findings": [
+    {
+      "file": ".github/workflows/ci.yml",
+      "line": 25,
+      "pass": "compliance",
+      "rule": "spec.md Design \u00a7 Dependencies and CI (CI installs polars, pinned); intent Affected systems (CI must install the project)",
+      "severity": "important",
+      "signature": "192f90d781e7ed81",
+      "summary": "The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py (`import polars`) on every push to main and every PR; plan.md records the departure, but the spec requirement is unmet and CI goes red."
+    },
+    {
+      "file": "CLAUDE.md",
+      "line": 5,
+      "pass": "compliance",
+      "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
+      "severity": "important",
+      "signature": "266ff10a5f51b0f4",
+      "summary": "The change makes CLAUDE.md outdated: it still calls the project a package skeleton with one smoke test, gives `python -m pip install pytest ruff` (no polars, 'declares no extras') as setup, and `1 passed` as the healthy test output (now 69 passed); the run cannot edit it, so the owner needs to update it in their own PR."
+    },
+    {
+      "file": "app/data/http.py",
+      "line": 78,
+      "pass": "security",
+      "rule": "security-baseline rule 7 as applied in spec.md (runtime calls only the three Binance hosts); R12 timeouts",
+      "severity": "nit",
+      "signature": "4293ca6feec9d572",
+      "summary": "build_opener keeps the default redirect handler and plain-HTTP handler, so a 3xx from a Binance host would be followed to any host, including over http:// with no timeout. That breaks the 'only the three Binance hosts' and 10 s/60 s timeout assumptions. It is unlikely in practice (doubt: Binance does not redirect these paths today)."
+    },
+    {
+      "file": "app/data/params.py",
+      "line": 78,
+      "pass": "bugs",
+      "rule": "spec.md Design \u00a7 Parameters (validated before any URL or path is built)",
+      "severity": "nit",
+      "signature": "49e9f4984d810772",
+      "summary": "parse_date returns a `datetime` unchanged because datetime is a subclass of date, so `load_klines(..., start=datetime(...))` raises a bare TypeError from `end_day > today` (datetime vs date) instead of InvalidRequestError or a normalised `.date()`."
+    }
+  ],
+  "head": "faaad89ec0930ee4aecd22bd45606d57fc2d9fe0",
+  "schema_version": 1,
+  "tally": {
+    "important": 2,
+    "nit": 2,
+    "nits_omitted": 0
+  }
+}
