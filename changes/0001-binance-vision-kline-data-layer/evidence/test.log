@@ -1,2 +1,15 @@
-# python -m pytest — deferred to the runner — 2026-10-28T17:10:48Z
-The target did not run inside the model's session: build, test and lint run after the session, outside its sandbox (issue #91), and the runner replaces this file with the target's own output. A file still reading this line was never replaced: the targets did not run, and the gate does not pass on it.
+# python -m pytest — exit 0 — 1.2s — 2026-10-28T17:15:37Z
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/runner/work/crypto-backtester/crypto-backtester
+configfile: pyproject.toml
+testpaths: tests
+plugins: platformdirs-4.13.5
+collected 69 items
+
+tests/test_data.py ..................................................... [ 76%]
+......                                                                   [ 85%]
+tests/test_data_cli.py .........                                         [ 98%]
+tests/test_smoke.py .                                                    [100%]
+
+============================== 69 passed in 0.58s ==============================
