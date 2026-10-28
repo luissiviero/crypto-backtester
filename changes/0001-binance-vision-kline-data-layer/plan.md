@@ -43,6 +43,9 @@
   that maps URLs to responses (with or without weight headers) and records every call, a
   recording `sleep`, and `tmp_path` as `cache_dir`.
 - `tests/test_data_cli.py` — new: the CLI tests through `main(argv, fetch=stub)` and `capsys`.
+- `tests/binance_stub.py` — new (added in the build): the stub `Fetch`, the fixture reader and
+  the zip builder that both test modules share; split out of `tests/test_data.py`, which
+  passed the coding-standards 500-line limit with them inside. It holds no test.
 - `changes/0001-binance-vision-kline-data-layer/evidence/storage-measurement.md` — new: the
   output of `python scripts/measure_storage.py`, labelled synthetic with the seed.
 

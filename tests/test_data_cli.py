@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from test_data import Binance
+from binance_stub import Binance
 
 from app.data import http, loader
 from app.data.__main__ import human_size, main
