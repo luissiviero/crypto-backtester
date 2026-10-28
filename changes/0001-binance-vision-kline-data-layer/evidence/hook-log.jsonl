@@ -8,3 +8,6 @@
 {"at": "2026-10-27T12:58:14Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
 {"at": "2026-10-27T12:58:27Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
 {"at": "2026-10-27T12:58:32Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+{"at": "2026-10-28T14:16:49Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+{"at": "2026-10-28T14:16:53Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+{"at": "2026-10-28T14:17:04Z", "cwd": "/home/user/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
