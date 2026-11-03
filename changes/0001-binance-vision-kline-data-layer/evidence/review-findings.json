@@ -1,32 +1,14 @@
 {
-  "at": "2026-10-28T17:22:16Z",
+  "at": "2026-11-03T17:42:43Z",
   "findings": [
-    {
-      "file": ".github/workflows/ci.yml",
-      "line": 25,
-      "pass": "compliance",
-      "rule": "spec.md Design \u00a7 Dependencies and CI (CI installs polars, pinned); intent Affected systems (CI must install the project)",
-      "severity": "important",
-      "signature": "192f90d781e7ed81",
-      "summary": "The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py (`import polars`) on every push to main and every PR; plan.md records the departure, but the spec requirement is unmet and CI goes red."
-    },
-    {
-      "file": "CLAUDE.md",
-      "line": 5,
-      "pass": "compliance",
-      "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
-      "severity": "important",
-      "signature": "266ff10a5f51b0f4",
-      "summary": "The change makes CLAUDE.md outdated: it still calls the project a package skeleton with one smoke test, gives `python -m pip install pytest ruff` (no polars, 'declares no extras') as setup, and `1 passed` as the healthy test output (now 69 passed); the run cannot edit it, so the owner needs to update it in their own PR."
-    },
     {
       "file": "app/data/http.py",
       "line": 78,
       "pass": "security",
-      "rule": "security-baseline rule 7 as applied in spec.md (runtime calls only the three Binance hosts); R12 timeouts",
+      "rule": "security-baseline rule 7 as applied in spec.md (runtime calls only the three Binance hosts); spec R12 timeouts",
       "severity": "nit",
-      "signature": "4293ca6feec9d572",
-      "summary": "build_opener keeps the default redirect handler and plain-HTTP handler, so a 3xx from a Binance host would be followed to any host, including over http:// with no timeout. That breaks the 'only the three Binance hosts' and 10 s/60 s timeout assumptions. It is unlikely in practice (doubt: Binance does not redirect these paths today)."
+      "signature": "0363df2258ea9572",
+      "summary": "build_opener keeps urllib's default redirect and plain-HTTP handlers, so a 3xx from a Binance host would be followed to any host, including over http:// with no timeout, which defeats the 'only the three Binance hosts' and 10 s/60 s timeout assumptions; unlikely in practice (doubt: Binance does not redirect these paths today)."
     },
     {
       "file": "app/data/params.py",
@@ -34,15 +16,24 @@
       "pass": "bugs",
       "rule": "spec.md Design \u00a7 Parameters (validated before any URL or path is built)",
       "severity": "nit",
-      "signature": "49e9f4984d810772",
-      "summary": "parse_date returns a `datetime` unchanged because datetime is a subclass of date, so `load_klines(..., start=datetime(...))` raises a bare TypeError from `end_day > today` (datetime vs date) instead of InvalidRequestError or a normalised `.date()`."
+      "signature": "54384763684aac02",
+      "summary": "parse_date returns a datetime unchanged (datetime subclasses date), so load_klines(..., start=datetime(...)) fails with a bare TypeError from `end_day > today` instead of an InvalidRequestError or a value normalised with .date()."
+    },
+    {
+      "file": "changes/0001-binance-vision-kline-data-layer/plan.md",
+      "line": 79,
+      "pass": "compliance",
+      "rule": "REVIEW.md Framework rules: plan.md must reflect the diff (risks)",
+      "severity": "nit",
+      "signature": "9a2768b0180f280c",
+      "summary": "plan.md Risks still says the project CI does not install polars and that CLAUDE.md is stale, but the owner fixed both on main (PR #7, merged into this branch in 8e1e588), so those lines no longer describe the state of the branch."
     }
   ],
-  "head": "faaad89ec0930ee4aecd22bd45606d57fc2d9fe0",
+  "head": "8e1e588ce98e771916f0a348d93fa50f858d3947",
   "schema_version": 1,
   "tally": {
-    "important": 2,
-    "nit": 2,
+    "important": 0,
+    "nit": 3,
     "nits_omitted": 0
   }
 }

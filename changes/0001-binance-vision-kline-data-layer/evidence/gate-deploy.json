@@ -4,12 +4,12 @@
   "slug": "binance-vision-kline-data-layer",
   "phase": "deploy",
   "human_gate": true,
-  "result": "park",
-  "label": "sdlc:needs-human",
-  "head": "faaad89ec0930ee4aecd22bd45606d57fc2d9fe0",
-  "at": "2026-10-28T17:22:57Z",
+  "result": "wait",
+  "label": "sdlc:deploy-ready",
+  "head": "8e1e588ce98e771916f0a348d93fa50f858d3947",
+  "at": "2026-11-03T17:43:13Z",
   "dry_run": false,
-  "reason": "findings: 2 Important review finding(s) open",
+  "reason": "",
   "config_note": "",
   "checks": [
     {
@@ -18,15 +18,16 @@
       "reason": "within the run limits",
       "need": "",
       "details": {
-        "iterations": 0,
+        "iterations": 1,
         "cap": 2,
         "classification": "non-routine",
         "panel_calls": 3,
         "panel_cap": 4,
-        "elapsed_minutes": 3.8,
+        "recheck_minutes": 1,
+        "elapsed_minutes": 1.8,
         "spend_usd": null,
-        "spend_usd_total": 23.166511,
-        "spend_entries": 4,
+        "spend_usd_total": 24.998911,
+        "spend_entries": 5,
         "max_budget_usd": 150.0
       }
     },
@@ -76,27 +77,10 @@
     {
       "name": "commands",
       "ok": true,
-      "reason": "build, test and lint exit 0",
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
       "need": "",
       "details": {
-        "runs": {
-          "build": {
-            "command": "python -m compileall -q .",
-            "exit_code": 0,
-            "output": ""
-          },
-          "test": {
-            "command": "python -m pytest",
-            "exit_code": 0,
-            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.13.5\ncollected 69 items\n\ntests/test_data.py ..................................................... [ 76%]\n......                                                                   [ 85%]\ntests/test_data_cli.py .........                                         [ 98%]\ntests/test_smoke.py .                                                    [100%]\n\n============================== 69 passed in 0.58s ==============================\n"
-          },
-          "lint": {
-            "command": "python -m ruff check .",
-            "exit_code": 0,
-            "output": "All checks passed!\n"
-          }
-        },
-        "ran_by": "runner"
+        "deferred": true
       }
     },
     {
@@ -115,31 +99,15 @@
     },
     {
       "name": "findings",
-      "ok": false,
-      "reason": "2 Important review finding(s) open",
-      "need": "Fix every Important finding (or have the owner waive it in a review comment; the review panel may settle one the run cannot fix), then re-run the review pass so changes/0001-binance-vision-kline-data-layer/evidence/review-findings.json shows none.",
+      "ok": true,
+      "reason": "no Important review finding",
+      "need": "",
       "details": {
-        "important": [
-          {
-            "file": ".github/workflows/ci.yml",
-            "line": 25,
-            "pass": "compliance",
-            "rule": "spec.md Design \u00a7 Dependencies and CI (CI installs polars, pinned); intent Affected systems (CI must install the project)",
-            "severity": "important",
-            "signature": "192f90d781e7ed81",
-            "summary": "The project CI still installs only pytest and ruff, so once this change merges `python -m pytest` fails while collecting tests/test_data.py (`import polars`) on every push to main and every PR; plan.md records the departure, but the spec requirement is unmet and CI goes red."
-          },
-          {
-            "file": "CLAUDE.md",
-            "line": 5,
-            "pass": "compliance",
-            "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
-            "severity": "important",
-            "signature": "266ff10a5f51b0f4",
-            "summary": "The change makes CLAUDE.md outdated: it still calls the project a package skeleton with one smoke test, gives `python -m pip install pytest ruff` (no polars, 'declares no extras') as setup, and `1 passed` as the healthy test output (now 69 passed); the run cannot edit it, so the owner needs to update it in their own PR."
-          }
-        ],
-        "settled_by_panel": []
+        "tally": {
+          "important": 0,
+          "nit": 3,
+          "nits_omitted": 0
+        }
       }
     },
     {
@@ -229,5 +197,5 @@
       }
     }
   ],
-  "what_i_need": "## What I need from you\nGate (deploy) parked change 0001 (binance-vision-kline-data-layer) on 2026-10-28T17:22:57Z.\n- **findings**: 2 Important review finding(s) open\n  - what I need: Fix every Important finding (or have the owner waive it in a review comment; the review panel may settle one the run cannot fix), then re-run the review pass so changes/0001-binance-vision-kline-data-layer/evidence/review-findings.json shows none.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0001 --phase deploy` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+  "what_i_need": ""
 }

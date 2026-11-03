@@ -1,4 +1,15 @@
 {
+  "0363df2258ea9572": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "app/data/http.py",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-11-03T17:43:00Z",
+    "summary": "build_opener keeps urllib's default redirect and plain-HTTP handlers, so a 3xx from a Binance host would be followed to any host, including over http:// with no timeout, which defeats the 'only the three Binance hosts' and 10 s/60 s timeout assumptions; unlikely in practice (doubt: Binance does not redirect these paths today)."
+  },
   "0d24b3b8967d4d81": {
     "changes": [
       "0001"
@@ -76,6 +87,17 @@
     "last_seen": "2026-10-28T17:22:40Z",
     "summary": "parse_date returns a `datetime` unchanged because datetime is a subclass of date, so `load_klines(..., start=datetime(...))` raises a bare TypeError from `end_day > today` (datetime vs date) instead of InvalidRequestError or a normalised `.date()`."
   },
+  "54384763684aac02": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "app/data/params.py",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-11-03T17:43:00Z",
+    "summary": "parse_date returns a datetime unchanged (datetime subclasses date), so load_klines(..., start=datetime(...)) fails with a bare TypeError from `end_day > today` instead of an InvalidRequestError or a value normalised with .date()."
+  },
   "6e2ecbec9d84080a": {
     "changes": [
       "0001"
@@ -97,6 +119,17 @@
     "last_change": "0001",
     "last_seen": "2026-10-28T17:18:27Z",
     "summary": "The change makes CLAUDE.md outdated. Setup still reads `python -m pip install pytest ruff` without polars, the healthy test output is still `1 passed` when 69 now pass, and line 4 still calls the project a package skeleton. The owner has to update these lines; the run may not edit the file."
+  },
+  "9a2768b0180f280c": {
+    "changes": [
+      "0001"
+    ],
+    "count": 1,
+    "file": "changes/0001-binance-vision-kline-data-layer/plan.md",
+    "first_change": "0001",
+    "last_change": "0001",
+    "last_seen": "2026-11-03T17:43:00Z",
+    "summary": "plan.md Risks still says the project CI does not install polars and that CLAUDE.md is stale, but the owner fixed both on main (PR #7, merged into this branch in 8e1e588), so those lines no longer describe the state of the branch."
   },
   "bf5cbdf659711a24": {
     "changes": [

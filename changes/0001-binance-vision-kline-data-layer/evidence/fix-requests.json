@@ -1,0 +1,25 @@
+{
+  "applied_earlier": [],
+  "collected_at": "2026-11-03T17:40:57+00:00",
+  "head": "225ea0a9165e7039fb6568849e992caa10540cef",
+  "not_applied": [],
+  "ok": true,
+  "pr_number": 6,
+  "repo": "luissiviero/crypto-backtester",
+  "requests": [
+    {
+      "association": "OWNER",
+      "at": "2026-11-03T17:39:35Z",
+      "author": "luissiviero",
+      "body": "@claude The two Important findings are fixed on main by the owner's PR (CI installs polars==2.1.0; CLAUDE.md updated). Re-run the review pass on the new HEAD and the deploy gate.",
+      "id": 6611151641,
+      "kind": "comment",
+      "url": "https://github.com/luissiviero/crypto-backtester/pull/6#issuecomment-6611151641",
+      "applied": true
+    }
+  ],
+  "route": "api",
+  "schema_version": 1,
+  "trigger": "https://github.com/luissiviero/crypto-backtester/pull/6#issuecomment-6611151641",
+  "unavailable": null
+}

@@ -4,9 +4,9 @@
 
 *Written by the model from the diff and the plan; every section below is generated from files and git.*
 
-The backtester can now fetch historical Binance candles (klines) on its own. You give it a symbol, an interval, a market (spot or USD-M futures) and a date range, and it returns one tidy table with one row per candle in a single UTC time format. Days missing from Binance's public daily archives are filled from Binance's public price API, and any candles still missing are listed as gaps with the reason, so a range never comes back short without warning. Each finished day is downloaded once and kept in a compact local cache, so loading the same range again needs no network. A command-line tool downloads data, shows what is cached and clears the cache.
+The backtester can now fetch historical candlestick (kline) data for Binance spot and USD-M futures markets. It downloads the daily archive files from Binance Vision, and when a day is not published there yet it fills the gap from the Binance REST API. The data comes back as polars tables with one fixed set of columns, and each day is cached as a Parquet file outside the repository, so the same day is downloaded only once. A small command line tool (python -m app.data) downloads data, shows what the cache holds and clears it; the cache location can be set with --cache-dir or an environment variable.
 
-<!-- sdlc:plain-words describes faaad89ec0930ee4aecd22bd45606d57fc2d9fe0 -->
+<!-- sdlc:plain-words describes 8e1e588ce98e771916f0a348d93fa50f858d3947 -->
 
 ## What changed
 
@@ -33,6 +33,9 @@ A data module in `app/` that, for one symbol, one interval and one market at a t
 - 9b6c427 test(0001): gate (test) evidence
 - d5e39f0 run(test): spend recorded; gate commands run after the session
 - faaad89 run(review): spend recorded
+- 71e910d review(0001): gate (deploy) evidence
+- 225ea0a run(deploy): spend recorded; gate commands run after the session
+- 8e1e588 run(fix): origin/main merged before gate (deploy) is offered (R51)
 
 ## Evidence
 
@@ -40,7 +43,7 @@ test green, build green, lint green, verifier.md present, 0 screenshot(s)
 
 ## Review findings
 
-2 Important, 2 nits
+0 Important, 3 nits
 
 ## Links
 
