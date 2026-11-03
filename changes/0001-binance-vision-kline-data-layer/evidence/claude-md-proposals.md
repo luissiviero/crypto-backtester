@@ -1,0 +1,2 @@
+<!-- Proposed CLAUDE.md lines under "Things Claude gets wrong" (article p.34 step 5). The PR description quotes this file; only the owner edits CLAUDE.md. -->
+- plan.md Risks still says the project CI does not install polars and that CLAUDE.md is stale, but the owner fixed both on main (PR #7, merged into this branch in 8e1e588), so those lines no longer describe the state of the branch (change 0001; the owner edits CLAUDE.md)

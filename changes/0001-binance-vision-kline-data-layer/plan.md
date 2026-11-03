@@ -2,9 +2,6 @@
 
 ## Files that change
 - `pyproject.toml` — add `dependencies = ["polars>=1.0"]` under `[project]`.
-- `.github/workflows/ci.yml` — the install step also installs `polars==<version>`, the version
-  the build ran its tests with (`python -c "import polars; print(polars.__version__)"`; 2.1.0
-  in the runner image at design time).
 - `app/data/__init__.py` — new: re-exports the public API (`load_klines`, `KlineGapError`,
   `Gap`, `Fetch`, `HttpResponse`, `InvalidRequestError`, `BinanceBanError`, `cache_info`,
   `clear_cache`) with `__all__`.
@@ -46,11 +43,14 @@
   that maps URLs to responses (with or without weight headers) and records every call, a
   recording `sleep`, and `tmp_path` as `cache_dir`.
 - `tests/test_data_cli.py` — new: the CLI tests through `main(argv, fetch=stub)` and `capsys`.
+- `tests/binance_stub.py` — new (added in the build): the stub `Fetch`, the fixture reader and
+  the zip builder that both test modules share; split out of `tests/test_data.py`, which
+  passed the coding-standards 500-line limit with them inside. It holds no test.
 - `changes/0001-binance-vision-kline-data-layer/evidence/storage-measurement.md` — new: the
   output of `python scripts/measure_storage.py`, labelled synthetic with the seed.
 
 ## Order of work
-1. `pyproject.toml` dependency and the CI install line; check `python -c "import polars"`.
+1. `pyproject.toml` dependency; check `python -c "import polars"`.
 2. `params.py` with tests for valid and invalid symbol, interval (`1s` on `um` refused),
    market and dates (end after today, start after end).
 3. `schema.py` with tests: µs and ms files normalise to identical frames; header row
@@ -76,6 +76,24 @@
 11. Run build, test and lint; paste their output.
 
 ## Risks
+- Departure (build run, 2026-10-28): `.github/workflows/ci.yml` is out of this run's reach —
+  the run's permission settings deny every edit under `.github/` (a workflow file also needs a
+  token with the `workflows` scope), so the CI install line was not changed and the file left
+  "Files that change". Until the owner adds `polars==2.1.0` (the version the build tested
+  with) to the "Install the toolchain" step, the project CI's `python -m pytest` fails on
+  `import polars`; the SDLC phase jobs are unaffected (`commands.setup` installs polars).
+- Build choices where the spec is silent (build run, 2026-10-28): (a) retries exhausted on a
+  connection error, 429 or 5xx raise `DownloadError` (the base of `BinanceBanError`, also
+  exported) rather than turning a passing outage into a gap; the CLI treats it as an expected
+  failure (one stderr line, exit 2). (b) A REST-filled closed day is cached only when it holds
+  every candle of the day: a fill cut short by a refusal mid-range would otherwise freeze a
+  partial day in the cache; Vision days are cached whatever they hold (the file is final).
+  (c) A Vision answer other than 200 or 404 makes the day a gap "Vision refused (HTTP <n>)".
+  (d) From the build's adversarial review: each closed day is written to the cache as soon as
+  its answer is in, not after every pass, so a run stopped by a ban or exhausted retries keeps
+  the days it already verified ("each day is downloaded once" holds across reruns); an integer
+  outside Int64 in a source row is a malformed row (a gap, not a traceback); and an unusable
+  cache directory is an expected CLI failure (one stderr line, exit 2).
 - New dependency (coding-standards rule 5, security-baseline rule 6): polars becomes the
   project's first runtime dependency, as the intent asks; it is lower-bounded in
   `pyproject.toml` and pinned in CI. The SDLC phase jobs install it unpinned

@@ -1,0 +1,39 @@
+{
+  "at": "2026-11-03T17:42:43Z",
+  "findings": [
+    {
+      "file": "app/data/http.py",
+      "line": 78,
+      "pass": "security",
+      "rule": "security-baseline rule 7 as applied in spec.md (runtime calls only the three Binance hosts); spec R12 timeouts",
+      "severity": "nit",
+      "signature": "0363df2258ea9572",
+      "summary": "build_opener keeps urllib's default redirect and plain-HTTP handlers, so a 3xx from a Binance host would be followed to any host, including over http:// with no timeout, which defeats the 'only the three Binance hosts' and 10 s/60 s timeout assumptions; unlikely in practice (doubt: Binance does not redirect these paths today)."
+    },
+    {
+      "file": "app/data/params.py",
+      "line": 78,
+      "pass": "bugs",
+      "rule": "spec.md Design \u00a7 Parameters (validated before any URL or path is built)",
+      "severity": "nit",
+      "signature": "54384763684aac02",
+      "summary": "parse_date returns a datetime unchanged (datetime subclasses date), so load_klines(..., start=datetime(...)) fails with a bare TypeError from `end_day > today` instead of an InvalidRequestError or a value normalised with .date()."
+    },
+    {
+      "file": "changes/0001-binance-vision-kline-data-layer/plan.md",
+      "line": 79,
+      "pass": "compliance",
+      "rule": "REVIEW.md Framework rules: plan.md must reflect the diff (risks)",
+      "severity": "nit",
+      "signature": "9a2768b0180f280c",
+      "summary": "plan.md Risks still says the project CI does not install polars and that CLAUDE.md is stale, but the owner fixed both on main (PR #7, merged into this branch in 8e1e588), so those lines no longer describe the state of the branch."
+    }
+  ],
+  "head": "8e1e588ce98e771916f0a348d93fa50f858d3947",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 3,
+    "nits_omitted": 0
+  }
+}
