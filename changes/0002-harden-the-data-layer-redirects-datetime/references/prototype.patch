@@ -1,0 +1,140 @@
+diff --git a/.gitignore b/.gitignore
+index 3f76d00..01e45f0 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -2,3 +2,4 @@ __pycache__/
+ .pytest_cache/
+ .ruff_cache/
+ changes/.hook-log.jsonl
++*.egg-info/
+diff --git a/app/data/http.py b/app/data/http.py
+index 7bf16ad..0f813ae 100644
+--- a/app/data/http.py
++++ b/app/data/http.py
+@@ -75,7 +75,17 @@ class _HTTPSHandler(urllib.request.HTTPSHandler):
+         return self.do_open(_HTTPSConnection, req)
+ 
+ 
+-_OPENER = urllib.request.build_opener(_HTTPSHandler())
++# Assembled by hand: build_opener would add its default HTTP, FTP, file and redirect handlers. No
++# handler means a 3xx comes back as an error status and any other URL scheme is refused.
++_OPENER = urllib.request.OpenerDirector()
++for _handler in (
++    urllib.request.ProxyHandler(),
++    urllib.request.UnknownHandler(),
++    _HTTPSHandler(),
++    urllib.request.HTTPDefaultErrorHandler(),
++    urllib.request.HTTPErrorProcessor(),
++):
++    _OPENER.add_handler(_handler)
+ 
+ 
+ def urllib_fetch(url: str) -> HttpResponse:
+diff --git a/app/data/params.py b/app/data/params.py
+index 0f868c2..166d346 100644
+--- a/app/data/params.py
++++ b/app/data/params.py
+@@ -4,7 +4,7 @@ from __future__ import annotations
+ 
+ import re
+ from dataclasses import dataclass
+-from datetime import date, timedelta
++from datetime import date, datetime, timedelta
+ 
+ MARKETS = ("spot", "um")
+ 
+@@ -75,6 +75,11 @@ def validate_symbol(symbol: str) -> str:
+ 
+ 
+ def parse_date(value: date | str, name: str) -> date:
++    # A datetime is a date too, but its time of day and zone do not say which UTC day is meant.
++    if isinstance(value, datetime):
++        raise InvalidRequestError(
++            f"invalid {name} date {value!r}: pass a date or YYYY-MM-DD, not a datetime"
++        )
+     if isinstance(value, date):
+         return value
+     try:
+diff --git a/pyproject.toml b/pyproject.toml
+index 0ca3b30..d1c9186 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -3,7 +3,10 @@ name = "crypto-backtester"
+ version = "0.1.0"
+ description = "Trial project for the SDLC framework plugin."
+ requires-python = ">=3.10"
+-dependencies = ["polars>=1.0"]
++dependencies = ["polars>=1.0", "tzdata; sys_platform == 'win32'"]
++
++[tool.setuptools]
++packages = ["app", "app.data"]
+ 
+ [tool.pytest.ini_options]
+ testpaths = ["tests"]
+diff --git a/tests/test_data.py b/tests/test_data.py
+index 7218db6..e2b5177 100644
+--- a/tests/test_data.py
++++ b/tests/test_data.py
+@@ -2,8 +2,13 @@
+ 
+ from __future__ import annotations
+ 
++import email.message
++import io
+ import json
+ import time
++import urllib.error
++import urllib.request
++import urllib.response
+ from datetime import date, datetime, timedelta, timezone
+ from pathlib import Path
+ 
+@@ -498,3 +503,48 @@ def test_current_day_is_not_cached(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
+     load(binance, "2025-01-01", "2025-01-01", tmp_path, market="um")
+     assert len(binance.rest_calls()) == 2
+     assert binance.rest_calls()[0].startswith("https://fapi.binance.com/fapi/v1/klines?")
++
++
++@pytest.mark.parametrize(
++    "moment", [datetime(2024, 1, 1), datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3)))]
++)
++@pytest.mark.parametrize(
++    "dates",
++    [
++        lambda moment: (moment, date(2024, 1, 2)),
++        lambda moment: (date(2023, 12, 31), moment),
++        lambda moment: (moment, moment),
++    ],
++)
++def test_datetime_bound_is_refused_not_a_type_error(moment, dates) -> None:
++    start, end = dates(moment)
++    with pytest.raises(InvalidRequestError, match="not a datetime"):
++        make_request("BTCUSDT", "1h", start, end, "spot", date(2025, 1, 1))
++
++
++@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
++@pytest.mark.parametrize("target", ["http://elsewhere.example/x", "https://elsewhere.example/x"])
++def test_redirect_is_not_followed(
++    monkeypatch: pytest.MonkeyPatch, status: int, target: str
++) -> None:
++    opened: list[str] = []
++
++    def answer_redirect(self: object, request: urllib.request.Request) -> object:
++        opened.append(request.full_url)
++        headers = email.message.Message()
++        headers["Location"] = target
++        response = urllib.response.addinfourl(io.BytesIO(b""), headers, request.full_url, status)
++        response.msg = "Redirect"
++        return response
++
++    monkeypatch.setattr(http._HTTPSHandler, "https_open", answer_redirect)
++    monkeypatch.setattr(urllib.request.HTTPHandler, "http_open", answer_redirect)
++    origin = "https://data.binance.vision/data/x.zip"
++    assert http.urllib_fetch(origin).status == status
++    assert opened == [origin]
++
++
++@pytest.mark.parametrize("url", ["http://127.0.0.1:9/x", "ftp://127.0.0.1/x", "file:///etc/hosts"])
++def test_only_https_urls_are_opened(url) -> None:
++    with pytest.raises(urllib.error.URLError, match="unknown url type"):
++        http.urllib_fetch(url)
