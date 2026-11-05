@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-05T19:47:17Z",
+  "change_id": "0002",
+  "cost_usd": 0.21851,
+  "exit_code": 1,
+  "explanation": [
+    "1. **What failed:** The fix round on change 0002 parked before it reached its gate. The session itself finished cleanly with no errors, no timeout and no permission denials.",
+    "2. **Likely cause:** Your review asked for lint-suppression comments in the test module, but this is a fix-type change, so its tests are locked. The run isn't allowed to edit those files or lift the lock, so it wrote down the planned edit and stopped to ask you.",
+    "3. **Flaky or real:** Real and repeatable, but it's a policy block, not a code bug. Every round will park the same way until the lock is lifted. The stderr warning about ignored permission entries in an untrusted workspace didn't cause this.",
+    "4. **First thing to check:** Read the fix-response evidence file the run committed, and decide whether to unlock tests for change 0002 (a label on the PR or the state CLI). Then start the next round so it can apply the edit and re-run the gate."
+  ],
+  "parked": true,
+  "phase": "fix",
+  "reason": "fix: the session ended without reaching its gate",
+  "run": {
+    "actor": "luissiviero",
+    "attempt": "1",
+    "event": "pull_request_review",
+    "id": "42096883604",
+    "url": "https://github.com/luissiviero/crypto-backtester/actions/runs/42096883604/attempts/1",
+    "workflow": "SDLC fix (review comments)"
+  },
+  "schema_version": 1,
+  "step": "runner"
+}
