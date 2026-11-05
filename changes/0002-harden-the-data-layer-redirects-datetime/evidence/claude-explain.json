@@ -1,0 +1,105 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 12804,
+  "duration_ms": 12970,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 1621,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 24788,
+      "cacheReadInputTokens": 19050,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 0.21851,
+      "inputTokens": 4,
+      "maxOutputTokens": 128000,
+      "outputTokens": 819,
+      "provider": "firstParty",
+      "thinkingTokens": 113,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 5,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "1. **What failed:** The fix round on change 0002 parked before it reached its gate. The session itself finished cleanly with no errors, no timeout and no permission denials.\n2. **Likely cause:** Your review asked for lint-suppression comments in the test module, but this is a fix-type change, so its tests are locked. The run isn't allowed to edit those files or lift the lock, so it wrote down the planned edit and stopped to ask you.\n3. **Flaky or real:** Real and repeatable, but it's a policy block, not a code bug. Every round will park the same way until the lock is lifted. The stderr warning about ignored permission entries in an untrusted workspace didn't cause this.\n4. **First thing to check:** Read the fix-response evidence file the run committed, and decide whether to unlock tests for change 0002 (a label on the PR or the state CLI). Then start the next round so it can apply the edit and re-run the gate.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-11-05T19:47:14Z",
+    "credential": "oauth",
+    "seconds": 14.0,
+    "timed_out": false
+  },
+  "session_id": "c9d6fbb9-aff3-45cd-aa80-aecdad0bea5d",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 75,
+  "total_cost_usd": 0.21851,
+  "ttft_ms": 2169,
+  "ttft_stream_ms": 1621,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 24788,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 24788,
+    "cache_read_input_tokens": 19050,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 4,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 5738,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 5738,
+        "cache_read_input_tokens": 19050,
+        "input_tokens": 2,
+        "output_tokens": 418,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 819,
+    "output_tokens_details": {
+      "thinking_tokens": 113
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "9711e82b-19ed-474c-a104-aa7667ce473c"
+}

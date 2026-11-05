@@ -35,7 +35,13 @@
       "run": "fix",
       "source": "claude-fix.json",
       "usd": 0.4462246000000001
+    },
+    {
+      "at": "2026-11-05T19:47:14Z",
+      "run": "explain",
+      "source": "claude-explain.json",
+      "usd": 0.21851
     }
   ],
-  "total_usd": 15.119974
+  "total_usd": 15.338484
 }
