@@ -1,15 +1,7 @@
 {
-  "decided": 1,
-  "gate": "park",
-  "items": [
-    {
-      "decided": false,
-      "item": "Important finding at CLAUDE.md:12: The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the working install, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`, 'the one runtime dependency is `polars>=1.0`') is now outdated and on Windows no longer gives a passing suite; a run may not edit it, and plan.md names the replacement lines for the owner, who must merge them after this change reaches main. [REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated]",
-      "key": "finding:69731a3b4fdfd6fc",
-      "kind": "finding",
-      "n": 1
-    }
-  ],
+  "decided": 2,
+  "gate": "wait",
+  "items": [],
   "iterations": {
     "cap": 2,
     "left": 2,
@@ -17,12 +9,10 @@
   },
   "panel_calls": {
     "cap": 4,
-    "left": 2,
-    "used": 2
+    "left": 1,
+    "used": 3
   },
   "parks": [],
-  "pending": [
-    1
-  ],
+  "pending": [],
   "phase": "deploy"
 }
