@@ -21,6 +21,28 @@
         "Changing REVIEW.md's wording to 'change or remove an existing test' is a guardrail edit; it stays with the owner through the companion nit."
       ],
       "reviewer": "Dismiss the finding (false positive): the only edit to `tests/test_data.py` is the reproducing-test commit the rule itself requires, and it adds lines without modifying any existing test."
+    },
+    {
+      "advocate": "No objection to the change continuing on this finding; object to closing it as merely \"noted for the owner\": the decision must carry the three exact replacement lines and say that intent outcome 3 stays undelivered until the owner's guardrail PR merges.",
+      "at": "2026-11-05T18:24:45Z",
+      "cost_usd": null,
+      "decision": "settled: the run may not edit CLAUDE.md or sdlc.yaml; after this change reaches main the owner merges a guardrail PR that changes CLAUDE.md Setup to `python -m pip install -e . pytest ruff`, changes \"the one runtime dependency is `polars>=1.0`\" to \"the runtime dependencies are `polars>=1.0` and, on Windows only, `tzdata`\", and changes sdlc.yaml commands.setup (line 62) to `\"python -m pip install -e . pytest ruff\"`; intent outcome 3 (documented Setup gives a passing suite) is not delivered until that PR merges.",
+      "head": "52822546b25366d6402372b01b3a595a299ab593",
+      "item": "Important finding at CLAUDE.md:12: The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the working install, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`, 'the one runtime dependency is `polars>=1.0`') is now outdated and on Windows no longer gives a passing suite; a run may not edit it, and plan.md names the replacement lines for the owner, who must merge them after this change reaches main. [REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated]",
+      "item_n": 1,
+      "key": "finding:69731a3b4fdfd6fc",
+      "kind": "finding",
+      "n": 2,
+      "overturned": null,
+      "phase": "deploy",
+      "rationale": [
+        "Both verdicts agree: the finding is valid under REVIEW.md's 'CLAUDE.md outdated' rule, and nothing should block or park the change.",
+        "CLAUDE.md and sdlc.yaml are guardrail files (CLAUDE.md SDLC framework, intent Constraints), so the only fix is the owner's PR; verifier.md shows the run left them untouched.",
+        "Order matters (plan.md 18-20): editing commands.setup before the [tool.setuptools] table is on main breaks every phase job, so parking would be circular.",
+        "Where they differ, the safer reading is the advocate's: quote the exact lines and state that outcome 3 waits on the owner's PR, so released status does not imply outcome 3 is done.",
+        "The diff makes the docs stale; it does not break Windows (it already failed before), so the Important comes from the framework rule, not from new broken behaviour."
+      ],
+      "reviewer": "Uphold the finding as Important. No change to the diff; the resolution is the owner's follow-up edit, which plan.md already names."
     }
   ],
   "phase": "deploy",

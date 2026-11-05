@@ -1,12 +1,12 @@
 {
-  "reviewer": "dismiss as a false positive: the only edit to tests/test_data.py is the reproducing-test commit the rule requires, 62 lines added and 0 removed",
-  "advocate": "no objection to dismissing, but only because the append was checked for shadowed names, autouse fixtures and lost cases, not just because it adds lines",
-  "decision": "settled: the tests/test_data.py edit is the append-only reproducing-test commit (ff61d01, before every fix commit) that REVIEW.md's 'failing test written first' clause and the intent require; no pre-existing test changed",
+  "reviewer": "uphold as Important with no diff change; the fix is the owner's follow-up edit plan.md already names",
+  "advocate": "no objection to continuing, but the decision must quote the replacement lines, the merge order, and that intent outcome 3 stays undelivered until the owner's guardrail PR merges",
+  "decision": "settled: the run may not edit CLAUDE.md or sdlc.yaml; after this change reaches main the owner merges a guardrail PR that changes CLAUDE.md Setup to `python -m pip install -e . pytest ruff`, changes \"the one runtime dependency is `polars>=1.0`\" to \"the runtime dependencies are `polars>=1.0` and, on Windows only, `tzdata`\", and changes sdlc.yaml commands.setup (line 62) to `\"python -m pip install -e . pytest ruff\"`; intent outcome 3 (documented Setup gives a passing suite) is not delivered until that PR merges.",
   "rationale": [
-    "Both verdicts agree to close the finding; the advocate adds checks, and they hold: additions only, no new test name collides, no autouse fixture, case count 69 -> 89 = 69 + 20 new.",
-    "REVIEW.md's rule names the failing test written first as the proof; intent.md and plan.md put these regression tests in tests/test_data.py, and CLAUDE.md asks for one test module per area.",
-    "The one commit touching the file comes before the fix commits, and test_lock passed at the build and test gates, so no fix commit weakened a test.",
-    "Moving the tests to a new file would break the intent's placement and the per-area convention, so no fix inside this change is better.",
-    "Changing REVIEW.md's wording to 'change or remove an existing test' is a guardrail edit; it stays with the owner through the companion nit."
+    "Both verdicts agree: the finding is valid under REVIEW.md's 'CLAUDE.md outdated' rule, and nothing should block or park the change.",
+    "CLAUDE.md and sdlc.yaml are guardrail files (CLAUDE.md SDLC framework, intent Constraints), so the only fix is the owner's PR; verifier.md shows the run left them untouched.",
+    "Order matters (plan.md 18-20): editing commands.setup before the [tool.setuptools] table is on main breaks every phase job, so parking would be circular.",
+    "Where they differ, the safer reading is the advocate's: quote the exact lines and state that outcome 3 waits on the owner's PR, so released status does not imply outcome 3 is done.",
+    "The diff makes the docs stale; it does not break Windows (it already failed before), so the Important comes from the framework rule, not from new broken behaviour."
   ]
 }

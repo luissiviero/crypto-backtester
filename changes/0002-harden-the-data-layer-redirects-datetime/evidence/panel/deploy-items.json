@@ -1,11 +1,11 @@
 {
-  "decided": 0,
+  "decided": 1,
   "gate": "park",
   "items": [
     {
       "decided": false,
-      "item": "Important finding at tests/test_data.py: pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25) [REVIEW.md: no test edits in a fix task]",
-      "key": "finding:c3b73ce1597573be",
+      "item": "Important finding at CLAUDE.md:12: The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the working install, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`, 'the one runtime dependency is `polars>=1.0`') is now outdated and on Windows no longer gives a passing suite; a run may not edit it, and plan.md names the replacement lines for the owner, who must merge them after this change reaches main. [REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated]",
+      "key": "finding:69731a3b4fdfd6fc",
       "kind": "finding",
       "n": 1
     }
@@ -17,8 +17,8 @@
   },
   "panel_calls": {
     "cap": 4,
-    "left": 3,
-    "used": 1
+    "left": 2,
+    "used": 2
   },
   "parks": [],
   "pending": [

@@ -1,6 +1,15 @@
 {
-  "at": "2026-11-05T18:16:13Z",
+  "at": "2026-11-05T18:40:00Z",
   "findings": [
+    {
+      "file": "CLAUDE.md",
+      "line": 12,
+      "pass": "compliance",
+      "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
+      "severity": "important",
+      "signature": "69731a3b4fdfd6fc",
+      "summary": "The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the working install, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`, 'the one runtime dependency is `polars>=1.0`') is now outdated and on Windows no longer gives a passing suite; a run may not edit it, and plan.md names the replacement lines for the owner, who must merge them after this change reaches main."
+    },
     {
       "file": "tests/test_data.py",
       "line": 0,
@@ -13,36 +22,36 @@
     },
     {
       "file": "app/data/http.py",
+      "line": 81,
+      "pass": "bugs",
+      "rule": "",
+      "severity": "nit",
+      "signature": "9ad16ff2a2b0bdcd",
+      "summary": "The module-level loop leaves `_handler` bound in the module namespace after import; harmless, but a tuple passed to a small helper or `del _handler` would keep the module surface clean."
+    },
+    {
+      "file": "app/data/http.py",
       "line": 82,
-      "pass": "security",
-      "rule": "spec R3: urllib_fetch opens only https:// URLs, refusing other schemes before any socket opens",
+      "pass": "compliance",
+      "rule": "spec.md R5; coding-standards rule 4",
       "severity": "nit",
-      "signature": "7012c1473a58568e",
-      "summary": "If the environment's http_proxy (or ftp_proxy) names an https:// proxy, ProxyHandler.proxy_open re-types the http/ftp request to https and re-enters the opener, so _HTTPSHandler sends it to the proxy instead of UnknownHandler refusing it, and test_only_https_urls_are_opened would then open a socket to that proxy; inferred from CPython's ProxyHandler, not run (the sandbox denied the check), uncommon configuration, and reachable only by a direct urllib_fetch call since the layer builds only https URLs."
+      "signature": "21b92ae64b01a5fc",
+      "summary": "R5 (environment proxies keep working through the hand-built opener) has no automated test; only the verifier's manual handler inspection backs it, so a later edit that drops `ProxyHandler` would pass the suite."
     },
     {
-      "file": "CLAUDE.md",
-      "line": 11,
+      "file": "changes/0002-harden-the-data-layer-redirects-datetime/plan.md",
+      "line": 97,
       "pass": "compliance",
-      "rule": "REVIEW.md framework rules: flag when the change has made CLAUDE.md outdated",
+      "rule": "spec.md Acceptance (pip install -e . on Linux)",
       "severity": "nit",
-      "signature": "07a80a5e57cc79cf",
-      "summary": "The diff makes CLAUDE.md's Setup line (no longer enough for Windows) and 'the one runtime dependency is polars>=1.0' outdated; plan.md names both edits and sdlc.yaml commands.setup for the owner as spec R12 requires, so graded a nit, with the doubt that the rule may want it tracked until the owner's guardrail PR lands after this merges."
-    },
-    {
-      "file": "tests/test_data.py",
-      "line": 509,
-      "pass": "compliance",
-      "rule": "REVIEW.md framework rules: in a fix-type change the diff must not modify test files that existed before the fix",
-      "severity": "nit",
-      "signature": "d47002cb4e08c30a",
-      "summary": "In a fix-type change the pre-existing file tests/test_data.py gains imports and four appended tests; no existing test is edited and the additions sit in the first, reproducing commit as the intent and plan require, so this is graded a nit, with the doubt that REVIEW.md's wording ('test files that existed before the fix') could be read literally as a breach."
+      "signature": "722195048b0d79cb",
+      "summary": "The spec acceptance 'python -m pip install -e . succeeds and git status stays clean (Linux)' is only partly proven: the build run's install failed on a read-only sandbox and the test run built a wheel instead, so the editable install is first fully exercised at the owner's Windows check."
     }
   ],
-  "head": "571966650fa323346f828100cbd3c8156cccb3a2",
+  "head": "52822546b25366d6402372b01b3a595a299ab593",
   "schema_version": 1,
   "tally": {
-    "important": 1,
+    "important": 2,
     "nit": 3,
     "nits_omitted": 0
   }
