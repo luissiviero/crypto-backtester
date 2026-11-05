@@ -6,11 +6,11 @@ entry_route: idea
 change_type: fix
 gate:
   phase: deploy
-  result: parked
-  reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
-  at: "2026-11-05T20:53:34Z"
-parked_reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
-iterations: 0
+  result: passed
+  reason: waiting for the owner at gate (deploy)
+  at: "2026-11-05T21:46:35Z"
+parked_reason: null
+iterations: 1
 panel_calls: 0
 external_ref: null
 risk_accepted: []
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-11-03T18:42:52Z"
-updated_at: "2026-11-05T21:41:10Z"
+updated_at: "2026-11-05T21:46:35Z"
 schema_version: 1

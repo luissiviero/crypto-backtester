@@ -1,15 +1,6 @@
 {
-  "at": "2026-11-05T20:50:08Z",
+  "at": "2026-11-05T21:45:48Z",
   "findings": [
-    {
-      "file": "CLAUDE.md",
-      "line": 12,
-      "pass": "compliance",
-      "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
-      "severity": "important",
-      "signature": "69731a3b4fdfd6fc",
-      "summary": "The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the install that delivers it, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`) and 'the one runtime dependency is `polars>=1.0`' are now outdated and on Windows no longer give a passing suite; the run may not edit CLAUDE.md or sdlc.yaml `commands.setup`, and plan.md (lines 18-26) names the replacement lines for the owner's guardrail PR, to merge after this change reaches main."
-    },
     {
       "file": "tests/test_data.py",
       "line": 0,
@@ -21,38 +12,29 @@
       "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
     },
     {
-      "file": "app/data/http.py",
-      "line": 81,
-      "pass": "bugs",
-      "rule": "",
+      "file": "pyproject.toml",
+      "line": 6,
+      "pass": "compliance",
+      "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
       "severity": "nit",
-      "signature": "4b267bcdf6ba8dd8",
-      "summary": "The module-level `for _handler in (...)` loop leaves `_handler` bound in the module namespace after import; harmless, but `del _handler` or a small builder function would keep the module surface clean."
+      "signature": "e01563be17e90885",
+      "summary": "The new Windows-only tzdata dependency and the [tool.setuptools] table make CLAUDE.md's Setup line and its 'the one runtime dependency is polars>=1.0' outdated; plan.md (lines 18-26) names each line for the owner's follow-up PR as required, so this is a nit for the owner's tracking, not an unacknowledged breach (doubt: if the gate expects the outdated text itself to count as Important, it applies here)."
     },
     {
-      "file": "app/data/http.py",
-      "line": 82,
+      "file": "tests/test_data.py",
+      "line": 540,
       "pass": "compliance",
-      "rule": "spec.md R5; coding-standards rule 4",
+      "rule": "REVIEW.md Framework rules: plan.md must reflect the diff",
       "severity": "nit",
-      "signature": "bca56c45b2be62e2",
-      "summary": "R5 (environment proxies still work through the hand-built opener) has no automated test, only the verifier's manual inspection of the handler list, so a later edit that drops `ProxyHandler` would still pass the suite."
-    },
-    {
-      "file": "changes/0002-harden-the-data-layer-redirects-datetime/plan.md",
-      "line": 97,
-      "pass": "compliance",
-      "rule": "spec.md Acceptance (pip install -e . on Linux)",
-      "severity": "nit",
-      "signature": "57b1afe345962575",
-      "summary": "The spec acceptance item 'python -m pip install -e . succeeds and git status stays clean (Linux)' is only partly proven: the build run's install failed on a read-only sandbox and the test run built a wheel instead, so the first full editable install is the owner's Windows check at the deploy gate."
+      "signature": "0c7fa247c7808a9e",
+      "summary": "Commit f62fcfd edits the change's own regression tests after the test lock (adds noqa DTZ001 markers) without a plan.md update in the same commit, while plan.md Risks says the test files are locked after step 1; the owner unlocked the tests (tests_unlocked_by: luissiviero) and no pre-existing test changed, so the departure is cosmetic."
     }
   ],
-  "head": "f62fcfdc31604835f46b6e80cb1817b65ce88fdd",
+  "head": "0d27039965e15262308d2a1f6cc04d01da1938ab",
   "schema_version": 1,
   "tally": {
-    "important": 2,
-    "nit": 3,
+    "important": 1,
+    "nit": 2,
     "nits_omitted": 0
   }
 }

@@ -4,26 +4,226 @@
   "slug": "harden-the-data-layer-redirects-datetime",
   "phase": "deploy",
   "human_gate": true,
-  "result": "park",
-  "label": "sdlc:needs-human",
-  "head": "6c39e1f7f9b4f963340ba069797384a3ed869b90",
-  "at": "2026-11-05T20:53:34Z",
+  "result": "wait",
+  "label": "sdlc:deploy-ready",
+  "head": "0d27039965e15262308d2a1f6cc04d01da1938ab",
+  "at": "2026-11-05T21:46:35Z",
   "dry_run": false,
-  "reason": "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)",
+  "reason": "",
   "config_note": "",
   "checks": [
     {
       "name": "limits",
-      "ok": false,
-      "reason": "iteration cap reached: 3 fix iterations, cap 2 (non-routine)",
-      "need": "Look at the partial evidence, then either fix by hand, or reset the count with `cli.py set-iterations --root . --id 0002 --count 0` to allow another round.",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
       "details": {
-        "iterations": 3,
+        "iterations": 1,
         "cap": 2,
         "classification": "non-routine",
-        "stop": true
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "recheck_minutes": 1,
+        "elapsed_minutes": 4.8,
+        "spend_usd": null,
+        "spend_usd_total": 18.232927,
+        "spend_entries": 10,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "clean_tree",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder",
+      "need": "",
+      "details": {
+        "ignored": [
+          "CLAUDE.local.md",
+          "changes/.review-seen.json"
+        ]
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "2 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "finding",
+            "decision": "settled: the tests/test_data.py edit is the append-only reproducing-test commit (ff61d01, before every fix commit) that REVIEW.md's 'failing test written first' clause and the intent require; no pre-existing test changed"
+          },
+          {
+            "n": 2,
+            "kind": "finding",
+            "decision": "settled: the run may not edit CLAUDE.md or sdlc.yaml; after this change reaches main the owner merges a guardrail PR that changes CLAUDE.md Setup to `python -m pip install -e . pytest ruff`, changes \"the one runtime dependency is `polars>=1.0`\" to \"the runtime dependencies are `polars>=1.0` and, on Windows only, `tzdata`\", and changes sdlc.yaml commands.setup (line 62) to `\"python -m pip install -e . pytest ruff\"`; intent outcome 3 (documented Setup gives a passing suite) is not delivered until that PR merges."
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "evidence",
+      "ok": true,
+      "reason": "deferred to the runner: the session wrote no command log, the runner writes test.log, build.log, lint.log from its build, test and lint after the model's session (issue #91); not yet written",
+      "need": "",
+      "details": {
+        "deferred": true,
+        "deferred_logs": [
+          "test.log",
+          "build.log",
+          "lint.log"
+        ]
+      }
+    },
+    {
+      "name": "proof",
+      "ok": true,
+      "reason": "no drive target: nothing to compare",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "findings",
+      "ok": true,
+      "reason": "1 Important finding(s) settled by the review panel, none open",
+      "need": "",
+      "details": {
+        "tally": {
+          "important": 1,
+          "nit": 2,
+          "nits_omitted": 0
+        },
+        "settled_by_panel": [
+          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+        ]
+      }
+    },
+    {
+      "name": "plan_sync",
+      "ok": true,
+      "reason": "every committed source file is in plan.md",
+      "need": "",
+      "details": {
+        "planned_but_unchanged": [
+          "CLAUDE.md",
+          "sdlc.yaml",
+          ".github/workflows/ci.yml"
+        ],
+        "plan_growth": {
+          "added": [],
+          "removed": []
+        }
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {
+          "iterations_reset": "luissiviero",
+          "panel_calls_reset": "luissiviero",
+          "tests_unlocked": "luissiviero"
+        }
+      }
+    },
+    {
+      "name": "test_lock",
+      "ok": true,
+      "reason": "the lock is not set at HEAD (owner_actions judges a lift)",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "ratchets",
+      "ok": true,
+      "reason": "no undeclared test file or eval case drop",
+      "need": "",
+      "details": {
+        "hits": {},
+        "declared": [],
+        "skip_markers": [],
+        "accepted": []
+      }
+    },
+    {
+      "name": "lesson_and_eval",
+      "ok": true,
+      "reason": "not an incident change at gate (deploy): nothing to check",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
       }
     }
   ],
-  "what_i_need": "## What I need from you\nGate (deploy) parked change 0002 (harden-the-data-layer-redirects-datetime) on 2026-11-05T20:53:34Z.\n- **limits**: iteration cap reached: 3 fix iterations, cap 2 (non-routine)\n  - what I need: Look at the partial evidence, then either fix by hand, or reset the count with `cli.py set-iterations --root . --id 0002 --count 0` to allow another round.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0002 --phase deploy` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
+  "what_i_need": ""
 }

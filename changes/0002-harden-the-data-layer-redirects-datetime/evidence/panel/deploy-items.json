@@ -4,13 +4,13 @@
   "items": [],
   "iterations": {
     "cap": 2,
-    "left": 0,
-    "used": 2
+    "left": 1,
+    "used": 1
   },
   "panel_calls": {
     "cap": 4,
-    "left": 1,
-    "used": 3
+    "left": 4,
+    "used": 0
   },
   "parks": [],
   "pending": [],

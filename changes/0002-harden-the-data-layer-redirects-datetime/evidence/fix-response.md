@@ -1,30 +1,32 @@
-# Fix round 3 — change 0002, phase deploy (PR #11)
+# Fix round 4 — change 0002, phase deploy (PR #11)
 
-`bump-iteration` reported iteration 3 against a cap of 2, so this round changed nothing in the
-code. The trigger, issuecomment-6668928989, was already applied in round 2 (f62fcfd).
+The owner added `sdlc:reset-iterations` (luissiviero, 2026-11-05T21:41:10Z). `bump-iteration`
+now reports iteration 1 of a cap of 2. `evidence/fix-requests.json` holds no new request, so
+the one request this round carries is the park left by round 3.
 
 ## Requests
 
-- The gate's park (`commands: not green: lint (exit 1)`): **not applied: iteration cap
-  reached.**
-  Diagnosis, from `evidence/lint.log`: the runner's ruff is 0.17.4 (unpinned), and it reports
-  RUF100 (unused `noqa`, DTZ001 is not enabled in 0.17.x) on the three `# noqa: DTZ001`
-  comments f62fcfd added at tests/test_data.py:540, 563 and 565. CI pins ruff 0.16.9, which
-  needs those comments. With these comments, no single version of the test file passes both
-  rulesets.
-  Proposed edit (not made): on each of the three lines, change `# noqa: DTZ001` to
-  `# noqa: DTZ001, RUF100`. Ruff does not report RUF100 on a directive that lists RUF100,
-  so the line passes both 0.16.9 and 0.17.4. Line 540, the parametrize value, stays short.
-  The two `clear_cache` lines (563 and 565) grow from 100 and 98 characters to 108 and 106,
-  so each call needs to wrap over several lines to stay within the 100-character limit. The other option is to
-  align the ruff that the runner's targets use with the CI pin (`ruff==0.16.9`). The setup
-  command is in `sdlc.yaml`, and only you can edit that file.
+- The gate's park (`limits: iteration cap reached`, behind it
+  `commands: not green: lint (exit 1)`). The owner chose the second option of round 3:
+  `ruff==0.16.9` is pinned in `sdlc.yaml: commands.setup` (PR #12, e8ad833). It reached this
+  branch through the runner's merge of origin/main (0d27039).
+  **Applied with no code change:** the three `# noqa: DTZ001` comments stay as f62fcfd wrote
+  them. In this session, with ruff 0.16.9: `python -m compileall -q .` printed nothing (exit 0),
+  `python -m pytest` reported 89 passed, and `python -m ruff check .` reported
+  `All checks passed!`. The runner runs the gate's targets again after this session.
+  For this HEAD, `evidence/collect.py` reset the three logs to the deferred mark. The deploy
+  review pass ran again (`review-findings.json`: 0 Important from the model, 2 nits). The
+  framework's own Important finding on `tests/test_data.py` has signature c3b73ce1597573be,
+  which panel decision 1 already settled. The adversarial verdict is `continue`
+  (non-routine).
 
-## What I need from you
+## For your follow-up guardrail PR (not applied: guardrail files)
 
-1. Choose one fix: the `# noqa: DTZ001, RUF100` edit (with the two `clear_cache` calls
-   wrapped), or pinning `ruff==0.16.9` in `sdlc.yaml: commands.setup`, which you edit.
-2. Add the `sdlc:reset-iterations` label so another round can apply the edit.
+Panel decision 2 quotes the new Setup line as `python -m pip install -e . pytest ruff` in two
+places: `CLAUDE.md` and `sdlc.yaml: commands.setup`. Since PR #12, that line carries the pin,
+so keep the pin in both edits: `python -m pip install -e . pytest ruff==0.16.9`. If the pin is
+dropped, this park comes back. The adversarial reviewer and this round's review pass both
+noted this.
 
 ## Not applied by the collector
 

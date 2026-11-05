@@ -13,8 +13,8 @@
       "kind": "review"
     }
   ],
-  "collected_at": "2026-11-05T20:52:59+00:00",
-  "head": "6c39e1f7f9b4f963340ba069797384a3ed869b90",
+  "collected_at": "2026-11-05T21:41:13+00:00",
+  "head": "068e9efcdaaa1bf652c4e78a3b6ee903e278236f",
   "not_applied": [
     {
       "association": "OWNER",
@@ -57,6 +57,6 @@
   "requests": [],
   "route": "api",
   "schema_version": 1,
-  "trigger": "https://github.com/luissiviero/crypto-backtester/pull/11#issuecomment-6668928989",
+  "trigger": null,
   "unavailable": null
 }

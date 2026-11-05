@@ -21,6 +21,17 @@
     "last_seen": "2026-11-05T18:16:43Z",
     "summary": "The diff makes CLAUDE.md's Setup line (no longer enough for Windows) and 'the one runtime dependency is polars>=1.0' outdated; plan.md names both edits and sdlc.yaml commands.setup for the owner as spec R12 requires, so graded a nit, with the doubt that the rule may want it tracked until the owner's guardrail PR lands after this merges."
   },
+  "0c7fa247c7808a9e": {
+    "changes": [
+      "0002"
+    ],
+    "count": 1,
+    "file": "tests/test_data.py",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-11-05T21:46:13Z",
+    "summary": "Commit f62fcfd edits the change's own regression tests after the test lock (adds noqa DTZ001 markers) without a plan.md update in the same commit, while plan.md Risks says the test files are locked after step 1; the owner unlocked the tests (tests_unlocked_by: luissiviero) and no pre-existing test changed, so the departure is cosmetic."
+  },
   "0d24b3b8967d4d81": {
     "changes": [
       "0001"
@@ -267,11 +278,11 @@
     "changes": [
       "0002"
     ],
-    "count": 5,
+    "count": 6,
     "file": "tests/test_data.py",
     "first_change": "0002",
     "last_change": "0002",
-    "last_seen": "2026-11-05T20:50:36Z",
+    "last_seen": "2026-11-05T21:46:13Z",
     "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
   },
   "d47002cb4e08c30a": {
@@ -284,5 +295,16 @@
     "last_change": "0002",
     "last_seen": "2026-11-05T18:16:43Z",
     "summary": "In a fix-type change the pre-existing file tests/test_data.py gains imports and four appended tests; no existing test is edited and the additions sit in the first, reproducing commit as the intent and plan require, so this is graded a nit, with the doubt that REVIEW.md's wording ('test files that existed before the fix') could be read literally as a breach."
+  },
+  "e01563be17e90885": {
+    "changes": [
+      "0002"
+    ],
+    "count": 1,
+    "file": "pyproject.toml",
+    "first_change": "0002",
+    "last_change": "0002",
+    "last_seen": "2026-11-05T21:46:13Z",
+    "summary": "The new Windows-only tzdata dependency and the [tool.setuptools] table make CLAUDE.md's Setup line and its 'the one runtime dependency is polars>=1.0' outdated; plan.md (lines 18-26) names each line for the owner's follow-up PR as required, so this is a nit for the owner's tracking, not an unacknowledged breach (doubt: if the gate expects the outdated text itself to count as Important, it applies here)."
   }
 }
