@@ -1,7 +1,7 @@
 {
   "applied_earlier": [],
-  "collected_at": "2026-11-05T19:45:59+00:00",
-  "head": "81ecfeb2f01fe49b672b5c3e3bc97366f5012a6b",
+  "collected_at": "2026-11-05T20:45:59+00:00",
+  "head": "ee063edfbe459722565f8147d695f069551c45e9",
   "not_applied": [],
   "ok": true,
   "pr_number": 11,
@@ -16,6 +16,24 @@
       "kind": "review",
       "state": "CHANGES_REQUESTED",
       "url": "https://github.com/luissiviero/crypto-backtester/pull/11#pullrequestreview-5791049725"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-11-05T20:44:55Z",
+      "author": "luissiviero",
+      "body": "@claude Tests are unlocked. Apply the planned edit in evidence/fix-response.md as written, and nothing else.",
+      "id": 6668908102,
+      "kind": "comment",
+      "url": "https://github.com/luissiviero/crypto-backtester/pull/11#issuecomment-6668908102"
+    },
+    {
+      "association": "OWNER",
+      "at": "2026-11-05T20:45:37Z",
+      "author": "luissiviero",
+      "body": "@claude Tests are unlocked. Apply the planned edit in evidence/fix-response.md as written, and nothing else.",
+      "id": 6668928989,
+      "kind": "comment",
+      "url": "https://github.com/luissiviero/crypto-backtester/pull/11#issuecomment-6668928989"
     }
   ],
   "route": "api",

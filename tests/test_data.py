@@ -535,7 +535,11 @@ def test_only_https_urls_are_opened(url: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "moment", [datetime(2024, 1, 1), datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3)))]
+    "moment",
+    [
+        datetime(2024, 1, 1),  # noqa: DTZ001
+        datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3))),
+    ],
 )
 @pytest.mark.parametrize(
     "dates",
@@ -556,7 +560,7 @@ def test_datetime_bound_is_refused_not_a_type_error(
 def test_clear_cache_refuses_a_datetime_bound(tmp_path: Path) -> None:
     spot = cached_days(tmp_path, "spot", "BTCUSDT", "1h", ["2024-01-01"])
     with pytest.raises(InvalidRequestError, match="not a datetime"):
-        cache.clear_cache("BTCUSDT", start=datetime(2024, 1, 1), cache_dir=tmp_path)
+        cache.clear_cache("BTCUSDT", start=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001
     with pytest.raises(InvalidRequestError, match="not a datetime"):
-        cache.clear_cache("BTCUSDT", end=datetime(2024, 1, 1), cache_dir=tmp_path)
+        cache.clear_cache("BTCUSDT", end=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001
     assert (spot / "BTCUSDT-1h-2024-01-01.parquet").is_file()
