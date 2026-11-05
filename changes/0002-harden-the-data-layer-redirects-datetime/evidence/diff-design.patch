@@ -1,0 +1,342 @@
+ .../evidence/hook-log.jsonl                        |  11 ++
+ .../evidence/run-design.json                       |   5 +
+ .../plan.md                                        | 139 +++++++++++++++++++++
+ .../spec.md                                        | 135 ++++++++++++++++++++
+ .../status.yaml                                    |   4 +-
+ 5 files changed, 292 insertions(+), 2 deletions(-)
+
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl
+new file mode 100644
+index 0000000..e3ec36e
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl
+@@ -0,0 +1,11 @@
++{"at": "2026-11-05T15:00:20Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T15:00:22Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T15:00:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T15:01:57Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T15:01:57Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T15:01:57Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T15:01:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T15:02:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T15:02:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T15:02:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T15:02:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-design.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-design.json
+new file mode 100644
+index 0000000..85c98b9
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-design.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "design",
++  "spend_usd": null,
++  "started_at": "2026-11-05T15:00:23Z"
++}
+\ No newline at end of file
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/plan.md b/changes/0002-harden-the-data-layer-redirects-datetime/plan.md
+new file mode 100644
+index 0000000..af1889e
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/plan.md
+@@ -0,0 +1,139 @@
++# Plan: Harden the data layer: redirects, datetime bounds, Windows tzdata (from intent.md 2026-11-03, spec.md 2026-11-05)
++
++## Files that change
++- `tests/test_data.py` — new regression tests for redirects, URL schemes and datetime bounds
++  (plus the imports they need: `email.message`, `io`, `urllib.error`, `urllib.request`,
++  `urllib.response`); no existing test changes.
++- `app/data/http.py` — `_OPENER` assembled by hand as an `OpenerDirector` with `ProxyHandler`,
++  `UnknownHandler`, `_HTTPSHandler`, `HTTPDefaultErrorHandler`, `HTTPErrorProcessor`; one
++  comment saying why.
++- `app/data/params.py` — `parse_date` refuses a `datetime` with `InvalidRequestError`; import
++  `datetime`.
++- `pyproject.toml` — `tzdata; sys_platform == 'win32'` in `dependencies`; new
++  `[tool.setuptools]` table with `packages = ["app", "app.data"]`.
++- `.gitignore` — `*.egg-info/`.
++- `changes/0002-harden-the-data-layer-redirects-datetime/plan.md` — this file, if the build
++  departs from it.
++
++For the owner, not the run (guardrail files; edit in a PR merged **after** this change reaches
++`main`, because the phase jobs run `commands.setup` and `pip install -e .` fails before the
++`[tool.setuptools]` table exists):
++- `CLAUDE.md` line 11–13 (Commands, Setup): `python -m pip install pytest ruff polars` becomes
++  `python -m pip install -e . pytest ruff`, and "the one runtime dependency is `polars>=1.0`"
++  becomes "the runtime dependencies are `polars>=1.0` and, on Windows only, `tzdata`".
++- `sdlc.yaml` `commands.setup` (line 62): `"python -m pip install pytest ruff polars"` becomes
++  `"python -m pip install -e . pytest ruff"`.
++- `.github/workflows/ci.yml` stays as it is (intent Constraints).
++
++## Order of work
++1. Write the reproducing tests in `tests/test_data.py` and see them fail on the current code
++   (fix-type change: this commit comes first and locks the test files):
++   - `test_redirect_is_not_followed`, parametrized over status 301, 302, 303, 307, 308 and
++     target `http://elsewhere.example/x`, `https://elsewhere.example/x`: monkeypatch
++     `http._HTTPSHandler.https_open` and `urllib.request.HTTPHandler.http_open` with a stub that
++     records `request.full_url` and returns a `urllib.response.addinfourl` with the status, a
++     `Location` header and `msg` set; assert `http.urllib_fetch(origin).status == status` and
++     that only `origin` (`https://data.binance.vision/data/x.zip`) was opened. On `main` it
++     fails (the redirect is followed and returns the stub's second answer).
++   - `test_only_https_urls_are_opened`, parametrized over `http://127.0.0.1:9/x`,
++     `ftp://127.0.0.1/x`, `file:///etc/hosts`: `pytest.raises(urllib.error.URLError,
++     match="unknown url type")`. On `main` the `http`/`ftp` cases fail with a connection error
++     and `file` reads the file; port 9 on loopback and ftp to loopback open no external
++     connection.
++   - `test_datetime_bound_is_refused_not_a_type_error`, parametrized over a naive
++     `datetime(2024, 1, 1)` and an aware `datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3)))`,
++     each as start, end and both: `pytest.raises(InvalidRequestError, match="not a datetime")`
++     from `make_request("BTCUSDT", "1h", start, end, "spot", date(2025, 1, 1))`. Type the
++     parameters (`moment: datetime`, `dates: Callable[...]`) per `CLAUDE.md`.
++   - `test_clear_cache_refuses_a_datetime_bound`, `tmp_path`: `cache.clear_cache("BTCUSDT",
++     start=datetime(2024, 1, 1), cache_dir=tmp_path)` and the same with `end=` raise
++     `InvalidRequestError` matching "not a datetime". (On `main` this passes for an empty
++     cache, because no day is compared; write one day file first with the stub's
++     `cached_days(tmp_path, "spot", "BTCUSDT", "1h", ["2024-01-01"])`, as
++     `test_cache_info_and_clear_touch_only_day_files` does, so it fails with `TypeError` on
++     `main`; assert the day file is still there afterwards.)
++   Run `python -m pytest` and record the failures.
++2. Fix `app/data/params.py`: in `parse_date`, before the `isinstance(value, date)` branch,
++   `if isinstance(value, datetime): raise InvalidRequestError(f"invalid {name} date {value!r}:
++   pass a date or YYYY-MM-DD, not a datetime")`, with a one-line comment (a datetime is a date,
++   but its time and zone do not say which UTC day is meant). The datetime tests pass.
++3. Fix `app/data/http.py`: replace `_OPENER = urllib.request.build_opener(_HTTPSHandler())`
++   with an `urllib.request.OpenerDirector()` and `add_handler` for each of `ProxyHandler()`,
++   `UnknownHandler()`, `_HTTPSHandler()`, `HTTPDefaultErrorHandler()`, `HTTPErrorProcessor()`;
++   a two-line comment that `build_opener` would add the HTTP, FTP, file, data and redirect
++   handlers, and that without them a 3xx returns as its status and other schemes are refused.
++   The redirect and scheme tests pass.
++4. Packaging: `pyproject.toml` `dependencies = ["polars>=1.0", "tzdata; sys_platform ==
++   'win32'"]` and `[tool.setuptools]` `packages = ["app", "app.data"]` after `[project]`;
++   `.gitignore` adds `*.egg-info/`. Where the environment allows, run
++   `python -m pip install -e .` and confirm it succeeds and `git status` is clean.
++5. Run build, test and lint (`python -m compileall -q .`, `python -m pytest`,
++   `python -m ruff check .`) and paste the output.
++
++## Risks
++- **Riskiest step: the hand-built opener (step 3).** Leaving out a handler `build_opener`
++  added silently changes behaviour. Checked against what the layer needs: `ProxyHandler`
++  keeps environment proxies (intent Constraints; an `https` proxy tunnels through
++  `_HTTPSConnection`, so the timeouts still apply); `HTTPErrorProcessor` +
++  `HTTPDefaultErrorHandler` keep "an error status becomes `HTTPError`", which `urllib_fetch`
++  already converts to a response (418, 429, 404, 5xx paths unchanged and covered by the
++  existing `with_retries`, Vision and REST tests). Not added on purpose: `HTTPRedirectHandler`,
++  `HTTPHandler`, `FTPHandler`, `FileHandler`, `DataHandler`. Cookie and auth handlers were never
++  in the default opener.
++- **A Binance host that redirects** would now fail that day with `Vision refused (HTTP 3xx)` /
++  `REST refused (HTTP 3xx)` in the gap report instead of downloading. Not checked live (a run
++  may not; security-baseline rule 7). Mitigation: the refusal is explicit; the owner may run one
++  real download at the deploy gate.
++- **`URLError` for a non-https URL is an `OSError`**, so `with_retries` would retry it three
++  times with backoff. The layer only builds `https://` URLs, so this is reached only by a
++  direct call; left as is to keep the change to the intent's scope.
++- **New dependency (coding-standards rule 5, security-baseline rule 6):** `tzdata`, Windows
++  only, unpinned, the IANA database the Python docs name for `zoneinfo` on systems without one.
++  No change on Linux/macOS or in CI. The owner's merge accepts it.
++- **Packaging:** no `[build-system]` table, so pip uses setuptools' default backend in an
++  isolated build (current setuptools, which supports `[tool.setuptools]` and PEP 660
++  editable installs). Proven on Windows by the intent's prototype; not yet run on Linux or
++  Python 3.12 — the build run checks `pip install -e .` where its sandbox allows.
++- **Guardrail order:** if the owner changes `commands.setup` before this change is on `main`,
++  every phase job's setup fails. Named above for the owner.
++- **Test lock:** after step 1 the test files are locked; every test this change needs is in
++  step 1, including the `clear_cache` one.
++- Callers touched: `make_request` (`load_klines`, the `download` CLI), `clear_cache` (the
++  `cache-clear` CLI passes strings, unaffected), `urllib_fetch` (`load_klines` default fetch,
++  the CLI). Data shapes, cache layout, public API: unchanged.
++
++## Options not taken
++- **Allow redirects within the three Binance hosts over HTTPS:** an allow-list to keep in step
++  with `vision.py`/`rest.py` and a custom redirect handler; more code for a case never seen.
++- **Normalise a `datetime` with `.date()` (UTC-converting aware values):** silently drops the
++  time and invites wrong-day surprises; the intent proposed refusal.
++- **`polars[timezone]` extra instead of the direct `tzdata` marker:** depends on the extra
++  existing across `polars>=1.0`.
++- **Keep `build_opener` and only pass a redirect handler that refuses:** still leaves
++  `HTTPHandler`, `FTPHandler`, `FileHandler`, `DataHandler` in place, so plain `http://` without
++  the project's timeouts remains reachable.
++- **Add a `[build-system]` table:** not needed for the install (prototype proved it); a
++  separate packaging decision.
++- **Bump the version to 0.1.1:** see spec.md Flagged concerns; kept at 0.1.0.
++- **A Windows CI job:** out of scope (intent).
++
++## Proof
++- test: test_redirect_is_not_followed
++- test: test_only_https_urls_are_opened
++- test: test_datetime_bound_is_refused_not_a_type_error
++- test: test_clear_cache_refuses_a_datetime_bound
++- All four are still to be written (step 1); they fail on `main` and pass after steps 2–3.
++  Every existing test in `tests/` keeps passing.
++- `python -m compileall -q .` silent, exit 0; `python -m pytest` all passed;
++  `python -m ruff check .` "All checks passed!".
++- Deploy gate, by the owner on Windows in a clean venv: `python -m pip install -e . pytest ruff`
++  then `python -m pytest`, all passed, `tzdata` installed by that command.
++
++Interrogation (plan-template):
++1. Breaks: `urllib_fetch` callers (loader, CLI), `parse_date` callers (`make_request`,
++   `clear_cache`); folded into Risks.
++2. Riskiest: the hand-built opener; Risks.
++3. Options: Options not taken.
++4. Implementable cold: yes — each step names the function, the exact handler list, the
++   message text and the test parameters.
++5. Proof items: all four tests are to be written in step 1; none exists yet.
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/spec.md b/changes/0002-harden-the-data-layer-redirects-datetime/spec.md
+new file mode 100644
+index 0000000..343fda4
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/spec.md
+@@ -0,0 +1,135 @@
++# Spec: Harden the data layer: redirects, datetime bounds, Windows tzdata
++Change id: 0002. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.51); overrides: none; policy sources: none
++
++## Requirements
++Redirects and URL schemes (intent outcome 1):
++- R1. `app.data.http.urllib_fetch` never follows a 3xx answer: it returns an `HttpResponse`
++  whose `status` is the 3xx code, and opens no second URL.
++- R2. A 3xx reaches Vision and REST through their existing refusal paths unchanged:
++  `Vision refused (HTTP 3xx)` (`app/data/vision.py:60`) and `REST refused (HTTP 3xx)`
++  (`app/data/rest.py:68`). `with_retries` already returns any status below 500 other than 418
++  and 429 (`app/data/http.py:114`), so a 3xx is not retried.
++- R3. `urllib_fetch` opens only `https://` URLs; `http://`, `ftp://`, `file://`, `data:` and any
++  other scheme raise `urllib.error.URLError` ("unknown url type") before any socket opens.
++- R4. Every HTTPS connection keeps the existing connect and read timeouts
++  (`_HTTPSConnection`, `CONNECT_TIMEOUT`, `READ_TIMEOUT`) and the `MAX_BODY_BYTES` cap.
++- R5. A proxy configured in the environment (`https_proxy`, read by `ProxyHandler`) still works
++  as it does today with `build_opener` (intent Constraints).
++
++Datetime bounds (intent outcome 2):
++- R6. A `datetime` passed as `start` or `end` (naive or aware) to `load_klines` raises
++  `InvalidRequestError`, never `TypeError`. The message names the bound and says what to pass
++  instead (a `date` or `YYYY-MM-DD`; ux-and-brand rule 4).
++- R7. The refusal lives in `parse_date`, so every caller gets it: `make_request` (and through
++  it `load_klines` and the `download` CLI) and `clear_cache` (`app/data/cache.py:146`), which
++  today has the same `TypeError` when it compares a `datetime` with a cached day's `date`.
++- R8. A plain `date` and a `YYYY-MM-DD` string behave exactly as today.
++
++Windows time zones (intent outcome 3):
++- R9. `pyproject.toml` declares `tzdata` as a dependency on Windows only (environment marker);
++  on Linux and macOS the dependency set is unchanged (`polars>=1.0`).
++- R10. `python -m pip install -e . pytest ruff` succeeds from a clean venv: `pyproject.toml`
++  names the packages (`app`, `app.data`) so setuptools' flat-layout discovery no longer refuses
++  the repository.
++- R11. The editable install's `*.egg-info/` directory is ignored by git (`.gitignore`), so the
++  tree stays clean after the install.
++- R12. The guardrail lines that go out of date are named in `plan.md` for the owner, who edits
++  them in a PR merged after this change reaches `main` (intent Constraints; `CLAUDE.md`
++  "Things Claude gets wrong"): the Setup line of `CLAUDE.md`, `commands.setup` in `sdlc.yaml`,
++  and `CLAUDE.md`'s "the one runtime dependency is `polars>=1.0`". The run edits none of them.
++- R13. `.github/workflows/ci.yml` is not changed (intent Constraints).
++
++Policies:
++- coding-standards: applies. Rule 1 (`CLAUDE.md` conventions: type hints, ruff line length 100,
++  tests in `tests/test_data.py`); rule 2 (match `http.py`'s module-level constants and comment
++  density); rule 4 (each behaviour change ships with a test that fails on `main`; as a
++  fix-type change, the tests come first and are then locked); rule 5 (`tzdata` is a new
++  dependency, Windows only, so `plan.md` Risks carries its line and the owner's merge accepts
++  it; no pinned version changes); rule 8 (lint clean).
++- security-baseline: applies. Rule 2 (bounded input: the transport refuses URLs it was not
++  built for); rule 6 (the new dependency has its Risks line; TLS verification is untouched:
++  `_HTTPSHandler` keeps the default SSL context); rule 7 (tests open no socket; no live call
++  is made by a run). Rules 1, 3, 4 and 5 do not apply: no endpoint, no secret, no personal
++  data, no state-changing action with an audit log.
++- ux-and-brand: applies to the one new message (rule 4: what happened, what to do). No screen
++  is touched; rules 1–3 and 5–7 do not apply.
++- data-conventions: does not apply: no stored field, schema, migration, event or personal
++  data changes; the cache layout of change 0001 is untouched.
++- definition-of-done: applies as the measure of the design, build and test phases (spec,
++  plan, green build/test/lint, verifier report, the owner's Windows check at deploy).
++- Risk list (`sdlc.yaml`): none of `auth`, `data migrations`, `money movement`,
++  `production config` is touched; `deploy.action` is `none`, so the packaging change is not
++  production config.
++
++## Design
++- **Transport (`app/data/http.py`).** `_OPENER` stops using `urllib.request.build_opener`,
++  which adds the default `HTTPHandler`, `FTPHandler`, `FileHandler`, `DataHandler` and
++  `HTTPRedirectHandler`. It becomes an `OpenerDirector` assembled from exactly:
++  `ProxyHandler` (environment proxies, as today), `UnknownHandler` (refuses any scheme
++  without a handler), `_HTTPSHandler` (the existing timeouts), `HTTPDefaultErrorHandler` and
++  `HTTPErrorProcessor` (a non-2xx status becomes `HTTPError`). With no redirect handler, a
++  3xx goes from `HTTPErrorProcessor` to `HTTPDefaultErrorHandler`, raises `HTTPError`, and
++  `urllib_fetch`'s existing `except urllib.error.HTTPError` turns it into an `HttpResponse`
++  with that status. A short comment says why the opener is assembled by hand.
++  `urllib_fetch`'s signature, `Fetch`, `HttpResponse`, `with_retries` and `WeightPacer` are
++  unchanged. An unknown scheme raises `URLError`, an `OSError`, which `with_retries` treats
++  as transient and retries; the layer only builds `https://` URLs (`VISION_BASE`, the REST
++  endpoints), so that path is reached only by a direct call of `urllib_fetch`.
++- **Dates (`app/data/params.py`).** `parse_date` checks `isinstance(value, datetime)` before
++  its `isinstance(value, date)` branch and raises `InvalidRequestError`
++  (`invalid start date datetime.datetime(...): pass a date or YYYY-MM-DD, not a datetime`).
++  No normalisation (see Open questions). `make_request`, `KlineRequest` and `clear_cache`
++  are unchanged; they inherit the refusal.
++- **Packaging (`pyproject.toml`, `.gitignore`).** `dependencies` becomes
++  `["polars>=1.0", "tzdata; sys_platform == 'win32'"]` (`sys_platform == 'win32'` and
++  `platform_system == 'Windows'` select the same interpreters). A `[tool.setuptools]` table
++  with `packages = ["app", "app.data"]` makes the editable install build. No
++  `[build-system]` table is added: without one pip uses setuptools' default backend in an
++  isolated build, which reads `[tool.setuptools]`; the intent's prototype proved this on
++  Windows. `.gitignore` gains `*.egg-info/`. The package version stays `0.1.0` in both
++  places (see Flagged concerns).
++- **Unchanged:** the URLs and hosts called, the cache, the schema, the CLI's commands and
++  output, the public API in `app/data/__init__.py`, CI.
++
++## Open questions from intent
++- "Refuse redirects, or allow them inside the three Binance hosts over HTTPS? ... Design should
++  say whether that risk needs a live check." Answered: refuse all, as proposed (less code, no
++  allow-list to keep in step with the hosts in `vision.py` and `rest.py`). No live check is
++  needed before the build, and a run may not make one (security-baseline rule 7; the tests are
++  offline by the intent's Constraints). The layer requests direct object URLs on
++  `data.binance.vision` and API paths on `data-api.binance.vision` and `fapi.binance.com`
++  (`app/data/vision.py`, `app/data/rest.py`); if a host ever redirects, the day fails with
++  `Vision refused (HTTP 3xx)` or `REST refused (HTTP 3xx)` in the gap report, which is visible
++  and recoverable. The owner may add one real `python -m app.data download` to the Windows
++  check at the deploy gate; it is not required for acceptance.
++- "Refuse a `datetime`, or normalise it with `.date()`?" Answered: refuse with
++  `InvalidRequestError`, as proposed. `.date()` drops the time of day and, for an aware value
++  outside UTC, can name the wrong UTC day; the layer's days are UTC days
++  (`app/data/params.py: day_start_ms`), and refusing keeps the caller's intent explicit.
++- "A direct `tzdata` marker, or `polars[timezone]`?" Answered: the direct marker, as proposed.
++  It names the actual requirement and does not depend on the extra existing across the whole
++  `polars>=1.0` range that `pyproject.toml` allows.
++
++## Flagged concerns
++- Package version: the intent is silent on a version bump. `CLAUDE.md` asks only that
++  `app/__init__.py` and `pyproject.toml` stay in step, and `sdlc.yaml: deploy.action` is
++  `none`, so nothing is published. The design keeps `0.1.0`; a bump to `0.1.1` in both places
++  is the alternative if the owner wants each change versioned.
++
++## Acceptance
++- Regression tests in `tests/test_data.py`, committed first, fail on `main` and pass with the
++  fix:
++  - a 301, 302, 303, 307 and 308 answer (to an `http://` and an `https://` target) is returned
++    as that status and only the original URL is opened;
++  - `http://`, `ftp://` and `file://` URLs raise `URLError` "unknown url type", opening no
++    socket;
++  - a naive and an aware `datetime` as start, end or both raise `InvalidRequestError` from
++    `make_request`, and a `datetime` start or end raises it from `clear_cache`.
++- Every existing test still passes; none is skipped, weakened or deleted.
++- `python -m compileall -q .` silent with exit 0; `python -m pytest` all passed;
++  `python -m ruff check .` "All checks passed!", on CI (Ubuntu, Python 3.12).
++- `python -m pip install -e .` succeeds and `git status` stays clean afterwards (Linux, in the
++  build or test run's own environment where it can run it).
++- At the deploy gate the owner runs, on Windows in a clean venv,
++  `python -m pip install -e . pytest ruff` then `python -m pytest`: every test passes and
++  `tzdata` was installed by that command.
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml b/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml
+index 0d1ccf6..5a5c4fb 100644
+--- a/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml
+@@ -1,7 +1,7 @@
+ id: "0002"
+ slug: harden-the-data-layer-redirects-datetime
+ title: "Harden the data layer: redirects, datetime bounds, Windows tzdata"
+-phase: intent
++phase: design
+ entry_route: idea
+ change_type: fix
+ gate:
+@@ -26,5 +26,5 @@ released_at: null
+ released_sha: null
+ released_pr: null
+ created_at: "2026-11-03T18:42:52Z"
+-updated_at: "2026-11-03T18:42:52Z"
++updated_at: "2026-11-05T15:02:49Z"
+ schema_version: 1

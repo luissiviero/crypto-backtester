@@ -1,0 +1,28 @@
+{
+  "decisions": [
+    {
+      "advocate": "No objection to keeping `0.1.0`; the spec's offered alternative (bump to `0.1.1`) is not actually open in this change, and the concern's rationale should say so.",
+      "at": "2026-11-05T15:06:14Z",
+      "cost_usd": null,
+      "decision": "Keep the version at 0.1.0 in app/__init__.py and pyproject.toml; no bump in this change, because tests/test_smoke.py asserts 0.1.0 and a fix-type diff may not edit that test, so any bump is a later change for the owner.",
+      "head": "a9f4798419f08325b9526c31ad8f2ad9ce5470c5",
+      "item": "Package version: the intent is silent on a version bump. `CLAUDE.md` asks only that",
+      "item_n": 1,
+      "key": "concern:308b60165c928928",
+      "kind": "concern",
+      "n": 1,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree: keep 0.1.0; no rule or intent line asks for a bump, and CLAUDE.md asks only that the two version lines stay in step, which they do.",
+        "Checked: tests/test_smoke.py line 5 asserts app.__version__ == \"0.1.0\".",
+        "Checked: REVIEW.md lines 23-24 say a fix-type diff must not modify test files that existed before the fix.",
+        "So the advocate's point holds: a 0.1.1 bump cannot be made in this change without breaking that test, so the closing names this rather than offering a bump.",
+        "Nothing reads the version (deploy.action is none), so keeping it unchanged is the safer reading and stays within the intent's scope."
+      ],
+      "reviewer": "Keep `0.1.0` as the spec decides; the concern is not Important and may close as accepted, with the bump left to the owner."
+    }
+  ],
+  "phase": "design",
+  "schema_version": 1
+}

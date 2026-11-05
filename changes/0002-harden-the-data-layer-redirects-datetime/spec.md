@@ -111,7 +111,7 @@ Policies:
   `polars>=1.0` range that `pyproject.toml` allows.
 
 ## Flagged concerns
-- Package version: the intent is silent on a version bump. `CLAUDE.md` asks only that
+- decided (by panel #1): Keep the version at 0.1.0 in app/__init__.py and pyproject.toml; no bump in this change, because tests/test_smoke.py asserts 0.1.0 and a fix-type diff may not edit that test, so any bump is a later change for the owner. — Package version: the intent is silent on a version bump. `CLAUDE.md` asks only that
   `app/__init__.py` and `pyproject.toml` stay in step, and `sdlc.yaml: deploy.action` is
   `none`, so nothing is published. The design keeps `0.1.0`; a bump to `0.1.1` in both places
   is the alternative if the owner wants each change versioned.

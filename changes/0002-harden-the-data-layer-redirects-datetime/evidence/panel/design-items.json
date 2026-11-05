@@ -1,0 +1,28 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "Package version: the intent is silent on a version bump. `CLAUDE.md` asks only that",
+      "key": "concern:308b60165c928928",
+      "kind": "concern",
+      "n": 1
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [],
+  "pending": [
+    1
+  ],
+  "phase": "design"
+}
