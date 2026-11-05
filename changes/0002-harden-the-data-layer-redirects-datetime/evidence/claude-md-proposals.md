@@ -1,0 +1,2 @@
+<!-- Proposed CLAUDE.md lines under "Things Claude gets wrong" (article p.34 step 5). The PR description quotes this file; only the owner edits CLAUDE.md. -->
+- Adding tzdata and the [tool.setuptools] table leaves CLAUDE.md's Setup line and 'the one runtime dependency is polars>=1.0' outdated; plan.md names both edits (and sdlc.yaml commands.setup) for the owner as R12 requires, so this is graded a nit, with the doubt that the rule may want it tracked until the owner's guardrail PR lands after this merges (change 0002; the owner edits CLAUDE.md)

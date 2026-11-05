@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-05T18:30:00Z",
+  "findings": [
+    {
+      "file": "tests/test_data.py",
+      "line": 0,
+      "pass": "compliance",
+      "rule": "REVIEW.md: no test edits in a fix task",
+      "severity": "important",
+      "signature": "c3b73ce1597573be",
+      "source": "framework",
+      "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+    },
+    {
+      "file": "app/data/http.py",
+      "line": 81,
+      "pass": "security",
+      "rule": "spec R3: urllib_fetch opens only https:// URLs",
+      "severity": "nit",
+      "signature": "2714ac5643eaa78d",
+      "summary": "With an environment http_proxy whose scheme is https:// (uncommon), ProxyHandler re-types a plain http:// request to https and _HTTPSHandler sends it to the proxy, so an http URL is fetched instead of refused; unverified, and the layer only builds https URLs, so only a direct urllib_fetch call can reach it."
+    },
+    {
+      "file": "pyproject.toml",
+      "line": 6,
+      "pass": "compliance",
+      "rule": "REVIEW.md framework rules: flag when the change has made CLAUDE.md outdated",
+      "severity": "nit",
+      "signature": "c29f2d30fde8ec1a",
+      "summary": "Adding tzdata and the [tool.setuptools] table leaves CLAUDE.md's Setup line and 'the one runtime dependency is polars>=1.0' outdated; plan.md names both edits (and sdlc.yaml commands.setup) for the owner as R12 requires, so this is graded a nit, with the doubt that the rule may want it tracked until the owner's guardrail PR lands after this merges."
+    }
+  ],
+  "head": "a4940f46f74794c79640884e98627593a228c0bb",
+  "schema_version": 1,
+  "tally": {
+    "important": 1,
+    "nit": 2,
+    "nits_omitted": 0
+  }
+}
