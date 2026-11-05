@@ -8,7 +8,7 @@ gate:
   phase: build
   result: passed
   reason: null
-  at: "2026-11-05T18:06:56Z"
+  at: "2026-11-05T18:07:23Z"
 parked_reason: null
 iterations: 0
 panel_calls: 1
@@ -21,10 +21,10 @@ iterations_reset_at: null
 tests_unlocked_by: null
 runbook_authorized_by: null
 abandoned_reason: null
-build_pr: null
+build_pr: 11
 released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-11-03T18:42:52Z"
-updated_at: "2026-11-05T18:06:56Z"
+updated_at: "2026-11-05T18:07:23Z"
 schema_version: 1
