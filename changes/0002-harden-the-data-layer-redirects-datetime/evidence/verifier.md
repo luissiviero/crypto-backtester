@@ -1,80 +1,93 @@
-# Verifier report: change 0002, build phase (branch `sdlc/0002/build`)
-
-The build matches the plan. Every behaviour I called did what plan.md and spec.md describe, and the code diff touches exactly the files the plan lists.
+# Verifier report: change 0002, test phase (CI session, `SDLC_GATE_COMMANDS=runner`)
 
 ## Commands run
-`SDLC_GATE_COMMANDS=runner` is set, so this is a CI session. I did not run the build, test or lint targets, and I did not start pytest either, even though you offered it: inside the sandbox pytest fails on nested `.env*` files, and the test suite is the runner's job.
 
-I read `evidence/gate-design.json`, the runner's run on commit `690c2125da360da8a5e73aa461a10e7333b7daa9` of 2026-11-05T15:08:09Z. That is the tree this phase started from, not the final one. The final tree's result comes from the runner, which runs the three targets once after this session and shows them in the check run `sdlc/test` (and in `gate-build.json`). A red target there starts the next fix round by itself, and nothing here stands in for it.
+**Read, not run:** `evidence/gate-build.json`, the runner's run on commit `fa325a51ab068de9f3213002aaf77a51e19dec05` of `2026-11-05T18:06:56Z`. That is the tree this phase started from, not the final one. The final tree's result comes from the runner, which runs the three targets once after this session and shows them in the check run `sdlc/test` (and in `gate-test.json`). Nothing here stands in for that.
 
-`commands` entry (read, not run): `"ok": true`, `"reason": "build, test and lint exit 0"`, `"ran_by": "runner"`, no `deferred` flag.
-- `python -m compileall -q .`: exit 0, output `""`
-- `python -m pytest`: exit 0, last line `============================== 69 passed in 0.60s ==============================`
-- `python -m ruff check .`: exit 0, output `All checks passed!`
+Between `fa325a5` and HEAD `71ebd8f`, only files under `changes/0002-…/evidence/` and `status.yaml` changed. No code, test or packaging file changed.
 
-`gate-design.json` has no `evidence` check, and `evidence/test.log`, `build.log` and `lint.log` do not exist yet, so there are no log first lines to quote.
+The record's `commands` check is `"ok": true`, `"reason": "build, test and lint exit 0"`, `"ran_by": "runner"`, with no `deferred` flag. Its `evidence` check is `ok: true` with no `deferred` flag either.
+- `python -m compileall -q .`: exit 0, output `""`.
+- `python -m pytest`: exit 0, tail:
+  ```
+  collected 89 items
+  tests/test_data.py ..................................................... [ 59%]
+  ..........................                                               [ 88%]
+  tests/test_data_cli.py .........                                         [ 98%]
+  tests/test_smoke.py .                                                    [100%]
+  ============================== 89 passed in 0.57s ==============================
+  ```
+- `python -m ruff check .`: exit 0, `All checks passed!`
+
+**Logs (read, not run), first lines:**
+- `test.log`: `# python -m pytest — deferred to the runner — 2026-11-05T18:08:29Z`
+- `build.log`: `# python -m compileall -q . — deferred to the runner — 2026-11-05T18:08:29Z`
+- `lint.log`: `# python -m ruff check . — deferred to the runner — 2026-11-05T18:08:29Z`
+
+These are this session's deferred placeholders, which the runner replaces. They are not failures.
+
+**Earlier failing run:** `evidence/failing-test.log` shows the new tests run on `071cd24` (main) with `app/` unchanged: `20 failed, 59 deselected in 0.21s`. All 10 redirect cases failed (the redirect was followed). The 3 scheme cases failed: http and ftp with a regex mismatch, and file with `DID NOT RAISE URLError`. All 6 datetime cases and the `clear_cache` case failed with `TypeError: can't compare datetime.datetime to datetime.date`.
 
 ## Behavior exercised
-All calls were direct `python -` scripts run from the repo root, with no network.
+I made direct calls with `python -B -c` from the project root. I did not use pytest and read no `.env*`.
 
-**1. Redirects (R1, R3, R5)**
-- I stubbed `http._HTTPSHandler.https_open` and `urllib.request.HTTPHandler.http_open` the way `test_redirect_is_not_followed` does. For each of 301, 302, 303, 307 and 308, with both `http://` and `https://elsewhere.example/x` as the target, `urllib_fetch` returned that status, for example:
-  `301 http://elsewhere.example/x -> status 301 Location http://elsewhere.example/x opened ['https://data.binance.vision/data/x.zip']`
-  In every case only the original URL was opened.
-- A stubbed 200 still comes back normally: `200 -> 200 b'hello'`.
+**Redirects:**
+- I stubbed `http._HTTPSHandler.https_open` to answer each status with `Location: https://elsewhere.example/x`. For 301, 302, 303, 307 and 308, `urllib_fetch("https://data.binance.vision/data/x.zip")` returned that same status, and the stub recorded exactly `['https://data.binance.vision/data/x.zip']`.
+- Neighbouring statuses come back unchanged too: 200, 404, 418, 429 and 500 each return their own status with the body intact.
+- **Vision refusal path:** `vision.fetch_day(with_retries(urllib_fetch), req, 2024-01-01)` with a 302 returned `VisionDay(..., frame=None, reason='Vision refused (HTTP 302)')` and opened one URL, so there was no retry (R1, R2).
 
-**2. Other URL schemes**
-I first replaced `socket.socket.connect` with a function that raises.
-- `http://127.0.0.1:9/x` gave `URLError: unknown url type: http`.
-- `ftp://`, `file:///etc/hosts`, `data:text/plain,hi`, and (outside the spec's list) `gopher://` and upper-case `HTTP://` all gave the same error with their own scheme.
-- Result: `socket connects attempted: []`.
+**Schemes (R3):** every non-https URL raised `URLError <urlopen error unknown url type: …>`:
+- `http://127.0.0.1:9/x` (type `http`)
+- `ftp://127.0.0.1/x` (type `ftp`)
+- `file:///etc/hosts` (type `file`)
+- `data:,hello` (type `data`)
+- Just outside the spec's list: `HTTP://127.0.0.1:9/x` (type `http`) and `gopher://x/` (type `gopher`)
 
-**3. Opener handlers**
-`['ProxyHandler', 'UnknownHandler', '_HTTPSHandler', 'HTTPDefaultErrorHandler', 'HTTPErrorProcessor']`, nothing else. `handle_open` also lists `http`, `ftp`, `grpc` and `rsync`. Those are the proxy entries `ProxyHandler` registers from this runner's environment proxies; `http://` is still refused, as above.
+This held even though the sandbox sets `http_proxy` and `ftp_proxy`.
 
-**4. Proxy (no connection made)**
-With `https_proxy=http://proxy.invalid:3128` set:
-- `ProxyHandler.proxies['https'] = http://proxy.invalid:3128`
-- The request reached `_HTTPSHandler` as `type 'https', host 'proxy.invalid:3128', tunnel 'data.binance.vision'`. So the tunnel goes through `_HTTPSHandler`, which still uses `_HTTPSConnection` and keeps its timeouts.
+**Opener structure (R4, R5):**
+- `_OPENER.handle_open["https"]` is `['ProxyHandler', '_HTTPSHandler']`, and no `HTTPRedirectHandler` is present.
+- `CONNECT_TIMEOUT 10.0`, `READ_TIMEOUT 60.0` and `MAX_BODY_BYTES 67108864` are unchanged.
+- `ProxyHandler()` with `https_proxy` set picks up the https proxy and has `https_open`.
 
-**5. Datetime bounds (R6–R8)**
-- `make_request` with a naive or an aware datetime, as start, end or both (6 cases), raised `InvalidRequestError` every time, for example:
-  `invalid start date datetime.datetime(2024, 1, 1, 0, 0): pass a date or YYYY-MM-DD, not a datetime`
-- `load_klines` with a datetime raised the same error, and the fetch was never called.
-- `clear_cache(start=naive)` and `clear_cache(end=aware)` raised the same error naming `start` and `end` respectively.
-- A plain `date` and a `'YYYY-MM-DD'` string both still give `KlineRequest(... start=datetime.date(2024, 1, 1), end=datetime.date(2024, 1, 2))`. `clear_cache` with a date and a string bound gives `ClearResult(files=0, size=0)`.
-- Just outside the accepted inputs: `'2024-1-1'` and `'2024-01-01T00:00'` give `invalid start date '...': use YYYY-MM-DD, for example 2024-01-31`, the same message as before.
+**Dates (R6–R8):**
+- `parse_date` raises `InvalidRequestError` for a naive `datetime(2024,1,1)` and for an aware `datetime(2024,1,1,23,tz=-3h)`, with the message `invalid start date datetime.datetime(2024, 1, 1, 0, 0): pass a date or YYYY-MM-DD, not a datetime`.
+- `date(2024,1,1)` and `"2024-01-01"` both return `2024-01-01`.
+- Just outside: `"2024-01-01T00:00"` and `"2024-13-01"` raise the existing `use YYYY-MM-DD, for example 2024-01-31`.
+- `make_request` with a datetime as start, as end, or as both raises `InvalidRequestError`, and the message names the right bound (`start`, or `end` when only the end is a datetime).
+- `clear_cache(start=datetime)` and `clear_cache(end=aware)` raise `InvalidRequestError`. `clear_cache(start="2024-01-01", end=date(2024,1,2))` returns `ClearResult(files=0, size=0)`.
+- `load_klines("BTCUSDT","1h",datetime(2024,1,1),date(2024,1,2), fetch=<raises if called>)` raises `InvalidRequestError` before any fetch.
 
-**6. Packaging (R9, R11, R13)**
-- `dependencies = ["polars>=1.0", "tzdata; sys_platform == 'win32'"]`. Evaluating the marker gives True for win32 and False for linux and darwin.
-- `[tool.setuptools] packages = ['app', 'app.data']`.
-- `git check-ignore -v crypto_backtester.egg-info/PKG-INFO` gives `.gitignore:5:*.egg-info/`.
-- `git diff --stat main...HEAD -- .github CLAUDE.md sdlc.yaml` is empty.
+**Packaging (R9–R11):**
+- `pyproject.toml` has dependencies `['polars>=1.0', "tzdata; sys_platform == 'win32'"]` and `[tool.setuptools] packages = ['app', 'app.data']`. The version is `0.1.0`, and `app.__version__` is also `0.1.0`.
+- The marker evaluates to True on `win32` and False on `linux` and `darwin`.
+- `python -m pip wheel --no-deps --no-build-isolation -w $TMPDIR/whl .` exited 0. The wheel holds only `app/` and `app/data/*.py`, and its METADATA reads `Requires-Dist: polars >=1.0` and `Requires-Dist: tzdata ; sys_platform == "win32"`.
+- `crypto_backtester.egg-info/` shows as ignored (`!!`).
+- The wheel build left an untracked `build/` directory (setuptools output: copies of `app/`, nothing else). The test session removed it before committing. `.gitignore` does not ignore `build/`, so a local non-editable build dirties `git status`; this is outside the change's scope (R11 covers egg-info only), so it is noted here and not acted on.
 
-**7. Neighbour: the cache CLI**
-I ran it against a temp `--cache-dir` seeded with three days via `binance_stub.cached_days`:
-- `cache-info`: exit 0, `spot BTCUSDT 1h 3 300 B`
-- `cache-clear BTCUSDT 1h --start 2024-01-02 --end 2024-01-02`: exit 0, `Deleted 1 day file (100 B)`, and the 01 and 03 files are left
-- `--start 2024-01-01T00:00`: exit 2, `error: invalid start date '2024-01-01T00:00': use YYYY-MM-DD, ...`
-- `cache-clear BTCUSDT`: `Deleted 2 day files (200 B)`
-- `cache-info`: `No cached klines under ...`
+**Guardrail files (R12, R13):** `git diff 071cd24..HEAD -- .github CLAUDE.md sdlc.yaml` is empty. plan.md lines 18–26 name the owner's edits to `CLAUDE.md` and `sdlc.yaml`.
 
-**8. Neighbour: errors through `urllib_fetch` and `with_retries`**
-Stubbed answers went through the real opener, with sleep and jitter patched out:
-- 404: returned 404, 1 call, no sleeps
-- 429 then 200: returned 200, sleeps `[3.0]` (the Retry-After)
-- 503, 500, 200: returned 200, sleeps `[1.0, 2.0]`
-- 502 every time: `DownloadError ... HTTP 502 after 3 retries`, 4 calls
-- 418: `BinanceBanError`, 1 call
+**Proof items in plan.md:** all four named tests exist in `tests/test_data.py` on HEAD, and none of them is skipped:
+- `test_redirect_is_not_followed`, with 10 parameter sets
+- `test_only_https_urls_are_opened`, with 3
+- `test_datetime_bound_is_refused_not_a_type_error`, with 6
+- `test_clear_cache_refuses_a_datetime_bound`
+
+The tests were committed first, in `ff61d01 fix(0002): reproducing test`. The `test_lock` check in `gate-build.json` passed with lock commit `047eba1565`. The diff from `071cd24` to HEAD only adds to `tests/test_data.py`; no existing test changed.
 
 ## Not exercised
-- The build, test and lint targets on the final tree. That result is the runner's (`sdlc/test`).
-- Any real HTTPS connection or real proxy CONNECT, which means the connect and read timeouts and the `MAX_BODY_BYTES` cap (R4) were not checked on a live socket.
-- A 3xx reaching the `Vision refused (HTTP 3xx)` and `REST refused (HTTP 3xx)` messages (R2). That code is unchanged, and I did not call it.
-- `pip install -e .` (R10). I did not run it; the plan records a partial Linux attempt that hit the read-only sandbox.
-- Windows (the tzdata install, R9 and R10) and macOS. I ran only on Linux with Python 3.12.
-- The `download` CLI subcommand.
-- The four new regression tests themselves. The runner runs them.
+- The test runner and the three targets on the final tree. The runner judges these in `sdlc/test`.
+- A real `python -m pip install -e .` into an environment. I built a wheel instead and did not install anything, so "git status stays clean after the editable install" is only partly checked: egg-info is ignored, but I did not run an editable install.
+- Windows: the `tzdata` install and `python -m pytest` there. That is the owner's check at the deploy gate.
+- macOS.
+- A real HTTPS connection through an actual proxy (R5). I checked handler order and that the https proxy is picked up, nothing more.
+- A real network redirect from any Binance host. Every redirect answer was stubbed.
+- The REST refusal path (`REST refused (HTTP 3xx)`, `app/data/rest.py:68`). I read the code but did not call it.
+- The `download`, `cache-clear` and `cache-info` CLI commands.
+- Python versions other than the sandbox interpreter.
+
+## UI / screenshots
+No UI step: neither spec.md Acceptance nor plan.md Proof names a mock, screen or screenshot.
 
 ## Mismatches with plan.md / spec.md
 None.
