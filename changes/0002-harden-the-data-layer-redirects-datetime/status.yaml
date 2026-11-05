@@ -1,7 +1,7 @@
 id: "0002"
 slug: harden-the-data-layer-redirects-datetime
 title: "Harden the data layer: redirects, datetime bounds, Windows tzdata"
-phase: design
+phase: build
 entry_route: idea
 change_type: fix
 gate:
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-11-03T18:42:52Z"
-updated_at: "2026-11-05T15:08:37Z"
+updated_at: "2026-11-05T17:59:22Z"
 schema_version: 1

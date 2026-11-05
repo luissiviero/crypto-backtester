@@ -1,0 +1,51 @@
+$ python -m pytest tests/test_data.py -k "redirect_is_not_followed or only_https or datetime_bound or clear_cache_refuses" -q --tb=no -rf -p no:cacheprovider
+# Run on branch sdlc/0002/build at 071cd24 (main) with only the new tests added; app/ unchanged.
+# Linux, Python 3.12. The 4-line "Full diff" block under each redirect case is identical in
+# shape (the stub's redirect target opened 4 more times); it is kept for the first case only.
+FFFFFFFFFFFFFFFFFFFF                                                     [100%]
+=========================== short test summary info ============================
+FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-301] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+
+  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+
+  Full diff: (-: missing in left side, +: extra in left side)
+    [
+        'https://data.binance.vision/data/x.zip',
+  +     'http://elsewhere.example/x',
+  +     'http://elsewhere.example/x',
+  +     'http://elsewhere.example/x',
+  +     'http://elsewhere.example/x',
+    ]
+FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-302] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-303] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-307] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-308] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-301] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-302] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-303] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-307] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-308] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+FAILED tests/test_data.py::test_only_https_urls_are_opened[http://127.0.0.1:9/x] - AssertionError: Regex pattern did not match.
+  Expected regex: 'unknown url type'
+  Actual message: '<urlopen error [Errno 111] Connection refused>'
+FAILED tests/test_data.py::test_only_https_urls_are_opened[ftp://127.0.0.1/x] - AssertionError: Regex pattern did not match.
+  Expected regex: 'unknown url type'
+  Actual message: '<urlopen error [Errno 111] Connection refused>'
+FAILED tests/test_data.py::test_only_https_urls_are_opened[file:///etc/hosts] - Failed: DID NOT RAISE URLError
+FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>0-moment0] - TypeError: can't compare datetime.datetime to datetime.date
+FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>0-moment1] - TypeError: can't compare datetime.datetime to datetime.date
+FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>1-moment0] - TypeError: can't compare datetime.datetime to datetime.date
+FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>1-moment1] - TypeError: can't compare datetime.datetime to datetime.date
+FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>2-moment0] - TypeError: can't compare datetime.datetime to datetime.date
+FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>2-moment1] - TypeError: can't compare datetime.datetime to datetime.date
+FAILED tests/test_data.py::test_clear_cache_refuses_a_datetime_bound - TypeError: can't compare datetime.datetime to datetime.date
+20 failed, 59 deselected in 0.21s
