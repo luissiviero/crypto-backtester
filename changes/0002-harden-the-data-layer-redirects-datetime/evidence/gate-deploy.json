@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "change_id": "0002",
+  "slug": "harden-the-data-layer-redirects-datetime",
+  "phase": "deploy",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:deploy-ready",
+  "head": "0d27039965e15262308d2a1f6cc04d01da1938ab",
+  "at": "2026-11-05T21:46:35Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 1,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 0,
+        "panel_cap": 4,
+        "recheck_minutes": 1,
+        "elapsed_minutes": 4.8,
+        "spend_usd": null,
+        "spend_usd_total": 18.232927,
+        "spend_entries": 10,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "clean_tree",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder",
+      "need": "",
+      "details": {
+        "ignored": [
+          "CLAUDE.local.md",
+          "changes/.review-seen.json"
+        ]
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "2 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "finding",
+            "decision": "settled: the tests/test_data.py edit is the append-only reproducing-test commit (ff61d01, before every fix commit) that REVIEW.md's 'failing test written first' clause and the intent require; no pre-existing test changed"
+          },
+          {
+            "n": 2,
+            "kind": "finding",
+            "decision": "settled: the run may not edit CLAUDE.md or sdlc.yaml; after this change reaches main the owner merges a guardrail PR that changes CLAUDE.md Setup to `python -m pip install -e . pytest ruff`, changes \"the one runtime dependency is `polars>=1.0`\" to \"the runtime dependencies are `polars>=1.0` and, on Windows only, `tzdata`\", and changes sdlc.yaml commands.setup (line 62) to `\"python -m pip install -e . pytest ruff\"`; intent outcome 3 (documented Setup gives a passing suite) is not delivered until that PR merges."
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q .",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.14.3\ncollected 89 items\n\ntests/test_data.py ..................................................... [ 59%]\n..........................                                               [ 88%]\ntests/test_data_cli.py .........                                         [ 98%]\ntests/test_smoke.py .                                                    [100%]\n\n============================== 89 passed in 0.53s ==============================\n"
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "evidence",
+      "ok": true,
+      "reason": "evidence present: test.log, build.log, lint.log, verifier.md",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof",
+      "ok": true,
+      "reason": "no drive target: nothing to compare",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "findings",
+      "ok": true,
+      "reason": "1 Important finding(s) settled by the review panel, none open",
+      "need": "",
+      "details": {
+        "tally": {
+          "important": 1,
+          "nit": 2,
+          "nits_omitted": 0
+        },
+        "settled_by_panel": [
+          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+        ]
+      }
+    },
+    {
+      "name": "plan_sync",
+      "ok": true,
+      "reason": "every committed source file is in plan.md",
+      "need": "",
+      "details": {
+        "planned_but_unchanged": [
+          "CLAUDE.md",
+          "sdlc.yaml",
+          ".github/workflows/ci.yml"
+        ],
+        "plan_growth": {
+          "added": [],
+          "removed": []
+        }
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {
+          "iterations_reset": "luissiviero",
+          "panel_calls_reset": "luissiviero",
+          "tests_unlocked": "luissiviero"
+        }
+      }
+    },
+    {
+      "name": "test_lock",
+      "ok": true,
+      "reason": "the lock is not set at HEAD (owner_actions judges a lift)",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "ratchets",
+      "ok": true,
+      "reason": "no undeclared test file or eval case drop",
+      "need": "",
+      "details": {
+        "hits": {},
+        "declared": [],
+        "skip_markers": [],
+        "accepted": []
+      }
+    },
+    {
+      "name": "lesson_and_eval",
+      "ok": true,
+      "reason": "not an incident change at gate (deploy): nothing to check",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}

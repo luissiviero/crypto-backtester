@@ -1,0 +1,1418 @@
+ .gitignore                                         |   1 +
+ app/data/http.py                                   |  12 +-
+ app/data/params.py                                 |   7 +-
+ .../evidence/adversarial-review-build.json         |  24 ++
+ .../evidence/adversarial-review-build.model.json   |  14 +
+ .../evidence/build.log                             |   2 +
+ .../evidence/claude-build.json                     | 126 ++++++
+ .../evidence/claude-build.stderr.txt               |   1 +
+ .../evidence/diff-build.patch                      | 430 +++++++++++++++++++++
+ .../evidence/failing-test.log                      |  51 +++
+ .../evidence/gate-build.json                       | 208 ++++++++++
+ .../evidence/hook-log.jsonl                        |  75 ++++
+ .../evidence/lint.log                              |   2 +
+ .../evidence/panel/build-items.json                |  18 +
+ .../evidence/run-build.json                        |  11 +
+ .../evidence/run-test.json                         |   5 +
+ .../evidence/screenshots/.gitkeep                  |   0
+ .../evidence/spend.json                            |   8 +-
+ .../evidence/test.log                              |   2 +
+ .../evidence/verifier.md                           |  96 +++++
+ .../plan.md                                        |   5 +
+ .../status.yaml                                    |  14 +-
+ pyproject.toml                                     |   5 +-
+ tests/test_data.py                                 |  62 +++
+ 24 files changed, 1168 insertions(+), 11 deletions(-)
+
+diff --git a/.gitignore b/.gitignore
+index 3f76d00..01e45f0 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -2,3 +2,4 @@ __pycache__/
+ .pytest_cache/
+ .ruff_cache/
+ changes/.hook-log.jsonl
++*.egg-info/
+diff --git a/app/data/http.py b/app/data/http.py
+index 7bf16ad..8863e86 100644
+--- a/app/data/http.py
++++ b/app/data/http.py
+@@ -75,7 +75,17 @@ class _HTTPSHandler(urllib.request.HTTPSHandler):
+         return self.do_open(_HTTPSConnection, req)
+ 
+ 
+-_OPENER = urllib.request.build_opener(_HTTPSHandler())
++# Assembled by hand: build_opener would add its HTTP, FTP, file, data and redirect handlers.
++# Without them a 3xx comes back as its status and any other URL scheme is refused.
++_OPENER = urllib.request.OpenerDirector()
++for _handler in (
++    urllib.request.ProxyHandler(),
++    urllib.request.UnknownHandler(),
++    _HTTPSHandler(),
++    urllib.request.HTTPDefaultErrorHandler(),
++    urllib.request.HTTPErrorProcessor(),
++):
++    _OPENER.add_handler(_handler)
+ 
+ 
+ def urllib_fetch(url: str) -> HttpResponse:
+diff --git a/app/data/params.py b/app/data/params.py
+index 0f868c2..166d346 100644
+--- a/app/data/params.py
++++ b/app/data/params.py
+@@ -4,7 +4,7 @@ from __future__ import annotations
+ 
+ import re
+ from dataclasses import dataclass
+-from datetime import date, timedelta
++from datetime import date, datetime, timedelta
+ 
+ MARKETS = ("spot", "um")
+ 
+@@ -75,6 +75,11 @@ def validate_symbol(symbol: str) -> str:
+ 
+ 
+ def parse_date(value: date | str, name: str) -> date:
++    # A datetime is a date too, but its time of day and zone do not say which UTC day is meant.
++    if isinstance(value, datetime):
++        raise InvalidRequestError(
++            f"invalid {name} date {value!r}: pass a date or YYYY-MM-DD, not a datetime"
++        )
+     if isinstance(value, date):
+         return value
+     try:
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.json
+new file mode 100644
+index 0000000..dc7279b
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.json
+@@ -0,0 +1,24 @@
++{
++  "schema_version": 1,
++  "phase": "build",
++  "head": "fa325a51ab068de9f3213002aaf77a51e19dec05",
++  "verdict": "continue",
++  "reasons": [],
++  "classification": "non-routine",
++  "classification_reasons": [
++    "Spec is tight: three open questions answered, the one flagged concern (version) decided by panel #1, acceptance measurable.",
++    "Blast radius is not small in kind: the HTTP transport's opener is rebuilt by hand (every download goes through it), and pyproject.toml gains a new Windows-only runtime dependency and a [tool.setuptools] packaging table.",
++    "Coverage: the new behaviour is covered by the 20 new parametrized cases; existing with_retries/Vision/REST tests cover the error paths through urllib_fetch. The packaging half (R9, R10, Windows tzdata) has no automated test and rests on the owner's Windows check at deploy."
++  ],
++  "attempted": [
++    "Intent: all three outcomes addressed. Redirects are not followed and non-https schemes are refused (http.py opener); a datetime bound raises InvalidRequestError (params.parse_date); tzdata declared for win32 only with packages named so `pip install -e .` can build. CI workflow and guardrails untouched; the guardrail lines that go stale (CLAUDE.md Setup and runtime-dependency line, sdlc.yaml commands.setup) are named in plan.md for the owner, with the merge-order caveat.",
++    "Spec and plan: R1-R13 checked against the diff. Code diff touches exactly the files plan.md lists (tests/test_data.py, app/data/http.py, app/data/params.py, pyproject.toml, .gitignore, plan.md). Commit order matches the order of work: reproducing tests (ff61d01), parse_date, opener, packaging, verifier. The handler list, comment and error message match plan steps 2-4 word for word. plan.md updated in the diff with the Linux `pip install -e . --no-deps` result.",
++    "Proof: failing-test.log is literal pytest output on the pre-fix tree: 20 failed, matching the 20 new cases (10 redirect, 3 scheme, 6 datetime, 1 clear_cache), with the expected failure modes (redirect followed 4 more times, Connection refused / file read, TypeError). verifier.md exercises the changed behaviour directly: redirect statuses, schemes with socket.connect patched to raise, handler list, proxy tunnel through _HTTPSHandler, datetime refusals in make_request/load_klines/clear_cache, and unchanged date/string paths. Build/test/lint logs are the runner's in this CI session (verifier 'read, not run'), not missing proof.",
++    "Blast radius: callers of urllib_fetch (loader default fetch, CLI) and of parse_date (make_request, cache.clear_cache lines 146-147) checked. 4xx/5xx/418/429 still become HTTPError -> HttpResponse through HTTPErrorProcessor + HTTPDefaultErrorHandler; a 3xx takes the same path, so vision.py:60 and rest.py:68 report 'refused (HTTP 3xx)' and with_retries returns it without retrying (status < 500). ProxyHandler traced: an https request with an http(s) proxy sets a tunnel and falls through to _HTTPSHandler (timeouts kept); an http/ftp request with an env proxy either returns None or re-enters open() as http and still hits UnknownHandler, so env proxies do not reopen plain http. No risk-list item, no schema, cache layout or public API change; no guardrail file in the diff.",
++    "Policies: security-baseline (bounded transport, TLS context untouched, tests open no external socket; the scheme test opens nothing after the fix), coding-standards (type hints on new tests, ruff clean per hooks, new dependency carries its Risks line), ux-and-brand rule 4 (message says what happened and what to pass). Data conventions not applicable.",
++    "Tests: could they pass with the bug present? No: the redirect test asserts only the origin URL was opened and the status equals the 3xx; the scheme test requires 'unknown url type' (pre-fix gives Connection refused or reads the file); the datetime tests require 'not a datetime'; the clear_cache test seeds a day file so the pre-fix TypeError path is reached, and asserts the file survives. Fix-type rule: tests/test_data.py gains imports and appended tests only, all in the reproducing commit that precedes the fix; no existing test modified, weakened or deleted.",
++    "Skip markers: none added in the diff (searched for skip/xfail).",
++    "Claims against today's code: checked _OPENER = build_opener(_HTTPSHandler()) at http.py (removed line), urllib_fetch's except HTTPError conversion, with_retries returning status < 500 other than 418/429, _HTTPSConnection/CONNECT_TIMEOUT/READ_TIMEOUT/MAX_BODY_BYTES, vision.py:60 and rest.py:68 refusal messages, parse_date at params.py:77 returning any date, clear_cache calling parse_date at cache.py:146, binance_stub.cached_days used by existing tests, pyproject dependencies = ['polars>=1.0'] and version 0.1.0, app/ containing only app and app.data packages (so packages = ['app', 'app.data'] is complete). All hold.",
++    "Drive: not applicable (no commands.drive evidence or drive files in plan.md)."
++  ]
++}
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.model.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.model.json
+new file mode 100644
+index 0000000..59b8e91
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "a1ecfeb6efe134528",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-11-05T18:06:40Z",
++  "head": "fa325a51ab068de9f3213002aaf77a51e19dec05",
++  "member": "reviewer",
++  "models": [
++    "claude-opus-5-5"
++  ],
++  "phase": "build",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/c85c1d29-ce8f-432f-944c-3520b881f13f/subagents/agent-a1ecfeb6efe134528.jsonl"
++}
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/build.log b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/build.log
+new file mode 100644
+index 0000000..12949e9
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/build.log
+@@ -0,0 +1,2 @@
++# python -m compileall -q . — deferred to the runner — 2026-11-05T18:08:29Z
++The target did not run inside the model's session: build, test and lint run after the session, outside its sandbox (issue #91), and the runner replaces this file with the target's own output. A file still reading this line was never replaced: the targets did not run, and the gate does not pass on it.
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/claude-build.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/claude-build.json
+new file mode 100644
+index 0000000..8a55507
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/claude-build.json
+@@ -0,0 +1,126 @@
++{
++  "api_error_status": null,
++  "duration_api_ms": 459639,
++  "duration_ms": 492376,
++  "fast_mode_disabled_reason": "sdk_opt_in_required",
++  "fast_mode_state": "off",
++  "first_content_frame_ms": 2565,
++  "is_error": false,
++  "modelUsage": {
++    "claude-opus-5-5": {
++      "cacheCreationInputTokens": 216908,
++      "cacheReadInputTokens": 3867617,
++      "canonicalModel": "claude-opus-5-5",
++      "contextWindow": 1000000,
++      "costBasis": "list",
++      "costUSD": 2.9580344000000003,
++      "inputTokens": 144,
++      "maxOutputTokens": 128000,
++      "outputTokens": 39630,
++      "provider": "firstParty",
++      "thinkingTokens": 5637,
++      "webSearchRequests": 0
++    }
++  },
++  "num_turns": 64,
++  "permission_denials": [
++    {
++      "tool_input": {
++        "command": "mkdir -p $TMPDIR/v0002 && cat > $TMPDIR/v0002/redirect.py <<'EOF'\nimport email.message, io, os, sys, urllib.error, urllib.request, urllib.response\nsys.path.insert(0, os.getcwd())\nfrom app.data import http\nopened = []\ndef stub_for(status, target):\n    def answer(self, request):\n        opened.append(request.full_url)\n        h = email.message.Message(); h[\"Location\"] = target\n        r = urllib.response.addinfourl(io.BytesIO(b\"\"), h, request.full_url, status); r.msg = \"Redirect\"\n        return r\n    return answer\norig_https = http._HTTPSHandler.https_open; orig_http = urllib.request.HTTPHandler.http_open\norigin = \"https://data.binance.vision/data/x.zip\"\nfor status in (301, 302, 303, 307, 308):\n    for target in (\"http://elsewhere.example/x\", \"https://elsewhere.example/x\"):\n        opened.clear()\n        http._HTTPSHandler.https_open = stub_for(status, target)\n        urllib.request.HTTPHandler.http_open = stub_for(status, target)\n        r = http.urllib_fetch(origin)\n        print(status, target, \"-> status\", r.status, \"Location\", r.header(\"Location\"), \"opened\", opened)\nhttp._HTTPSHandler.https_open = orig_https; urllib.request.HTTPHandler.http_open = orig_http\n# just outside: a 200 still returns body\ndef ok(self, request):\n    opened.append(request.full_url)\n    r = urllib.response.addinfourl(io.BytesIO(b\"hello\"), email.message.Message(), request.full_url, 200); r.msg = \"OK\"; return r\nopened.clear(); http._HTTPSHandler.https_open = ok\nr = http.urllib_fetch(origin); print(\"200 ->\", r.status, r.body, opened)\nEOF\ncd /home/runner/work/crypto-backtester/crypto-backtester && python $TMPDIR/v0002/redirect.py",
++        "description": "Exercise urllib_fetch with stubbed 3xx and 200 answers"
++      },
++      "tool_name": "Bash",
++      "tool_use_id": "toolu_01TESxSac612uuKmT8JmtcP7"
++    },
++    {
++      "tool_input": {
++        "command": "python - <<'EOF'\nimport os, sys, tempfile, pathlib\nfrom datetime import date, datetime, timezone, timedelta\nsys.path.insert(0, os.getcwd())\nfrom app.data.params import make_request, InvalidRequestError\nfrom app.data import cache\nnaive = datetime(2024, 1, 1); aware = datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3)))\ntoday = date(2025, 1, 1)\nfor m in (naive, aware):\n    for s, e in ((m, date(2024, 1, 2)), (date(2023, 12, 31), m), (m, m)):\n        try:\n            make_request(\"BTCUSDT\", \"1h\", s, e, \"spot\", today); print(\"NO ERROR\", s, e)\n        except InvalidRequestError as x: print(\"InvalidRequestError:\", x)\n        except Exception as x: print(\"OTHER\", type(x).__name__, x)\nprint(\"date ->\", make_request(\"BTCUSDT\", \"1h\", date(2024,1,1), date(2024,1,2), \"spot\", today))\nprint(\"str  ->\", make_request(\"BTCUSDT\", \"1h\", \"2024-01-01\", \"2024-01-02\", \"spot\", today))\nfor bad in (\"2024-1-1\", \"2024-01-01T00:00\"):\n    try: make_request(\"BTCUSDT\", \"1h\", bad, \"2024-01-02\", \"spot\", today); print(\"NO ERROR\", bad)\n    except InvalidRequestError as x: print(\"outside, str\", repr(bad), \"->\", x)\nwith tempfile.TemporaryDirectory() as d:\n    d = pathlib.Path(d)\n    for kw in ({\"start\": naive}, {\"end\": aware}):\n        try: cache.clear_cache(\"BTCUSDT\", cache_dir=d, **kw); print(\"NO ERROR clear\", kw)\n        except InvalidRequestError as x: print(\"clear_cache\", list(kw), \"->\", x)\n        except Exception as x: print(\"OTHER\", type(x).__name__, x)\n    print(\"clear_cache date/str ->\", cache.clear_cache(\"BTCUSDT\", start=date(2024,1,1), end=\"2024-01-02\", cache_dir=d))\nEOF",
++        "description": "Exercise make_request and clear_cache with datetime, date and string bounds"
++      },
++      "tool_name": "Bash",
++      "tool_use_id": "toolu_01BMsbGBNmZPB9p3a3wG6DXB"
++    }
++  ],
++  "queued_turn_count": 0,
++  "result": "Gate (build) passed. Next step: `/sdlc-test 0002`.\n\n**Draft PR:** https://github.com/luissiviero/crypto-backtester/pull/11 (no label).\n\n**What changed**\n- **Tests first.** This is a fix-type change, so I committed 20 new test cases in `tests/test_data.py` before any fix. They cover redirects, URL schemes and `datetime` start/end values, and all 20 failed on `main` for the reasons the intent describes; the output is in `evidence/failing-test.log`. The test files were then locked, and the gate confirms no test changed after that.\n- **Dates:** `app/data/params.py`: `parse_date` now refuses a `datetime` with `InvalidRequestError` (\"\u2026pass a date or YYYY-MM-DD, not a datetime\"). This covers both `make_request` and `clear_cache`.\n- **Redirects:** `app/data/http.py`: the opener is now built by hand from `ProxyHandler`, `UnknownHandler`, `_HTTPSHandler`, `HTTPDefaultErrorHandler` and `HTTPErrorProcessor`. A 3xx now comes back as its status code instead of being followed. Any URL that isn't `https://` is refused with \"unknown url type\".\n- **Packaging:** `pyproject.toml` declares `tzdata; sys_platform == 'win32'` and adds `[tool.setuptools] packages = [\"app\", \"app.data\"]`. `.gitignore` now ignores `*.egg-info/`.\n\n**Checks run in this session**\n- `python -m pytest`: 89 passed.\n- `python -m ruff check .`: All checks passed!\n- `python -m compileall -q .`: **failed**, but only on `framework/`, which is read-only in this sandbox. `python -m compileall -q app tests scripts` finished with no output. The runner runs all three targets on the final tree after this session.\n- `pip install -e . --no-deps`: **did not finish.** The editable wheel built, and its metadata shows `tzdata` only for `win32`. The last step, copying it into site-packages, hit the sandbox's read-only filesystem. I recorded this under Risks in `plan.md`. The egg-info folder it created is ignored by git.\n- The simplifier proposed no changes. The verifier's verdict is \"matches the plan\" (`evidence/verifier.md`). The adversarial reviewer said continue, classed the change non-routine, and the panel had no items.\n\n**What you need to do**\n- **Edit two guardrail files**, in a PR merged only after this change reaches `main`. Each phase job runs `commands.setup`, and `pip install -e .` fails until the packaging fix is on `main`.\n  - `CLAUDE.md` Setup line: change it to `python -m pip install -e . pytest ruff`, and change \"the one runtime dependency\" to \"the runtime dependencies are `polars>=1.0` and, on Windows only, `tzdata`\".\n  - `sdlc.yaml` `commands.setup`: change it to `python -m pip install -e . pytest ruff`.\n- **Run the Windows check at the deploy gate.** In a clean venv, run `python -m pip install -e . pytest ruff`, then `python -m pytest`. All tests should pass, and `tzdata` should come from that install.\n\n`status.yaml` (now holding the PR number) and the hook log are left uncommitted after the gate, as the rule requires; the runner records them. `CLAUDE.local.md` was already untracked and I didn't touch it.",
++  "result_index": 0,
++  "safety_stops": 0,
++  "sdlc_run": {
++    "at": "2026-11-05T18:07:21Z",
++    "credential": "oauth",
++    "seconds": 493.6,
++    "timed_out": false
++  },
++  "session_id": "c85c1d29-ce8f-432f-944c-3520b881f13f",
++  "stop_reason": "end_turn",
++  "subagent_stats": {
++    "by_type": {
++      "sdlc:adversarial-reviewer": 1,
++      "sdlc:code-simplifier": 1,
++      "sdlc:verifier": 1
++    },
++    "completed": 3,
++    "failed": 0,
++    "killed": {
++      "parent": 0,
++      "system": 0,
++      "user": 0
++    },
++    "max_depth": 1,
++    "refused": {
++      "budget": 0,
++      "concurrency_limit": 0,
++      "depth_limit": 0
++    },
++    "requested": {
++      "background": 0,
++      "foreground": 0,
++      "unset": 3
++    },
++    "spawned": 3,
++    "spawned_by_subagents": 0,
++    "started_in_background": 0
++  },
++  "subtype": "success",
++  "terminal_reason": "completed",
++  "time_to_request_ms": 108,
++  "total_cost_usd": 2.9580344000000003,
++  "ttft_ms": 3011,
++  "ttft_stream_ms": 2565,
++  "type": "result",
++  "usage": {
++    "cache_creation": {
++      "ephemeral_1h_input_tokens": 102265,
++      "ephemeral_5m_input_tokens": 0
++    },
++    "cache_creation_input_tokens": 102265,
++    "cache_read_input_tokens": 3102938,
++    "fallback_credit": null,
++    "inference_geo": "global",
++    "input_tokens": 88,
++    "iterations": [
++      {
++        "cache_creation": {
++          "ephemeral_1h_input_tokens": 253,
++          "ephemeral_5m_input_tokens": 0
++        },
++        "cache_creation_input_tokens": 253,
++        "cache_read_input_tokens": 102012,
++        "input_tokens": 2,
++        "output_tokens": 1262,
++        "type": "message"
++      }
++    ],
++    "output_tokens": 19400,
++    "output_tokens_details": {
++      "thinking_tokens": 1735
++    },
++    "server_tool_use": {
++      "web_fetch_requests": 0,
++      "web_search_requests": 0
++    },
++    "service_tier": "standard",
++    "speed": "standard"
++  },
++  "uuid": "a0163a41-17c3-4fd0-8925-843aa471ea18"
++}
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/claude-build.stderr.txt b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/claude-build.stderr.txt
+new file mode 100644
+index 0000000..9586827
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/claude-build.stderr.txt
+@@ -0,0 +1 @@
++Ignoring 4 permissions.allow entries from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["/home/runner/work/crypto-backtester/crypto-backtester"].hasTrustDialogAccepted: true in /home/runner/.claude.json.
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/diff-build.patch b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/diff-build.patch
+new file mode 100644
+index 0000000..e1f964e
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/diff-build.patch
+@@ -0,0 +1,430 @@
++ .gitignore                                         |  1 +
++ app/data/http.py                                   | 12 +++-
++ app/data/params.py                                 |  7 +-
++ .../evidence/failing-test.log                      | 51 +++++++++++++
++ .../evidence/hook-log.jsonl                        | 53 ++++++++++++++
++ .../evidence/run-build.json                        |  6 ++
++ .../evidence/verifier.md                           | 83 ++++++++++++++++++++++
++ .../plan.md                                        |  5 ++
++ .../status.yaml                                    |  6 +-
++ pyproject.toml                                     |  5 +-
++ tests/test_data.py                                 | 62 ++++++++++++++++
++ 11 files changed, 285 insertions(+), 6 deletions(-)
++
++diff --git a/.gitignore b/.gitignore
++index 3f76d00..01e45f0 100644
++--- a/.gitignore
+++++ b/.gitignore
++@@ -2,3 +2,4 @@ __pycache__/
++ .pytest_cache/
++ .ruff_cache/
++ changes/.hook-log.jsonl
+++*.egg-info/
++diff --git a/app/data/http.py b/app/data/http.py
++index 7bf16ad..8863e86 100644
++--- a/app/data/http.py
+++++ b/app/data/http.py
++@@ -75,7 +75,17 @@ class _HTTPSHandler(urllib.request.HTTPSHandler):
++         return self.do_open(_HTTPSConnection, req)
++ 
++ 
++-_OPENER = urllib.request.build_opener(_HTTPSHandler())
+++# Assembled by hand: build_opener would add its HTTP, FTP, file, data and redirect handlers.
+++# Without them a 3xx comes back as its status and any other URL scheme is refused.
+++_OPENER = urllib.request.OpenerDirector()
+++for _handler in (
+++    urllib.request.ProxyHandler(),
+++    urllib.request.UnknownHandler(),
+++    _HTTPSHandler(),
+++    urllib.request.HTTPDefaultErrorHandler(),
+++    urllib.request.HTTPErrorProcessor(),
+++):
+++    _OPENER.add_handler(_handler)
++ 
++ 
++ def urllib_fetch(url: str) -> HttpResponse:
++diff --git a/app/data/params.py b/app/data/params.py
++index 0f868c2..166d346 100644
++--- a/app/data/params.py
+++++ b/app/data/params.py
++@@ -4,7 +4,7 @@ from __future__ import annotations
++ 
++ import re
++ from dataclasses import dataclass
++-from datetime import date, timedelta
+++from datetime import date, datetime, timedelta
++ 
++ MARKETS = ("spot", "um")
++ 
++@@ -75,6 +75,11 @@ def validate_symbol(symbol: str) -> str:
++ 
++ 
++ def parse_date(value: date | str, name: str) -> date:
+++    # A datetime is a date too, but its time of day and zone do not say which UTC day is meant.
+++    if isinstance(value, datetime):
+++        raise InvalidRequestError(
+++            f"invalid {name} date {value!r}: pass a date or YYYY-MM-DD, not a datetime"
+++        )
++     if isinstance(value, date):
++         return value
++     try:
++diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log
++new file mode 100644
++index 0000000..db7a642
++--- /dev/null
+++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log
++@@ -0,0 +1,51 @@
+++$ python -m pytest tests/test_data.py -k "redirect_is_not_followed or only_https or datetime_bound or clear_cache_refuses" -q --tb=no -rf -p no:cacheprovider
+++# Run on branch sdlc/0002/build at 071cd24 (main) with only the new tests added; app/ unchanged.
+++# Linux, Python 3.12. The 4-line "Full diff" block under each redirect case is identical in
+++# shape (the stub's redirect target opened 4 more times); it is kept for the first case only.
+++FFFFFFFFFFFFFFFFFFFF                                                     [100%]
+++=========================== short test summary info ============================
+++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-301] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++
+++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+++
+++  Full diff: (-: missing in left side, +: extra in left side)
+++    [
+++        'https://data.binance.vision/data/x.zip',
+++  +     'http://elsewhere.example/x',
+++  +     'http://elsewhere.example/x',
+++  +     'http://elsewhere.example/x',
+++  +     'http://elsewhere.example/x',
+++    ]
+++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-302] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-303] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-307] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-308] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
+++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-301] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-302] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-303] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-307] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-308] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
+++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
+++FAILED tests/test_data.py::test_only_https_urls_are_opened[http://127.0.0.1:9/x] - AssertionError: Regex pattern did not match.
+++  Expected regex: 'unknown url type'
+++  Actual message: '<urlopen error [Errno 111] Connection refused>'
+++FAILED tests/test_data.py::test_only_https_urls_are_opened[ftp://127.0.0.1/x] - AssertionError: Regex pattern did not match.
+++  Expected regex: 'unknown url type'
+++  Actual message: '<urlopen error [Errno 111] Connection refused>'
+++FAILED tests/test_data.py::test_only_https_urls_are_opened[file:///etc/hosts] - Failed: DID NOT RAISE URLError
+++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>0-moment0] - TypeError: can't compare datetime.datetime to datetime.date
+++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>0-moment1] - TypeError: can't compare datetime.datetime to datetime.date
+++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>1-moment0] - TypeError: can't compare datetime.datetime to datetime.date
+++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>1-moment1] - TypeError: can't compare datetime.datetime to datetime.date
+++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>2-moment0] - TypeError: can't compare datetime.datetime to datetime.date
+++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>2-moment1] - TypeError: can't compare datetime.datetime to datetime.date
+++FAILED tests/test_data.py::test_clear_cache_refuses_a_datetime_bound - TypeError: can't compare datetime.datetime to datetime.date
+++20 failed, 59 deselected in 0.21s
++diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl
++index b11066c..1aa87c0 100644
++--- a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl
+++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl
++@@ -34,3 +34,56 @@
++ {"at": "2026-11-05T15:07:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++ {"at": "2026-11-05T15:07:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++ {"at": "2026-11-05T15:08:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-05T17:59:14Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-05T17:59:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-05T17:59:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T17:59:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T17:59:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T17:59:54Z", "commands": [{"command": "ruff check --fix --quiet test_data.py", "exit_code": 0}, {"command": "ruff format test_data.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_data.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:02Z", "commands": [{"command": "ruff check --fix --quiet test_data.py", "exit_code": 1}, {"command": "ruff format test_data.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_data.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "ruff reports remaining problems in test_data.py after auto-fix; fix them before moving on:\ntests/test_data.py:510:48: F821 Undefined name `urllib`\ntests/test_data.py:512:19: F821 Undefined name `email`\ntests/test_data.py:514:20: F821 Undefined name `urllib`\ntests/test_data.py:514:47: F821 Undefined name `io`\ntests/test_data.py:519:25: F821 Undefined name `urllib`\ntests/test_data.py:527:24: F821 Undefined name `urllib`\ntests/test_data.py:543:30: F821 Undefined name `Callable`\nFound 7 errors.", "tool": "Edit", "verdict": "block"}
+++{"at": "2026-11-05T18:00:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:08Z", "commands": [{"command": "ruff check --fix --quiet test_data.py", "exit_code": 0}, {"command": "ruff format test_data.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_data.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:55Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:55Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:55Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-05T18:00:55Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:15Z", "commands": [{"command": "ruff check --fix --quiet params.py", "exit_code": 1}, {"command": "ruff format params.py", "exit_code": 0}, {"command": "ruff check --output-format concise params.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "ruff reports remaining problems in params.py after auto-fix; fix them before moving on:\napp/data/params.py:79:26: F821 Undefined name `datetime`\nFound 1 error.", "tool": "Edit", "verdict": "block"}
+++{"at": "2026-11-05T18:01:16Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:16Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:16Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:16Z", "commands": [{"command": "ruff check --fix --quiet params.py", "exit_code": 0}, {"command": "ruff format params.py", "exit_code": 0}, {"command": "ruff check --output-format concise params.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/http.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/http.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/http.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:25Z", "commands": [{"command": "ruff check --fix --quiet http.py", "exit_code": 0}, {"command": "ruff format http.py", "exit_code": 0}, {"command": "ruff check --output-format concise http.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/http.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/.gitignore"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/.gitignore"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/.gitignore"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/.gitignore"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:01:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-05T18:02:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:02:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:02:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:02:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-05T18:02:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-05T18:02:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-05T18:02:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-05T18:02:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "shell_guard", "reason": "Shell guard: the write target `$TMPDIR/v0002/redirect.py` is not a literal path (a variable, command substitution, backtick, `~`, a glob, a brace expansion or a git pathspec-magic prefix), or the working directory it would resolve against is not tracked (`cd -`, a bare `cd`, `popd`/`Pop-Location`); write the literal path, from a tracked directory, so the guard can check it.", "tool": "Bash", "verdict": "block"}
+++{"at": "2026-11-05T18:03:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-05T18:04:05Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-05T18:05:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-05T18:05:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-05T18:05:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-05T18:05:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-build.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-build.json
++new file mode 100644
++index 0000000..01a5e30
++--- /dev/null
+++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-build.json
++@@ -0,0 +1,6 @@
+++{
+++  "phase": "build",
+++  "run": "build",
+++  "spend_usd": null,
+++  "started_at": "2026-11-05T17:59:21Z"
+++}
++\ No newline at end of file
++diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md
++new file mode 100644
++index 0000000..7c13971
++--- /dev/null
+++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md
++@@ -0,0 +1,83 @@
+++# Verifier report: change 0002, build phase (branch `sdlc/0002/build`)
+++
+++The build matches the plan. Every behaviour I called did what plan.md and spec.md describe, and the code diff touches exactly the files the plan lists.
+++
+++## Commands run
+++`SDLC_GATE_COMMANDS=runner` is set, so this is a CI session. I did not run the build, test or lint targets, and I did not start pytest either, even though you offered it: inside the sandbox pytest fails on nested `.env*` files, and the test suite is the runner's job.
+++
+++I read `evidence/gate-design.json`, the runner's run on commit `690c2125da360da8a5e73aa461a10e7333b7daa9` of 2026-11-05T15:08:09Z. That is the tree this phase started from, not the final one. The final tree's result comes from the runner, which runs the three targets once after this session and shows them in the check run `sdlc/test` (and in `gate-build.json`). A red target there starts the next fix round by itself, and nothing here stands in for it.
+++
+++`commands` entry (read, not run): `"ok": true`, `"reason": "build, test and lint exit 0"`, `"ran_by": "runner"`, no `deferred` flag.
+++- `python -m compileall -q .`: exit 0, output `""`
+++- `python -m pytest`: exit 0, last line `============================== 69 passed in 0.60s ==============================`
+++- `python -m ruff check .`: exit 0, output `All checks passed!`
+++
+++`gate-design.json` has no `evidence` check, and `evidence/test.log`, `build.log` and `lint.log` do not exist yet, so there are no log first lines to quote.
+++
+++## Behavior exercised
+++All calls were direct `python -` scripts run from the repo root, with no network.
+++
+++**1. Redirects (R1, R3, R5)**
+++- I stubbed `http._HTTPSHandler.https_open` and `urllib.request.HTTPHandler.http_open` the way `test_redirect_is_not_followed` does. For each of 301, 302, 303, 307 and 308, with both `http://` and `https://elsewhere.example/x` as the target, `urllib_fetch` returned that status, for example:
+++  `301 http://elsewhere.example/x -> status 301 Location http://elsewhere.example/x opened ['https://data.binance.vision/data/x.zip']`
+++  In every case only the original URL was opened.
+++- A stubbed 200 still comes back normally: `200 -> 200 b'hello'`.
+++
+++**2. Other URL schemes**
+++I first replaced `socket.socket.connect` with a function that raises.
+++- `http://127.0.0.1:9/x` gave `URLError: unknown url type: http`.
+++- `ftp://`, `file:///etc/hosts`, `data:text/plain,hi`, and (outside the spec's list) `gopher://` and upper-case `HTTP://` all gave the same error with their own scheme.
+++- Result: `socket connects attempted: []`.
+++
+++**3. Opener handlers**
+++`['ProxyHandler', 'UnknownHandler', '_HTTPSHandler', 'HTTPDefaultErrorHandler', 'HTTPErrorProcessor']`, nothing else. `handle_open` also lists `http`, `ftp`, `grpc` and `rsync`. Those are the proxy entries `ProxyHandler` registers from this runner's environment proxies; `http://` is still refused, as above.
+++
+++**4. Proxy (no connection made)**
+++With `https_proxy=http://proxy.invalid:3128` set:
+++- `ProxyHandler.proxies['https'] = http://proxy.invalid:3128`
+++- The request reached `_HTTPSHandler` as `type 'https', host 'proxy.invalid:3128', tunnel 'data.binance.vision'`. So the tunnel goes through `_HTTPSHandler`, which still uses `_HTTPSConnection` and keeps its timeouts.
+++
+++**5. Datetime bounds (R6–R8)**
+++- `make_request` with a naive or an aware datetime, as start, end or both (6 cases), raised `InvalidRequestError` every time, for example:
+++  `invalid start date datetime.datetime(2024, 1, 1, 0, 0): pass a date or YYYY-MM-DD, not a datetime`
+++- `load_klines` with a datetime raised the same error, and the fetch was never called.
+++- `clear_cache(start=naive)` and `clear_cache(end=aware)` raised the same error naming `start` and `end` respectively.
+++- A plain `date` and a `'YYYY-MM-DD'` string both still give `KlineRequest(... start=datetime.date(2024, 1, 1), end=datetime.date(2024, 1, 2))`. `clear_cache` with a date and a string bound gives `ClearResult(files=0, size=0)`.
+++- Just outside the accepted inputs: `'2024-1-1'` and `'2024-01-01T00:00'` give `invalid start date '...': use YYYY-MM-DD, for example 2024-01-31`, the same message as before.
+++
+++**6. Packaging (R9, R11, R13)**
+++- `dependencies = ["polars>=1.0", "tzdata; sys_platform == 'win32'"]`. Evaluating the marker gives True for win32 and False for linux and darwin.
+++- `[tool.setuptools] packages = ['app', 'app.data']`.
+++- `git check-ignore -v crypto_backtester.egg-info/PKG-INFO` gives `.gitignore:5:*.egg-info/`.
+++- `git diff --stat main...HEAD -- .github CLAUDE.md sdlc.yaml` is empty.
+++
+++**7. Neighbour: the cache CLI**
+++I ran it against a temp `--cache-dir` seeded with three days via `binance_stub.cached_days`:
+++- `cache-info`: exit 0, `spot BTCUSDT 1h 3 300 B`
+++- `cache-clear BTCUSDT 1h --start 2024-01-02 --end 2024-01-02`: exit 0, `Deleted 1 day file (100 B)`, and the 01 and 03 files are left
+++- `--start 2024-01-01T00:00`: exit 2, `error: invalid start date '2024-01-01T00:00': use YYYY-MM-DD, ...`
+++- `cache-clear BTCUSDT`: `Deleted 2 day files (200 B)`
+++- `cache-info`: `No cached klines under ...`
+++
+++**8. Neighbour: errors through `urllib_fetch` and `with_retries`**
+++Stubbed answers went through the real opener, with sleep and jitter patched out:
+++- 404: returned 404, 1 call, no sleeps
+++- 429 then 200: returned 200, sleeps `[3.0]` (the Retry-After)
+++- 503, 500, 200: returned 200, sleeps `[1.0, 2.0]`
+++- 502 every time: `DownloadError ... HTTP 502 after 3 retries`, 4 calls
+++- 418: `BinanceBanError`, 1 call
+++
+++## Not exercised
+++- The build, test and lint targets on the final tree. That result is the runner's (`sdlc/test`).
+++- Any real HTTPS connection or real proxy CONNECT, which means the connect and read timeouts and the `MAX_BODY_BYTES` cap (R4) were not checked on a live socket.
+++- A 3xx reaching the `Vision refused (HTTP 3xx)` and `REST refused (HTTP 3xx)` messages (R2). That code is unchanged, and I did not call it.
+++- `pip install -e .` (R10). I did not run it; the plan records a partial Linux attempt that hit the read-only sandbox.
+++- Windows (the tzdata install, R9 and R10) and macOS. I ran only on Linux with Python 3.12.
+++- The `download` CLI subcommand.
+++- The four new regression tests themselves. The runner runs them.
+++
+++## Mismatches with plan.md / spec.md
+++None.
+++
+++## Verdict
+++matches the plan
++diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/plan.md b/changes/0002-harden-the-data-layer-redirects-datetime/plan.md
++index af1889e..ddea0bf 100644
++--- a/changes/0002-harden-the-data-layer-redirects-datetime/plan.md
+++++ b/changes/0002-harden-the-data-layer-redirects-datetime/plan.md
++@@ -94,6 +94,11 @@ For the owner, not the run (guardrail files; edit in a PR merged **after** this
++   isolated build (current setuptools, which supports `[tool.setuptools]` and PEP 660
++   editable installs). Proven on Windows by the intent's prototype; not yet run on Linux or
++   Python 3.12 — the build run checks `pip install -e .` where its sandbox allows.
+++  Build run, Linux, Python 3.12: `python -m pip install -e . --no-deps` built the editable
+++  wheel (metadata: `polars>=1.0`, and `tzdata` under `sys_platform == "win32"`), then the
+++  final copy into the user site-packages failed on the run's read-only sandbox (`Errno 30`);
+++  `crypto_backtester.egg-info/` is ignored and `git status` showed no new file. The full
+++  install stays for the test phase or the owner's Windows check.
++ - **Guardrail order:** if the owner changes `commands.setup` before this change is on `main`,
++   every phase job's setup fails. Named above for the owner.
++ - **Test lock:** after step 1 the test files are locked; every test this change needs is in
++diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml b/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml
++index 4f12ad0..70b5bde 100644
++--- a/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml
+++++ b/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml
++@@ -1,7 +1,7 @@
++ id: "0002"
++ slug: harden-the-data-layer-redirects-datetime
++ title: "Harden the data layer: redirects, datetime bounds, Windows tzdata"
++-phase: design
+++phase: build
++ entry_route: idea
++ change_type: fix
++ gate:
++@@ -14,7 +14,7 @@ iterations: 0
++ panel_calls: 1
++ external_ref: null
++ risk_accepted: []
++-tests_locked: false
+++tests_locked: true
++ risk_accepted_by: []
++ iterations_reset_by: null
++ iterations_reset_at: null
++@@ -26,5 +26,5 @@ released_at: null
++ released_sha: null
++ released_pr: null
++ created_at: "2026-11-03T18:42:52Z"
++-updated_at: "2026-11-05T15:08:37Z"
+++updated_at: "2026-11-05T18:01:09Z"
++ schema_version: 1
++diff --git a/pyproject.toml b/pyproject.toml
++index 0ca3b30..d1c9186 100644
++--- a/pyproject.toml
+++++ b/pyproject.toml
++@@ -3,7 +3,10 @@ name = "crypto-backtester"
++ version = "0.1.0"
++ description = "Trial project for the SDLC framework plugin."
++ requires-python = ">=3.10"
++-dependencies = ["polars>=1.0"]
+++dependencies = ["polars>=1.0", "tzdata; sys_platform == 'win32'"]
+++
+++[tool.setuptools]
+++packages = ["app", "app.data"]
++ 
++ [tool.pytest.ini_options]
++ testpaths = ["tests"]
++diff --git a/tests/test_data.py b/tests/test_data.py
++index 7218db6..0a9746d 100644
++--- a/tests/test_data.py
+++++ b/tests/test_data.py
++@@ -2,8 +2,14 @@
++ 
++ from __future__ import annotations
++ 
+++import email.message
+++import io
++ import json
++ import time
+++import urllib.error
+++import urllib.request
+++import urllib.response
+++from collections.abc import Callable
++ from datetime import date, datetime, timedelta, timezone
++ from pathlib import Path
++ 
++@@ -498,3 +504,59 @@ def test_current_day_is_not_cached(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
++     load(binance, "2025-01-01", "2025-01-01", tmp_path, market="um")
++     assert len(binance.rest_calls()) == 2
++     assert binance.rest_calls()[0].startswith("https://fapi.binance.com/fapi/v1/klines?")
+++
+++
+++@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+++@pytest.mark.parametrize("target", ["http://elsewhere.example/x", "https://elsewhere.example/x"])
+++def test_redirect_is_not_followed(
+++    monkeypatch: pytest.MonkeyPatch, status: int, target: str
+++) -> None:
+++    opened: list[str] = []
+++
+++    def answer_redirect(self: object, request: urllib.request.Request) -> object:
+++        opened.append(request.full_url)
+++        headers = email.message.Message()
+++        headers["Location"] = target
+++        response = urllib.response.addinfourl(io.BytesIO(b""), headers, request.full_url, status)
+++        response.msg = "Redirect"
+++        return response
+++
+++    monkeypatch.setattr(http._HTTPSHandler, "https_open", answer_redirect)
+++    monkeypatch.setattr(urllib.request.HTTPHandler, "http_open", answer_redirect)
+++    origin = "https://data.binance.vision/data/x.zip"
+++    assert http.urllib_fetch(origin).status == status
+++    assert opened == [origin]
+++
+++
+++@pytest.mark.parametrize("url", ["http://127.0.0.1:9/x", "ftp://127.0.0.1/x", "file:///etc/hosts"])
+++def test_only_https_urls_are_opened(url: str) -> None:
+++    with pytest.raises(urllib.error.URLError, match="unknown url type"):
+++        http.urllib_fetch(url)
+++
+++
+++@pytest.mark.parametrize(
+++    "moment", [datetime(2024, 1, 1), datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3)))]
+++)
+++@pytest.mark.parametrize(
+++    "dates",
+++    [
+++        lambda moment: (moment, date(2024, 1, 2)),
+++        lambda moment: (date(2023, 12, 31), moment),
+++        lambda moment: (moment, moment),
+++    ],
+++)
+++def test_datetime_bound_is_refused_not_a_type_error(
+++    moment: datetime, dates: Callable[[datetime], tuple[date, date]]
+++) -> None:
+++    start, end = dates(moment)
+++    with pytest.raises(InvalidRequestError, match="not a datetime"):
+++        make_request("BTCUSDT", "1h", start, end, "spot", date(2025, 1, 1))
+++
+++
+++def test_clear_cache_refuses_a_datetime_bound(tmp_path: Path) -> None:
+++    spot = cached_days(tmp_path, "spot", "BTCUSDT", "1h", ["2024-01-01"])
+++    with pytest.raises(InvalidRequestError, match="not a datetime"):
+++        cache.clear_cache("BTCUSDT", start=datetime(2024, 1, 1), cache_dir=tmp_path)
+++    with pytest.raises(InvalidRequestError, match="not a datetime"):
+++        cache.clear_cache("BTCUSDT", end=datetime(2024, 1, 1), cache_dir=tmp_path)
+++    assert (spot / "BTCUSDT-1h-2024-01-01.parquet").is_file()
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log
+new file mode 100644
+index 0000000..db7a642
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log
+@@ -0,0 +1,51 @@
++$ python -m pytest tests/test_data.py -k "redirect_is_not_followed or only_https or datetime_bound or clear_cache_refuses" -q --tb=no -rf -p no:cacheprovider
++# Run on branch sdlc/0002/build at 071cd24 (main) with only the new tests added; app/ unchanged.
++# Linux, Python 3.12. The 4-line "Full diff" block under each redirect case is identical in
++# shape (the stub's redirect target opened 4 more times); it is kept for the first case only.
++FFFFFFFFFFFFFFFFFFFF                                                     [100%]
++=========================== short test summary info ============================
++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-301] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++
++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
++
++  Full diff: (-: missing in left side, +: extra in left side)
++    [
++        'https://data.binance.vision/data/x.zip',
++  +     'http://elsewhere.example/x',
++  +     'http://elsewhere.example/x',
++  +     'http://elsewhere.example/x',
++  +     'http://elsewhere.example/x',
++    ]
++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-302] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-303] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-307] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
++FAILED tests/test_data.py::test_redirect_is_not_followed[http://elsewhere.example/x-308] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++  Left contains 4 more items, first extra item: 'http://elsewhere.example/x'
++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-301] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-302] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-303] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-307] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
++FAILED tests/test_data.py::test_redirect_is_not_followed[https://elsewhere.example/x-308] - AssertionError: assert ['https://dat...re.example/x'] == ['https://dat...n/data/x.zip']
++  Left contains 4 more items, first extra item: 'https://elsewhere.example/x'
++FAILED tests/test_data.py::test_only_https_urls_are_opened[http://127.0.0.1:9/x] - AssertionError: Regex pattern did not match.
++  Expected regex: 'unknown url type'
++  Actual message: '<urlopen error [Errno 111] Connection refused>'
++FAILED tests/test_data.py::test_only_https_urls_are_opened[ftp://127.0.0.1/x] - AssertionError: Regex pattern did not match.
++  Expected regex: 'unknown url type'
++  Actual message: '<urlopen error [Errno 111] Connection refused>'
++FAILED tests/test_data.py::test_only_https_urls_are_opened[file:///etc/hosts] - Failed: DID NOT RAISE URLError
++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>0-moment0] - TypeError: can't compare datetime.datetime to datetime.date
++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>0-moment1] - TypeError: can't compare datetime.datetime to datetime.date
++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>1-moment0] - TypeError: can't compare datetime.datetime to datetime.date
++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>1-moment1] - TypeError: can't compare datetime.datetime to datetime.date
++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>2-moment0] - TypeError: can't compare datetime.datetime to datetime.date
++FAILED tests/test_data.py::test_datetime_bound_is_refused_not_a_type_error[<lambda>2-moment1] - TypeError: can't compare datetime.datetime to datetime.date
++FAILED tests/test_data.py::test_clear_cache_refuses_a_datetime_bound - TypeError: can't compare datetime.datetime to datetime.date
++20 failed, 59 deselected in 0.21s
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/gate-build.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/gate-build.json
+new file mode 100644
+index 0000000..b29b18d
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/gate-build.json
+@@ -0,0 +1,208 @@
++{
++  "schema_version": 1,
++  "change_id": "0002",
++  "slug": "harden-the-data-layer-redirects-datetime",
++  "phase": "build",
++  "human_gate": false,
++  "result": "continue",
++  "label": null,
++  "head": "fa325a51ab068de9f3213002aaf77a51e19dec05",
++  "at": "2026-11-05T18:06:56Z",
++  "dry_run": false,
++  "reason": "",
++  "config_note": "",
++  "checks": [
++    {
++      "name": "limits",
++      "ok": true,
++      "reason": "within the run limits",
++      "need": "",
++      "details": {
++        "iterations": 0,
++        "cap": 2,
++        "classification": "non-routine",
++        "panel_calls": 1,
++        "panel_cap": 4,
++        "elapsed_minutes": 7.6,
++        "spend_usd": null,
++        "spend_usd_total": 4.119393,
++        "spend_entries": 1,
++        "max_budget_usd": 150.0
++      }
++    },
++    {
++      "name": "clean_tree",
++      "ok": true,
++      "reason": "no uncommitted change outside the change folder",
++      "need": "",
++      "details": {
++        "ignored": [
++          "CLAUDE.local.md"
++        ]
++      }
++    },
++    {
++      "name": "artifacts",
++      "ok": true,
++      "reason": "every required artifact exists and has its template sections",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "evidence_links",
++      "ok": true,
++      "reason": "no symbolic link under the change folder",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "open_concerns",
++      "ok": true,
++      "reason": "no open flagged concern",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "panel",
++      "ok": true,
++      "reason": "0 panel decision(s) recorded",
++      "need": "",
++      "details": {
++        "decisions": [],
++        "cost_usd": 0.0
++      }
++    },
++    {
++      "name": "commands",
++      "ok": true,
++      "reason": "build, test and lint exit 0",
++      "need": "",
++      "details": {
++        "runs": {
++          "build": {
++            "command": "python -m compileall -q .",
++            "exit_code": 0,
++            "output": ""
++          },
++          "test": {
++            "command": "python -m pytest",
++            "exit_code": 0,
++            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.14.3\ncollected 89 items\n\ntests/test_data.py ..................................................... [ 59%]\n..........................                                               [ 88%]\ntests/test_data_cli.py .........                                         [ 98%]\ntests/test_smoke.py .                                                    [100%]\n\n============================== 89 passed in 0.57s ==============================\n"
++          },
++          "lint": {
++            "command": "python -m ruff check .",
++            "exit_code": 0,
++            "output": "All checks passed!\n"
++          }
++        },
++        "ran_by": "runner"
++      }
++    },
++    {
++      "name": "evidence",
++      "ok": true,
++      "reason": "evidence present: verifier.md",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "proof",
++      "ok": true,
++      "reason": "no drive target: nothing to compare",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "findings",
++      "ok": true,
++      "reason": "no review findings yet (the review pass runs in the deploy phase)",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "plan_sync",
++      "ok": true,
++      "reason": "every committed source file is in plan.md",
++      "need": "",
++      "details": {
++        "planned_but_unchanged": [
++          "CLAUDE.md",
++          "sdlc.yaml",
++          ".github/workflows/ci.yml"
++        ],
++        "plan_growth": {
++          "added": [],
++          "removed": []
++        }
++      }
++    },
++    {
++      "name": "guardrails",
++      "ok": true,
++      "reason": "the diff does not touch a guardrail file",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "risk_list",
++      "ok": true,
++      "reason": "no risk-list item touched",
++      "need": "",
++      "details": {
++        "hits": {},
++        "accepted": []
++      }
++    },
++    {
++      "name": "owner_actions",
++      "ok": true,
++      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
++      "need": "",
++      "details": {
++        "risk_accepted": [],
++        "label_actors": {}
++      }
++    },
++    {
++      "name": "test_lock",
++      "ok": true,
++      "reason": "no test file changed since the lock commit 047eba1565",
++      "need": "",
++      "details": {
++        "lock_commit": "047eba1565d4211f5d88132c564d6e921513ee09"
++      }
++    },
++    {
++      "name": "ratchets",
++      "ok": true,
++      "reason": "no undeclared test file or eval case drop",
++      "need": "",
++      "details": {
++        "hits": {},
++        "declared": [],
++        "skip_markers": [],
++        "accepted": []
++      }
++    },
++    {
++      "name": "adversarial_review",
++      "ok": true,
++      "reason": "adversarial reviewer says continue",
++      "need": "",
++      "details": {
++        "classification": "non-routine",
++        "reasons": []
++      }
++    },
++    {
++      "name": "reviewer_model",
++      "ok": true,
++      "reason": "the adversarial reviewer ran on claude-opus-5-5",
++      "need": "",
++      "details": {
++        "wanted": "claude-opus-5-5"
++      }
++    }
++  ],
++  "what_i_need": ""
++}
+\ No newline at end of file
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl
+index b11066c..2d3ac3c 100644
+--- a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl
+@@ -34,3 +34,78 @@
+ {"at": "2026-11-05T15:07:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-11-05T15:07:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-11-05T15:08:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T17:59:14Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T17:59:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T17:59:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T17:59:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T17:59:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T17:59:54Z", "commands": [{"command": "ruff check --fix --quiet test_data.py", "exit_code": 0}, {"command": "ruff format test_data.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_data.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:00:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:00:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:00:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:00:02Z", "commands": [{"command": "ruff check --fix --quiet test_data.py", "exit_code": 1}, {"command": "ruff format test_data.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_data.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "ruff reports remaining problems in test_data.py after auto-fix; fix them before moving on:\ntests/test_data.py:510:48: F821 Undefined name `urllib`\ntests/test_data.py:512:19: F821 Undefined name `email`\ntests/test_data.py:514:20: F821 Undefined name `urllib`\ntests/test_data.py:514:47: F821 Undefined name `io`\ntests/test_data.py:519:25: F821 Undefined name `urllib`\ntests/test_data.py:527:24: F821 Undefined name `urllib`\ntests/test_data.py:543:30: F821 Undefined name `Callable`\nFound 7 errors.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-05T18:00:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:00:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:00:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:00:08Z", "commands": [{"command": "ruff check --fix --quiet test_data.py", "exit_code": 0}, {"command": "ruff format test_data.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_data.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_data.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:00:55Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:00:55Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:00:55Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:00:55Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/failing-test.log"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:01:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:15Z", "commands": [{"command": "ruff check --fix --quiet params.py", "exit_code": 1}, {"command": "ruff format params.py", "exit_code": 0}, {"command": "ruff check --output-format concise params.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "ruff reports remaining problems in params.py after auto-fix; fix them before moving on:\napp/data/params.py:79:26: F821 Undefined name `datetime`\nFound 1 error.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-05T18:01:16Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:16Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:16Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:16Z", "commands": [{"command": "ruff check --fix --quiet params.py", "exit_code": 0}, {"command": "ruff format params.py", "exit_code": 0}, {"command": "ruff check --output-format concise params.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/params.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/http.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/http.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/http.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:25Z", "commands": [{"command": "ruff check --fix --quiet http.py", "exit_code": 0}, {"command": "ruff format http.py", "exit_code": 0}, {"command": "ruff check --output-format concise http.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/data/http.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/.gitignore"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/.gitignore"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/.gitignore"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/.gitignore"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:01:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:02:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:02:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:02:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:02:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-05T18:02:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:02:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:02:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:02:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "shell_guard", "reason": "Shell guard: the write target `$TMPDIR/v0002/redirect.py` is not a literal path (a variable, command substitution, backtick, `~`, a glob, a brace expansion or a git pathspec-magic prefix), or the working directory it would resolve against is not tracked (`cd -`, a bare `cd`, `popd`/`Pop-Location`); write the literal path, from a tracked directory, so the guard can check it.", "tool": "Bash", "verdict": "block"}
++{"at": "2026-11-05T18:03:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:04:05Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:05:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:05:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:05:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:05:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:05:13Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:05:19Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:05:20Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:06:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:06:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:06:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:06:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-build.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:07:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:08:22Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:08:23Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:08:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:08:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:08:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:08:49Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:09:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:09:35Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:10:13Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:10:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-05T18:10:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:10:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:10:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-05T18:10:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/lint.log b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/lint.log
+new file mode 100644
+index 0000000..349c4f4
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/lint.log
+@@ -0,0 +1,2 @@
++# python -m ruff check . — deferred to the runner — 2026-11-05T18:08:29Z
++The target did not run inside the model's session: build, test and lint run after the session, outside its sandbox (issue #91), and the runner replaces this file with the target's own output. A file still reading this line was never replaced: the targets did not run, and the gate does not pass on it.
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/panel/build-items.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/panel/build-items.json
+new file mode 100644
+index 0000000..ea7502e
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/panel/build-items.json
+@@ -0,0 +1,18 @@
++{
++  "decided": 0,
++  "gate": "continue",
++  "items": [],
++  "iterations": {
++    "cap": 2,
++    "left": 2,
++    "used": 0
++  },
++  "panel_calls": {
++    "cap": 4,
++    "left": 3,
++    "used": 1
++  },
++  "parks": [],
++  "pending": [],
++  "phase": "build"
++}
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-build.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-build.json
+new file mode 100644
+index 0000000..3479f1e
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-build.json
+@@ -0,0 +1,11 @@
++{
++  "github_run": {
++    "attempt": "1",
++    "id": "42079556949",
++    "url": "https://github.com/luissiviero/crypto-backtester/actions/runs/42079556949"
++  },
++  "phase": "build",
++  "run": "build",
++  "spend_usd": 2.9580344000000003,
++  "started_at": "2026-11-05T17:59:21Z"
++}
+\ No newline at end of file
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-test.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-test.json
+new file mode 100644
+index 0000000..0b3ec06
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/run-test.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "test",
++  "spend_usd": null,
++  "started_at": "2026-11-05T18:08:25Z"
++}
+\ No newline at end of file
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/screenshots/.gitkeep b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/screenshots/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/spend.json b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/spend.json
+index 424cf9a..b85ab6e 100644
+--- a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/spend.json
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/spend.json
+@@ -5,7 +5,13 @@
+       "run": "design",
+       "source": "claude-design.json",
+       "usd": 4.119393300000001
++    },
++    {
++      "at": "2026-11-05T18:07:21Z",
++      "run": "build",
++      "source": "claude-build.json",
++      "usd": 2.9580344000000003
+     }
+   ],
+-  "total_usd": 4.119393
++  "total_usd": 7.077428
+ }
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/test.log b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/test.log
+new file mode 100644
+index 0000000..9f2be70
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/test.log
+@@ -0,0 +1,2 @@
++# python -m pytest — deferred to the runner — 2026-11-05T18:08:29Z
++The target did not run inside the model's session: build, test and lint run after the session, outside its sandbox (issue #91), and the runner replaces this file with the target's own output. A file still reading this line was never replaced: the targets did not run, and the gate does not pass on it.
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md
+new file mode 100644
+index 0000000..de6f4e0
+--- /dev/null
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/evidence/verifier.md
+@@ -0,0 +1,96 @@
++# Verifier report: change 0002, test phase (CI session, `SDLC_GATE_COMMANDS=runner`)
++
++## Commands run
++
++**Read, not run:** `evidence/gate-build.json`, the runner's run on commit `fa325a51ab068de9f3213002aaf77a51e19dec05` of `2026-11-05T18:06:56Z`. That is the tree this phase started from, not the final one. The final tree's result comes from the runner, which runs the three targets once after this session and shows them in the check run `sdlc/test` (and in `gate-test.json`). Nothing here stands in for that.
++
++Between `fa325a5` and HEAD `71ebd8f`, only files under `changes/0002-…/evidence/` and `status.yaml` changed. No code, test or packaging file changed.
++
++The record's `commands` check is `"ok": true`, `"reason": "build, test and lint exit 0"`, `"ran_by": "runner"`, with no `deferred` flag. Its `evidence` check is `ok: true` with no `deferred` flag either.
++- `python -m compileall -q .`: exit 0, output `""`.
++- `python -m pytest`: exit 0, tail:
++  ```
++  collected 89 items
++  tests/test_data.py ..................................................... [ 59%]
++  ..........................                                               [ 88%]
++  tests/test_data_cli.py .........                                         [ 98%]
++  tests/test_smoke.py .                                                    [100%]
++  ============================== 89 passed in 0.57s ==============================
++  ```
++- `python -m ruff check .`: exit 0, `All checks passed!`
++
++**Logs (read, not run), first lines:**
++- `test.log`: `# python -m pytest — deferred to the runner — 2026-11-05T18:08:29Z`
++- `build.log`: `# python -m compileall -q . — deferred to the runner — 2026-11-05T18:08:29Z`
++- `lint.log`: `# python -m ruff check . — deferred to the runner — 2026-11-05T18:08:29Z`
++
++These are this session's deferred placeholders, which the runner replaces. They are not failures.
++
++**Earlier failing run:** `evidence/failing-test.log` shows the new tests run on `071cd24` (main) with `app/` unchanged: `20 failed, 59 deselected in 0.21s`. All 10 redirect cases failed (the redirect was followed). The 3 scheme cases failed: http and ftp with a regex mismatch, and file with `DID NOT RAISE URLError`. All 6 datetime cases and the `clear_cache` case failed with `TypeError: can't compare datetime.datetime to datetime.date`.
++
++## Behavior exercised
++I made direct calls with `python -B -c` from the project root. I did not use pytest and read no `.env*`.
++
++**Redirects:**
++- I stubbed `http._HTTPSHandler.https_open` to answer each status with `Location: https://elsewhere.example/x`. For 301, 302, 303, 307 and 308, `urllib_fetch("https://data.binance.vision/data/x.zip")` returned that same status, and the stub recorded exactly `['https://data.binance.vision/data/x.zip']`.
++- Neighbouring statuses come back unchanged too: 200, 404, 418, 429 and 500 each return their own status with the body intact.
++- **Vision refusal path:** `vision.fetch_day(with_retries(urllib_fetch), req, 2024-01-01)` with a 302 returned `VisionDay(..., frame=None, reason='Vision refused (HTTP 302)')` and opened one URL, so there was no retry (R1, R2).
++
++**Schemes (R3):** every non-https URL raised `URLError <urlopen error unknown url type: …>`:
++- `http://127.0.0.1:9/x` (type `http`)
++- `ftp://127.0.0.1/x` (type `ftp`)
++- `file:///etc/hosts` (type `file`)
++- `data:,hello` (type `data`)
++- Just outside the spec's list: `HTTP://127.0.0.1:9/x` (type `http`) and `gopher://x/` (type `gopher`)
++
++This held even though the sandbox sets `http_proxy` and `ftp_proxy`.
++
++**Opener structure (R4, R5):**
++- `_OPENER.handle_open["https"]` is `['ProxyHandler', '_HTTPSHandler']`, and no `HTTPRedirectHandler` is present.
++- `CONNECT_TIMEOUT 10.0`, `READ_TIMEOUT 60.0` and `MAX_BODY_BYTES 67108864` are unchanged.
++- `ProxyHandler()` with `https_proxy` set picks up the https proxy and has `https_open`.
++
++**Dates (R6–R8):**
++- `parse_date` raises `InvalidRequestError` for a naive `datetime(2024,1,1)` and for an aware `datetime(2024,1,1,23,tz=-3h)`, with the message `invalid start date datetime.datetime(2024, 1, 1, 0, 0): pass a date or YYYY-MM-DD, not a datetime`.
++- `date(2024,1,1)` and `"2024-01-01"` both return `2024-01-01`.
++- Just outside: `"2024-01-01T00:00"` and `"2024-13-01"` raise the existing `use YYYY-MM-DD, for example 2024-01-31`.
++- `make_request` with a datetime as start, as end, or as both raises `InvalidRequestError`, and the message names the right bound (`start`, or `end` when only the end is a datetime).
++- `clear_cache(start=datetime)` and `clear_cache(end=aware)` raise `InvalidRequestError`. `clear_cache(start="2024-01-01", end=date(2024,1,2))` returns `ClearResult(files=0, size=0)`.
++- `load_klines("BTCUSDT","1h",datetime(2024,1,1),date(2024,1,2), fetch=<raises if called>)` raises `InvalidRequestError` before any fetch.
++
++**Packaging (R9–R11):**
++- `pyproject.toml` has dependencies `['polars>=1.0', "tzdata; sys_platform == 'win32'"]` and `[tool.setuptools] packages = ['app', 'app.data']`. The version is `0.1.0`, and `app.__version__` is also `0.1.0`.
++- The marker evaluates to True on `win32` and False on `linux` and `darwin`.
++- `python -m pip wheel --no-deps --no-build-isolation -w $TMPDIR/whl .` exited 0. The wheel holds only `app/` and `app/data/*.py`, and its METADATA reads `Requires-Dist: polars >=1.0` and `Requires-Dist: tzdata ; sys_platform == "win32"`.
++- `crypto_backtester.egg-info/` shows as ignored (`!!`).
++- The wheel build left an untracked `build/` directory (setuptools output: copies of `app/`, nothing else). The test session removed it before committing. `.gitignore` does not ignore `build/`, so a local non-editable build dirties `git status`; this is outside the change's scope (R11 covers egg-info only), so it is noted here and not acted on.
++
++**Guardrail files (R12, R13):** `git diff 071cd24..HEAD -- .github CLAUDE.md sdlc.yaml` is empty. plan.md lines 18–26 name the owner's edits to `CLAUDE.md` and `sdlc.yaml`.
++
++**Proof items in plan.md:** all four named tests exist in `tests/test_data.py` on HEAD, and none of them is skipped:
++- `test_redirect_is_not_followed`, with 10 parameter sets
++- `test_only_https_urls_are_opened`, with 3
++- `test_datetime_bound_is_refused_not_a_type_error`, with 6
++- `test_clear_cache_refuses_a_datetime_bound`
++
++The tests were committed first, in `ff61d01 fix(0002): reproducing test`. The `test_lock` check in `gate-build.json` passed with lock commit `047eba1565`. The diff from `071cd24` to HEAD only adds to `tests/test_data.py`; no existing test changed.
++
++## Not exercised
++- The test runner and the three targets on the final tree. The runner judges these in `sdlc/test`.
++- A real `python -m pip install -e .` into an environment. I built a wheel instead and did not install anything, so "git status stays clean after the editable install" is only partly checked: egg-info is ignored, but I did not run an editable install.
++- Windows: the `tzdata` install and `python -m pytest` there. That is the owner's check at the deploy gate.
++- macOS.
++- A real HTTPS connection through an actual proxy (R5). I checked handler order and that the https proxy is picked up, nothing more.
++- A real network redirect from any Binance host. Every redirect answer was stubbed.
++- The REST refusal path (`REST refused (HTTP 3xx)`, `app/data/rest.py:68`). I read the code but did not call it.
++- The `download`, `cache-clear` and `cache-info` CLI commands.
++- Python versions other than the sandbox interpreter.
++
++## UI / screenshots
++No UI step: neither spec.md Acceptance nor plan.md Proof names a mock, screen or screenshot.
++
++## Mismatches with plan.md / spec.md
++None.
++
++## Verdict
++matches the plan
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/plan.md b/changes/0002-harden-the-data-layer-redirects-datetime/plan.md
+index af1889e..ddea0bf 100644
+--- a/changes/0002-harden-the-data-layer-redirects-datetime/plan.md
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/plan.md
+@@ -94,6 +94,11 @@ For the owner, not the run (guardrail files; edit in a PR merged **after** this
+   isolated build (current setuptools, which supports `[tool.setuptools]` and PEP 660
+   editable installs). Proven on Windows by the intent's prototype; not yet run on Linux or
+   Python 3.12 — the build run checks `pip install -e .` where its sandbox allows.
++  Build run, Linux, Python 3.12: `python -m pip install -e . --no-deps` built the editable
++  wheel (metadata: `polars>=1.0`, and `tzdata` under `sys_platform == "win32"`), then the
++  final copy into the user site-packages failed on the run's read-only sandbox (`Errno 30`);
++  `crypto_backtester.egg-info/` is ignored and `git status` showed no new file. The full
++  install stays for the test phase or the owner's Windows check.
+ - **Guardrail order:** if the owner changes `commands.setup` before this change is on `main`,
+   every phase job's setup fails. Named above for the owner.
+ - **Test lock:** after step 1 the test files are locked; every test this change needs is in
+diff --git a/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml b/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml
+index 4f12ad0..4825bf1 100644
+--- a/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml
++++ b/changes/0002-harden-the-data-layer-redirects-datetime/status.yaml
+@@ -1,30 +1,30 @@
+ id: "0002"
+ slug: harden-the-data-layer-redirects-datetime
+ title: "Harden the data layer: redirects, datetime bounds, Windows tzdata"
+-phase: design
++phase: test
+ entry_route: idea
+ change_type: fix
+ gate:
+-  phase: design
++  phase: build
+   result: passed
+-  reason: waiting for the owner at gate (design)
+-  at: "2026-11-05T15:08:37Z"
++  reason: null
++  at: "2026-11-05T18:07:23Z"
+ parked_reason: null
+ iterations: 0
+ panel_calls: 1
+ external_ref: null
+ risk_accepted: []
+-tests_locked: false
++tests_locked: true
+ risk_accepted_by: []
+ iterations_reset_by: null
+ iterations_reset_at: null
+ tests_unlocked_by: null
+ runbook_authorized_by: null
+ abandoned_reason: null
+-build_pr: null
++build_pr: 11
+ released_at: null
+ released_sha: null
+ released_pr: null
+ created_at: "2026-11-03T18:42:52Z"
+-updated_at: "2026-11-05T15:08:37Z"
++updated_at: "2026-11-05T18:08:27Z"
+ schema_version: 1
+diff --git a/pyproject.toml b/pyproject.toml
+index 0ca3b30..d1c9186 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -3,7 +3,10 @@ name = "crypto-backtester"
+ version = "0.1.0"
+ description = "Trial project for the SDLC framework plugin."
+ requires-python = ">=3.10"
+-dependencies = ["polars>=1.0"]
++dependencies = ["polars>=1.0", "tzdata; sys_platform == 'win32'"]
++
++[tool.setuptools]
++packages = ["app", "app.data"]
+ 
+ [tool.pytest.ini_options]
+ testpaths = ["tests"]
+diff --git a/tests/test_data.py b/tests/test_data.py
+index 7218db6..0a9746d 100644
+--- a/tests/test_data.py
++++ b/tests/test_data.py
+@@ -2,8 +2,14 @@
+ 
+ from __future__ import annotations
+ 
++import email.message
++import io
+ import json
+ import time
++import urllib.error
++import urllib.request
++import urllib.response
++from collections.abc import Callable
+ from datetime import date, datetime, timedelta, timezone
+ from pathlib import Path
+ 
+@@ -498,3 +504,59 @@ def test_current_day_is_not_cached(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
+     load(binance, "2025-01-01", "2025-01-01", tmp_path, market="um")
+     assert len(binance.rest_calls()) == 2
+     assert binance.rest_calls()[0].startswith("https://fapi.binance.com/fapi/v1/klines?")
++
++
++@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
++@pytest.mark.parametrize("target", ["http://elsewhere.example/x", "https://elsewhere.example/x"])
++def test_redirect_is_not_followed(
++    monkeypatch: pytest.MonkeyPatch, status: int, target: str
++) -> None:
++    opened: list[str] = []
++
++    def answer_redirect(self: object, request: urllib.request.Request) -> object:
++        opened.append(request.full_url)
++        headers = email.message.Message()
++        headers["Location"] = target
++        response = urllib.response.addinfourl(io.BytesIO(b""), headers, request.full_url, status)
++        response.msg = "Redirect"
++        return response
++
++    monkeypatch.setattr(http._HTTPSHandler, "https_open", answer_redirect)
++    monkeypatch.setattr(urllib.request.HTTPHandler, "http_open", answer_redirect)
++    origin = "https://data.binance.vision/data/x.zip"
++    assert http.urllib_fetch(origin).status == status
++    assert opened == [origin]
++
++
++@pytest.mark.parametrize("url", ["http://127.0.0.1:9/x", "ftp://127.0.0.1/x", "file:///etc/hosts"])
++def test_only_https_urls_are_opened(url: str) -> None:
++    with pytest.raises(urllib.error.URLError, match="unknown url type"):
++        http.urllib_fetch(url)
++
++
++@pytest.mark.parametrize(
++    "moment", [datetime(2024, 1, 1), datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3)))]
++)
++@pytest.mark.parametrize(
++    "dates",
++    [
++        lambda moment: (moment, date(2024, 1, 2)),
++        lambda moment: (date(2023, 12, 31), moment),
++        lambda moment: (moment, moment),
++    ],
++)
++def test_datetime_bound_is_refused_not_a_type_error(
++    moment: datetime, dates: Callable[[datetime], tuple[date, date]]
++) -> None:
++    start, end = dates(moment)
++    with pytest.raises(InvalidRequestError, match="not a datetime"):
++        make_request("BTCUSDT", "1h", start, end, "spot", date(2025, 1, 1))
++
++
++def test_clear_cache_refuses_a_datetime_bound(tmp_path: Path) -> None:
++    spot = cached_days(tmp_path, "spot", "BTCUSDT", "1h", ["2024-01-01"])
++    with pytest.raises(InvalidRequestError, match="not a datetime"):
++        cache.clear_cache("BTCUSDT", start=datetime(2024, 1, 1), cache_dir=tmp_path)
++    with pytest.raises(InvalidRequestError, match="not a datetime"):
++        cache.clear_cache("BTCUSDT", end=datetime(2024, 1, 1), cache_dir=tmp_path)
++    assert (spot / "BTCUSDT-1h-2024-01-01.parquet").is_file()

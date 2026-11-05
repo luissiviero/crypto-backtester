@@ -5,7 +5,67 @@
       "run": "design",
       "source": "claude-design.json",
       "usd": 4.119393300000001
+    },
+    {
+      "at": "2026-11-05T18:07:21Z",
+      "run": "build",
+      "source": "claude-build.json",
+      "usd": 2.9580344000000003
+    },
+    {
+      "at": "2026-11-05T18:12:17Z",
+      "run": "test",
+      "source": "claude-test.json",
+      "usd": 1.5408630000000003
+    },
+    {
+      "at": "2026-11-05T18:14:16Z",
+      "run": "review",
+      "source": "claude-review.json",
+      "usd": 0.5591134
+    },
+    {
+      "at": "2026-11-05T18:27:28Z",
+      "run": "deploy",
+      "source": "claude-deploy.json",
+      "usd": 5.496345749999996
+    },
+    {
+      "at": "2026-11-05T19:46:44Z",
+      "run": "fix",
+      "source": "claude-fix.json",
+      "usd": 0.4462246000000001
+    },
+    {
+      "at": "2026-11-05T19:47:14Z",
+      "run": "explain",
+      "source": "claude-explain.json",
+      "usd": 0.21851
+    },
+    {
+      "at": "2026-11-05T20:51:36Z",
+      "run": "fix",
+      "source": "claude-fix-2.json",
+      "usd": 2.2171252000000004
+    },
+    {
+      "at": "2026-11-05T20:52:07Z",
+      "run": "explain",
+      "source": "claude-explain-2.json",
+      "usd": 0.2696602
+    },
+    {
+      "at": "2026-11-05T20:53:52Z",
+      "run": "fix",
+      "source": "claude-fix-3.json",
+      "usd": 0.4076576
+    },
+    {
+      "at": "2026-11-05T21:46:59Z",
+      "run": "fix",
+      "source": "claude-fix-4.json",
+      "usd": 1.8613094
     }
   ],
-  "total_usd": 4.119393
+  "total_usd": 20.094237
 }

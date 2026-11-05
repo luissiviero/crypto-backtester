@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-05T21:45:48Z",
+  "findings": [
+    {
+      "file": "tests/test_data.py",
+      "line": 0,
+      "pass": "compliance",
+      "rule": "REVIEW.md: no test edits in a fix task",
+      "severity": "important",
+      "signature": "c3b73ce1597573be",
+      "source": "framework",
+      "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+    },
+    {
+      "file": "pyproject.toml",
+      "line": 6,
+      "pass": "compliance",
+      "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
+      "severity": "nit",
+      "signature": "e01563be17e90885",
+      "summary": "The new Windows-only tzdata dependency and the [tool.setuptools] table make CLAUDE.md's Setup line and its 'the one runtime dependency is polars>=1.0' outdated; plan.md (lines 18-26) names each line for the owner's follow-up PR as required, so this is a nit for the owner's tracking, not an unacknowledged breach (doubt: if the gate expects the outdated text itself to count as Important, it applies here)."
+    },
+    {
+      "file": "tests/test_data.py",
+      "line": 540,
+      "pass": "compliance",
+      "rule": "REVIEW.md Framework rules: plan.md must reflect the diff",
+      "severity": "nit",
+      "signature": "0c7fa247c7808a9e",
+      "summary": "Commit f62fcfd edits the change's own regression tests after the test lock (adds noqa DTZ001 markers) without a plan.md update in the same commit, while plan.md Risks says the test files are locked after step 1; the owner unlocked the tests (tests_unlocked_by: luissiviero) and no pre-existing test changed, so the departure is cosmetic."
+    }
+  ],
+  "head": "0d27039965e15262308d2a1f6cc04d01da1938ab",
+  "schema_version": 1,
+  "tally": {
+    "important": 1,
+    "nit": 2,
+    "nits_omitted": 0
+  }
+}

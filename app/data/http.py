@@ -75,7 +75,17 @@ class _HTTPSHandler(urllib.request.HTTPSHandler):
         return self.do_open(_HTTPSConnection, req)
 
 
-_OPENER = urllib.request.build_opener(_HTTPSHandler())
+# Assembled by hand: build_opener would add its HTTP, FTP, file, data and redirect handlers.
+# Without them a 3xx comes back as its status and any other URL scheme is refused.
+_OPENER = urllib.request.OpenerDirector()
+for _handler in (
+    urllib.request.ProxyHandler(),
+    urllib.request.UnknownHandler(),
+    _HTTPSHandler(),
+    urllib.request.HTTPDefaultErrorHandler(),
+    urllib.request.HTTPErrorProcessor(),
+):
+    _OPENER.add_handler(_handler)
 
 
 def urllib_fetch(url: str) -> HttpResponse:

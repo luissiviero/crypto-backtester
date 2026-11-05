@@ -1,30 +1,30 @@
 id: "0002"
 slug: harden-the-data-layer-redirects-datetime
 title: "Harden the data layer: redirects, datetime bounds, Windows tzdata"
-phase: design
+phase: deploy
 entry_route: idea
 change_type: fix
 gate:
-  phase: design
+  phase: deploy
   result: passed
-  reason: waiting for the owner at gate (design)
-  at: "2026-11-05T15:08:37Z"
+  reason: waiting for the owner at gate (deploy)
+  at: "2026-11-05T21:47:01Z"
 parked_reason: null
-iterations: 0
-panel_calls: 1
+iterations: 1
+panel_calls: 0
 external_ref: null
 risk_accepted: []
 tests_locked: false
 risk_accepted_by: []
-iterations_reset_by: null
-iterations_reset_at: null
-tests_unlocked_by: null
+iterations_reset_by: luissiviero
+iterations_reset_at: "2026-11-05T21:41:10Z"
+tests_unlocked_by: luissiviero
 runbook_authorized_by: null
 abandoned_reason: null
-build_pr: null
+build_pr: 11
 released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-11-03T18:42:52Z"
-updated_at: "2026-11-05T15:08:37Z"
+updated_at: "2026-11-05T21:47:01Z"
 schema_version: 1

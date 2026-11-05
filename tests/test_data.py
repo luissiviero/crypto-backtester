@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import email.message
+import io
 import json
 import time
+import urllib.error
+import urllib.request
+import urllib.response
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -498,3 +504,63 @@ def test_current_day_is_not_cached(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     load(binance, "2025-01-01", "2025-01-01", tmp_path, market="um")
     assert len(binance.rest_calls()) == 2
     assert binance.rest_calls()[0].startswith("https://fapi.binance.com/fapi/v1/klines?")
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+@pytest.mark.parametrize("target", ["http://elsewhere.example/x", "https://elsewhere.example/x"])
+def test_redirect_is_not_followed(
+    monkeypatch: pytest.MonkeyPatch, status: int, target: str
+) -> None:
+    opened: list[str] = []
+
+    def answer_redirect(self: object, request: urllib.request.Request) -> object:
+        opened.append(request.full_url)
+        headers = email.message.Message()
+        headers["Location"] = target
+        response = urllib.response.addinfourl(io.BytesIO(b""), headers, request.full_url, status)
+        response.msg = "Redirect"
+        return response
+
+    monkeypatch.setattr(http._HTTPSHandler, "https_open", answer_redirect)
+    monkeypatch.setattr(urllib.request.HTTPHandler, "http_open", answer_redirect)
+    origin = "https://data.binance.vision/data/x.zip"
+    assert http.urllib_fetch(origin).status == status
+    assert opened == [origin]
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:9/x", "ftp://127.0.0.1/x", "file:///etc/hosts"])
+def test_only_https_urls_are_opened(url: str) -> None:
+    with pytest.raises(urllib.error.URLError, match="unknown url type"):
+        http.urllib_fetch(url)
+
+
+@pytest.mark.parametrize(
+    "moment",
+    [
+        datetime(2024, 1, 1),  # noqa: DTZ001
+        datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3))),
+    ],
+)
+@pytest.mark.parametrize(
+    "dates",
+    [
+        lambda moment: (moment, date(2024, 1, 2)),
+        lambda moment: (date(2023, 12, 31), moment),
+        lambda moment: (moment, moment),
+    ],
+)
+def test_datetime_bound_is_refused_not_a_type_error(
+    moment: datetime, dates: Callable[[datetime], tuple[date, date]]
+) -> None:
+    start, end = dates(moment)
+    with pytest.raises(InvalidRequestError, match="not a datetime"):
+        make_request("BTCUSDT", "1h", start, end, "spot", date(2025, 1, 1))
+
+
+def test_clear_cache_refuses_a_datetime_bound(tmp_path: Path) -> None:
+    spot = cached_days(tmp_path, "spot", "BTCUSDT", "1h", ["2024-01-01"])
+    with pytest.raises(InvalidRequestError, match="not a datetime"):
+        cache.clear_cache("BTCUSDT", start=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001
+    with pytest.raises(InvalidRequestError, match="not a datetime"):
+        cache.clear_cache("BTCUSDT", end=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001
+    assert (spot / "BTCUSDT-1h-2024-01-01.parquet").is_file()

@@ -1,0 +1,105 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 10804,
+  "duration_ms": 10959,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 690,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 30334,
+      "cacheReadInputTokens": 19161,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 0.2696602,
+      "inputTokens": 4,
+      "maxOutputTokens": 128000,
+      "outputTokens": 1157,
+      "provider": "firstParty",
+      "thinkingTokens": 200,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 7,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "1. **What failed:** The deploy gate parked on lint only. Build is clean and all tests pass, but `ruff check` exits 1 with three RUF100 \"unused `noqa`\" errors on the `# noqa: DTZ001` comments in `tests/test_data.py`. Both automatic fix rounds were used, so the run stopped at the cap.\n2. **Likely cause:** The last fix commit added those comments to satisfy CI's pinned ruff. The runner's ruff is a different version and does not enable DTZ001 there, so it flags the comments as unused. CI and the runner disagree on the rules, so silencing one breaks the other.\n3. **Flaky or real:** Real and repeatable, not flaky. It is a tool-version and config mismatch, not a code defect; the claude-fix-2 stderr file holds only a harmless settings-trust warning.\n4. **First check:** Compare the ruff version on the runner with CI's pin, and see how `pyproject.toml` enables DTZ. The fix is either aligning the versions or not relying on `noqa` for those three lines.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-11-05T20:52:07Z",
+    "credential": "oauth",
+    "seconds": 11.9,
+    "timed_out": false
+  },
+  "session_id": "4ba8a3c9-2991-4c3c-a729-7d65a910ff5a",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {},
+    "completed": 0,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 0,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 0
+    },
+    "spawned": 0,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 80,
+  "total_cost_usd": 0.2696602,
+  "ttft_ms": 1208,
+  "ttft_stream_ms": 690,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 30334,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 30334,
+    "cache_read_input_tokens": 19161,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 4,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 11173,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 11173,
+        "cache_read_input_tokens": 19161,
+        "input_tokens": 2,
+        "output_tokens": 559,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 1157,
+    "output_tokens_details": {
+      "thinking_tokens": 200
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "adb75ef8-fe06-4da6-a051-553190bc83a9"
+}
