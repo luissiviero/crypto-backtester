@@ -29,7 +29,13 @@
       "run": "deploy",
       "source": "claude-deploy.json",
       "usd": 5.496345749999996
+    },
+    {
+      "at": "2026-11-05T19:46:44Z",
+      "run": "fix",
+      "source": "claude-fix.json",
+      "usd": 0.4462246000000001
     }
   ],
-  "total_usd": 14.67375
+  "total_usd": 15.119974
 }
