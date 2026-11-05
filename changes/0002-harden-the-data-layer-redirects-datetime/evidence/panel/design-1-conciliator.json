@@ -1,0 +1,12 @@
+{
+  "reviewer": "keep 0.1.0 in both files; the concern is not Important and closes as accepted, with any bump left to the owner",
+  "advocate": "no objection to keeping 0.1.0, but the 0.1.1 alternative is not open inside this fix-type change and the closing should say so",
+  "decision": "Keep the version at 0.1.0 in app/__init__.py and pyproject.toml; no bump in this change, because tests/test_smoke.py asserts 0.1.0 and a fix-type diff may not edit that test, so any bump is a later change for the owner.",
+  "rationale": [
+    "Both verdicts agree: keep 0.1.0; no rule or intent line asks for a bump, and CLAUDE.md asks only that the two version lines stay in step, which they do.",
+    "Checked: tests/test_smoke.py line 5 asserts app.__version__ == \"0.1.0\".",
+    "Checked: REVIEW.md lines 23-24 say a fix-type diff must not modify test files that existed before the fix.",
+    "So the advocate's point holds: a 0.1.1 bump cannot be made in this change without breaking that test, so the closing names this rather than offering a bump.",
+    "Nothing reads the version (deploy.action is none), so keeping it unchanged is the safer reading and stays within the intent's scope."
+  ]
+}

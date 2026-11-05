@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "change_id": "0002",
+  "slug": "harden-the-data-layer-redirects-datetime",
+  "phase": "design",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:design-ready",
+  "head": "690c2125da360da8a5e73aa461a10e7333b7daa9",
+  "at": "2026-11-05T15:08:09Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 1,
+        "panel_cap": 4,
+        "elapsed_minutes": 7.8,
+        "spend_usd": null,
+        "spend_usd_total": null,
+        "spend_entries": 0,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0002-harden-the-data-layer-redirects-datetime/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "CLAUDE.local.md",
+          "changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-design.json",
+          "changes/0002-harden-the-data-layer-redirects-datetime/evidence/adversarial-review-design.model.json",
+          "changes/0002-harden-the-data-layer-redirects-datetime/evidence/diff-design.patch",
+          "changes/0002-harden-the-data-layer-redirects-datetime/evidence/hook-log.jsonl"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof_items",
+      "ok": true,
+      "reason": "the Proof items follow the grammar",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "1 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "concern",
+            "decision": "Keep the version at 0.1.0 in app/__init__.py and pyproject.toml; no bump in this change, because tests/test_smoke.py asserts 0.1.0 and a fix-type diff may not edit that test, so any bump is a later change for the owner."
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q .",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.14.3\ncollected 69 items\n\ntests/test_data.py ..................................................... [ 76%]\n......                                                                   [ 85%]\ntests/test_data_cli.py .........                                         [ 98%]\ntests/test_smoke.py .                                                    [100%]\n\n============================== 69 passed in 0.60s ==============================\n"
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}
