@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 MARKETS = ("spot", "um")
 
@@ -75,6 +75,11 @@ def validate_symbol(symbol: str) -> str:
 
 
 def parse_date(value: date | str, name: str) -> date:
+    # A datetime is a date too, but its time of day and zone do not say which UTC day is meant.
+    if isinstance(value, datetime):
+        raise InvalidRequestError(
+            f"invalid {name} date {value!r}: pass a date or YYYY-MM-DD, not a datetime"
+        )
     if isinstance(value, date):
         return value
     try:
