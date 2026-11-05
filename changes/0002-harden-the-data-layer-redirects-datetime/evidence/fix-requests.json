@@ -1,0 +1,25 @@
+{
+  "applied_earlier": [],
+  "collected_at": "2026-11-05T19:45:59+00:00",
+  "head": "81ecfeb2f01fe49b672b5c3e3bc97366f5012a6b",
+  "not_applied": [],
+  "ok": true,
+  "pr_number": 11,
+  "repo": "luissiviero/crypto-backtester",
+  "requests": [
+    {
+      "association": "OWNER",
+      "at": "2026-11-05T19:45:12Z",
+      "author": "luissiviero",
+      "body": "CI lint fails: ruff 0.16.9, the version .github/workflows/ci.yml pins, reports DTZ001 at tests/test_data.py:538, 559 and 561. Those naive datetimes are deliberate, because the tests check that a datetime is refused. Add # noqa: DTZ001 to each of the three, putting the parametrize values on separate lines so no line goes over 100 characters. Change nothing else.",
+      "id": 5791049725,
+      "kind": "review",
+      "state": "CHANGES_REQUESTED",
+      "url": "https://github.com/luissiviero/crypto-backtester/pull/11#pullrequestreview-5791049725"
+    }
+  ],
+  "route": "api",
+  "schema_version": 1,
+  "trigger": null,
+  "unavailable": null
+}
