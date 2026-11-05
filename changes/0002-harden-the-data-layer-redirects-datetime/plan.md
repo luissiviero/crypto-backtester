@@ -94,6 +94,11 @@ For the owner, not the run (guardrail files; edit in a PR merged **after** this 
   isolated build (current setuptools, which supports `[tool.setuptools]` and PEP 660
   editable installs). Proven on Windows by the intent's prototype; not yet run on Linux or
   Python 3.12 — the build run checks `pip install -e .` where its sandbox allows.
+  Build run, Linux, Python 3.12: `python -m pip install -e . --no-deps` built the editable
+  wheel (metadata: `polars>=1.0`, and `tzdata` under `sys_platform == "win32"`), then the
+  final copy into the user site-packages failed on the run's read-only sandbox (`Errno 30`);
+  `crypto_backtester.egg-info/` is ignored and `git status` showed no new file. The full
+  install stays for the test phase or the owner's Windows check.
 - **Guardrail order:** if the owner changes `commands.setup` before this change is on `main`,
   every phase job's setup fails. Named above for the owner.
 - **Test lock:** after step 1 the test files are locked; every test this change needs is in
