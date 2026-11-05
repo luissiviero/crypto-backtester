@@ -4,9 +4,9 @@
 
 *Written by the model from the diff and the plan; every section below is generated from files and git.*
 
-Downloads from Binance now go only to the HTTPS address the data layer asked for. If a server answers with a redirect, the download no longer follows it. It reports the redirect as an error, and any address that is not https:// is refused before a connection opens. Passing a datetime where a date is expected now gives a clear error instead of quietly picking a day, because a time and time zone do not say which UTC day is meant. On Windows, installing the project with pip install -e . now also installs tzdata, so time-zone handling works there. Until the owner updates the Setup line in CLAUDE.md, that line does not install it yet.
+This change makes the market-data layer safer and more predictable. Downloads no longer follow HTTP redirects, and only HTTPS addresses are opened, so a request cannot be quietly sent somewhere else. Passing a date-and-time where a plain date is expected, to a download or to a cache clear, now gives a clear error instead of a confusing type error or a wrong day. On Windows the package now installs the time-zone data it needs, so the test suite can pass there after an editable install.
 
-<!-- sdlc:plain-words describes b320e7cec98e0e59f268afb40a663e31c66ab26f -->
+<!-- sdlc:plain-words describes f62fcfdc31604835f46b6e80cb1817b65ce88fdd -->
 
 ## What changed
 
@@ -26,6 +26,12 @@ A download only ever talks HTTPS to the URL it asked for.
 - 5719666 run(review): spend recorded
 - 5282254 review(0002): panel decision 1
 - b320e7c review(0002): panel decision 2
+- 9b5871f review(0002): gate (deploy) evidence
+- 81ecfeb run(deploy): spend recorded; gate commands run after the session
+- 6172b37 fix(0002): round 1 parked, CI lint noqa request needs the test lock lifted
+- 4256131 park: fix: the session ended without reaching its gate
+- ee063ed owner labels applied: sdlc:unlock-tests
+- f62fcfd fix(0002): noqa DTZ001 on the three deliberate naive datetimes in tests/test_data.py (CI lint, ruff 0.16.9)
 
 ## Evidence
 

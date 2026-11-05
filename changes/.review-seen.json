@@ -124,12 +124,12 @@
     "changes": [
       "0002"
     ],
-    "count": 1,
+    "count": 2,
     "file": "app/data/http.py",
     "first_change": "0002",
     "last_change": "0002",
-    "last_seen": "2026-11-05T18:26:30Z",
-    "summary": "The module-level `for _handler in (...)` loop leaves `_handler` bound in the module namespace after import. It does no harm, but `del _handler` or building the opener in a small helper would keep the module surface clean."
+    "last_seen": "2026-11-05T20:50:36Z",
+    "summary": "The module-level `for _handler in (...)` loop leaves `_handler` bound in the module namespace after import; harmless, but `del _handler` or a small builder function would keep the module surface clean."
   },
   "54384763684aac02": {
     "changes": [
@@ -146,23 +146,23 @@
     "changes": [
       "0002"
     ],
-    "count": 1,
+    "count": 2,
     "file": "changes/0002-harden-the-data-layer-redirects-datetime/plan.md",
     "first_change": "0002",
     "last_change": "0002",
-    "last_seen": "2026-11-05T18:26:30Z",
-    "summary": "The spec acceptance item 'python -m pip install -e . succeeds and git status stays clean (Linux)' is only partly proven: the build run's install failed on a read-only sandbox and the test run built a wheel instead, so the first full editable install is the owner's Windows check."
+    "last_seen": "2026-11-05T20:50:36Z",
+    "summary": "The spec acceptance item 'python -m pip install -e . succeeds and git status stays clean (Linux)' is only partly proven: the build run's install failed on a read-only sandbox and the test run built a wheel instead, so the first full editable install is the owner's Windows check at the deploy gate."
   },
   "69731a3b4fdfd6fc": {
     "changes": [
       "0002"
     ],
-    "count": 2,
+    "count": 3,
     "file": "CLAUDE.md",
     "first_change": "0002",
     "last_change": "0002",
-    "last_seen": "2026-11-05T18:26:30Z",
-    "summary": "The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the install that delivers it, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`) and 'the one runtime dependency is `polars>=1.0`' are now outdated and on Windows no longer give a passing suite; the run may not edit CLAUDE.md or sdlc.yaml `commands.setup`, and plan.md names the replacement lines for the owner's guardrail PR, to merge after this change reaches main."
+    "last_seen": "2026-11-05T20:50:36Z",
+    "summary": "The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the install that delivers it, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`) and 'the one runtime dependency is `polars>=1.0`' are now outdated and on Windows no longer give a passing suite; the run may not edit CLAUDE.md or sdlc.yaml `commands.setup`, and plan.md (lines 18-26) names the replacement lines for the owner's guardrail PR, to merge after this change reaches main."
   },
   "6e2ecbec9d84080a": {
     "changes": [
@@ -234,12 +234,12 @@
     "changes": [
       "0002"
     ],
-    "count": 1,
+    "count": 2,
     "file": "app/data/http.py",
     "first_change": "0002",
     "last_change": "0002",
-    "last_seen": "2026-11-05T18:26:30Z",
-    "summary": "R5 (environment proxies still work through the hand-built opener) has no automated test, only the verifier's manual inspection of the handlers, so a later edit that drops `ProxyHandler` would still pass the suite."
+    "last_seen": "2026-11-05T20:50:36Z",
+    "summary": "R5 (environment proxies still work through the hand-built opener) has no automated test, only the verifier's manual inspection of the handler list, so a later edit that drops `ProxyHandler` would still pass the suite."
   },
   "bf5cbdf659711a24": {
     "changes": [
@@ -267,11 +267,11 @@
     "changes": [
       "0002"
     ],
-    "count": 4,
+    "count": 5,
     "file": "tests/test_data.py",
     "first_change": "0002",
     "last_change": "0002",
-    "last_seen": "2026-11-05T18:26:30Z",
+    "last_seen": "2026-11-05T20:50:36Z",
     "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
   },
   "d47002cb4e08c30a": {

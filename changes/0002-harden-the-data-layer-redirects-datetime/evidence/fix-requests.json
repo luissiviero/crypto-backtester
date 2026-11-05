@@ -8,6 +8,7 @@
   "repo": "luissiviero/crypto-backtester",
   "requests": [
     {
+      "applied": true,
       "association": "OWNER",
       "at": "2026-11-05T19:45:12Z",
       "author": "luissiviero",
@@ -18,6 +19,7 @@
       "url": "https://github.com/luissiviero/crypto-backtester/pull/11#pullrequestreview-5791049725"
     },
     {
+      "applied": true,
       "association": "OWNER",
       "at": "2026-11-05T20:44:55Z",
       "author": "luissiviero",
@@ -27,6 +29,7 @@
       "url": "https://github.com/luissiviero/crypto-backtester/pull/11#issuecomment-6668908102"
     },
     {
+      "applied": true,
       "association": "OWNER",
       "at": "2026-11-05T20:45:37Z",
       "author": "luissiviero",

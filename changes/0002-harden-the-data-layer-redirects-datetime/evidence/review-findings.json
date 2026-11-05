@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-05T18:26:06Z",
+  "at": "2026-11-05T20:50:08Z",
   "findings": [
     {
       "file": "CLAUDE.md",
@@ -8,7 +8,7 @@
       "rule": "REVIEW.md Framework rules: flag when the change has made CLAUDE.md outdated",
       "severity": "important",
       "signature": "69731a3b4fdfd6fc",
-      "summary": "The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the install that delivers it, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`) and 'the one runtime dependency is `polars>=1.0`' are now outdated and on Windows no longer give a passing suite; the run may not edit CLAUDE.md or sdlc.yaml `commands.setup`, and plan.md names the replacement lines for the owner's guardrail PR, to merge after this change reaches main."
+      "summary": "The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the install that delivers it, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`) and 'the one runtime dependency is `polars>=1.0`' are now outdated and on Windows no longer give a passing suite; the run may not edit CLAUDE.md or sdlc.yaml `commands.setup`, and plan.md (lines 18-26) names the replacement lines for the owner's guardrail PR, to merge after this change reaches main."
     },
     {
       "file": "tests/test_data.py",
@@ -27,7 +27,7 @@
       "rule": "",
       "severity": "nit",
       "signature": "4b267bcdf6ba8dd8",
-      "summary": "The module-level `for _handler in (...)` loop leaves `_handler` bound in the module namespace after import. It does no harm, but `del _handler` or building the opener in a small helper would keep the module surface clean."
+      "summary": "The module-level `for _handler in (...)` loop leaves `_handler` bound in the module namespace after import; harmless, but `del _handler` or a small builder function would keep the module surface clean."
     },
     {
       "file": "app/data/http.py",
@@ -36,7 +36,7 @@
       "rule": "spec.md R5; coding-standards rule 4",
       "severity": "nit",
       "signature": "bca56c45b2be62e2",
-      "summary": "R5 (environment proxies still work through the hand-built opener) has no automated test, only the verifier's manual inspection of the handlers, so a later edit that drops `ProxyHandler` would still pass the suite."
+      "summary": "R5 (environment proxies still work through the hand-built opener) has no automated test, only the verifier's manual inspection of the handler list, so a later edit that drops `ProxyHandler` would still pass the suite."
     },
     {
       "file": "changes/0002-harden-the-data-layer-redirects-datetime/plan.md",
@@ -45,10 +45,10 @@
       "rule": "spec.md Acceptance (pip install -e . on Linux)",
       "severity": "nit",
       "signature": "57b1afe345962575",
-      "summary": "The spec acceptance item 'python -m pip install -e . succeeds and git status stays clean (Linux)' is only partly proven: the build run's install failed on a read-only sandbox and the test run built a wheel instead, so the first full editable install is the owner's Windows check."
+      "summary": "The spec acceptance item 'python -m pip install -e . succeeds and git status stays clean (Linux)' is only partly proven: the build run's install failed on a read-only sandbox and the test run built a wheel instead, so the first full editable install is the owner's Windows check at the deploy gate."
     }
   ],
-  "head": "b320e7cec98e0e59f268afb40a663e31c66ab26f",
+  "head": "f62fcfdc31604835f46b6e80cb1817b65ce88fdd",
   "schema_version": 1,
   "tally": {
     "important": 2,
