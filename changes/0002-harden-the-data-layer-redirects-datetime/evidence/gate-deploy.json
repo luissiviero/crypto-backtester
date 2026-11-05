@@ -1,220 +1,253 @@
 {
-  "schema_version": 1,
-  "change_id": "0002",
-  "slug": "harden-the-data-layer-redirects-datetime",
-  "phase": "deploy",
-  "human_gate": true,
-  "result": "wait",
-  "label": "sdlc:deploy-ready",
-  "head": "f62fcfdc31604835f46b6e80cb1817b65ce88fdd",
   "at": "2026-11-05T20:51:02Z",
-  "dry_run": false,
-  "reason": "",
-  "config_note": "",
+  "change_id": "0002",
   "checks": [
     {
-      "name": "limits",
-      "ok": true,
-      "reason": "within the run limits",
-      "need": "",
       "details": {
-        "iterations": 2,
         "cap": 2,
         "classification": "non-routine",
+        "elapsed_minutes": 4.7,
+        "iterations": 2,
+        "max_budget_usd": 150.0,
         "panel_calls": 3,
         "panel_cap": 4,
-        "elapsed_minutes": 4.7,
-        "spend_usd": null,
-        "spend_usd_total": 15.338484,
         "spend_entries": 7,
-        "max_budget_usd": 150.0
-      }
+        "spend_usd": null,
+        "spend_usd_total": 15.338484
+      },
+      "name": "limits",
+      "need": "",
+      "ok": true,
+      "reason": "within the run limits"
     },
     {
-      "name": "clean_tree",
-      "ok": true,
-      "reason": "no uncommitted change outside the change folder",
-      "need": "",
       "details": {
         "ignored": [
           "CLAUDE.local.md",
           "changes/.review-seen.json"
         ]
-      }
+      },
+      "name": "clean_tree",
+      "need": "",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder"
     },
     {
+      "details": {},
       "name": "artifacts",
-      "ok": true,
-      "reason": "every required artifact exists and has its template sections",
       "need": "",
-      "details": {}
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections"
     },
     {
+      "details": {},
       "name": "evidence_links",
-      "ok": true,
-      "reason": "no symbolic link under the change folder",
       "need": "",
-      "details": {}
+      "ok": true,
+      "reason": "no symbolic link under the change folder"
     },
     {
+      "details": {},
       "name": "open_concerns",
-      "ok": true,
-      "reason": "no open flagged concern",
       "need": "",
-      "details": {}
+      "ok": true,
+      "reason": "no open flagged concern"
     },
     {
-      "name": "panel",
-      "ok": true,
-      "reason": "2 panel decision(s) recorded",
-      "need": "",
       "details": {
+        "cost_usd": 0.0,
         "decisions": [
           {
-            "n": 1,
+            "decision": "settled: the tests/test_data.py edit is the append-only reproducing-test commit (ff61d01, before every fix commit) that REVIEW.md's 'failing test written first' clause and the intent require; no pre-existing test changed",
             "kind": "finding",
-            "decision": "settled: the tests/test_data.py edit is the append-only reproducing-test commit (ff61d01, before every fix commit) that REVIEW.md's 'failing test written first' clause and the intent require; no pre-existing test changed"
+            "n": 1
           },
           {
-            "n": 2,
+            "decision": "settled: the run may not edit CLAUDE.md or sdlc.yaml; after this change reaches main the owner merges a guardrail PR that changes CLAUDE.md Setup to `python -m pip install -e . pytest ruff`, changes \"the one runtime dependency is `polars>=1.0`\" to \"the runtime dependencies are `polars>=1.0` and, on Windows only, `tzdata`\", and changes sdlc.yaml commands.setup (line 62) to `\"python -m pip install -e . pytest ruff\"`; intent outcome 3 (documented Setup gives a passing suite) is not delivered until that PR merges.",
             "kind": "finding",
-            "decision": "settled: the run may not edit CLAUDE.md or sdlc.yaml; after this change reaches main the owner merges a guardrail PR that changes CLAUDE.md Setup to `python -m pip install -e . pytest ruff`, changes \"the one runtime dependency is `polars>=1.0`\" to \"the runtime dependencies are `polars>=1.0` and, on Windows only, `tzdata`\", and changes sdlc.yaml commands.setup (line 62) to `\"python -m pip install -e . pytest ruff\"`; intent outcome 3 (documented Setup gives a passing suite) is not delivered until that PR merges."
+            "n": 2
           }
-        ],
-        "cost_usd": 0.0
-      }
+        ]
+      },
+      "name": "panel",
+      "need": "",
+      "ok": true,
+      "reason": "2 panel decision(s) recorded"
     },
     {
+      "details": {
+        "ran_by": "runner",
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q .",
+            "exit_code": 0,
+            "output": ""
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 1,
+            "output": "RUF100 [*] Unused `noqa` directive (non-enabled: `DTZ001`)\n   --> tests/test_data.py:540:32\n    |\n538 |     \"moment\",\n539 |     [\n540 |         datetime(2024, 1, 1),  # noqa: DTZ001\n    |                                ^^^^^^^^^^^^^^\n541 |         datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3))),\n542 |     ],\n    |\nhelp: Remove unused `noqa` directive\n    |\n539 |     [\n    -         datetime(2024, 1, 1),  # noqa: DTZ001\n540 +         datetime(2024, 1, 1),\n541 |         datetime(2024, 1, 1, 23, tzinfo=timezone(timedelta(hours=-3))),\n    |\n\nRUF100 [*] Unused `noqa` directive (non-enabled: `DTZ001`)\n   --> tests/test_data.py:563:87\n    |\n561 |     spot = cached_days(tmp_path, \"spot\", \"BTCUSDT\", \"1h\", [\"2024-01-01\"])\n562 |     with pytest.raises(InvalidRequestError, match=\"not a datetime\"):\n563 |         cache.clear_cache(\"BTCUSDT\", start=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001\n    |                                                                                       ^^^^^^^^^^^^^^\n564 |     with pytest.raises(InvalidRequestError, match=\"not a datetime\"):\n565 |         cache.clear_cache(\"BTCUSDT\", end=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001\n    |\nhelp: Remove unused `noqa` directive\n    |\n562 |     with pytest.raises(InvalidRequestError, match=\"not a datetime\"):\n    -         cache.clear_cache(\"BTCUSDT\", start=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001\n563 +         cache.clear_cache(\"BTCUSDT\", start=datetime(2024, 1, 1), cache_dir=tmp_path)\n564 |     with pytest.raises(InvalidRequestError, match=\"not a datetime\"):\n    |\n\nRUF100 [*] Unused `noqa` directive (non-enabled: `DTZ001`)\n   --> tests/test_data.py:565:85\n    |\n563 |         cache.clear_cache(\"BTCUSDT\", start=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001\n564 |     with pytest.raises(InvalidRequestError, match=\"not a datetime\"):\n565 |         cache.clear_cache(\"BTCUSDT\", end=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001\n    |                                                                                     ^^^^^^^^^^^^^^\n566 |     assert (spot / \"BTCUSDT-1h-2024-01-01.parquet\").is_file()\n    |\nhelp: Remove unused `noqa` directive\n    |\n564 |     with pytest.raises(InvalidRequestError, match=\"not a datetime\"):\n    -         cache.clear_cache(\"BTCUSDT\", end=datetime(2024, 1, 1), cache_dir=tmp_path)  # noqa: DTZ001\n565 +         cache.clear_cache(\"BTCUSDT\", end=datetime(2024, 1, 1), cache_dir=tmp_path)\n566 |     assert (spot / \"BTCUSDT-1h-2024-01-01.parquet\").is_file()\n    |\n\nFound 3 errors.\n[*] 3 fixable with `--fix`.\n"
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.12.3, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.14.3\ncollected 89 items\n\ntests/test_data.py ..................................................... [ 59%]\n..........................                                               [ 88%]\ntests/test_data_cli.py .........                                         [ 98%]\ntests/test_smoke.py .                                                    [100%]\n\n============================== 89 passed in 0.43s ==============================\n"
+          }
+        }
+      },
       "name": "commands",
-      "ok": true,
-      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
-      "need": "",
-      "details": {
-        "deferred": true
-      }
+      "need": "Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.",
+      "ok": false,
+      "reason": "not green: lint (exit 1)"
     },
     {
+      "details": {
+        "red": [
+          "evidence/lint.log: `python -m ruff check .` exited 1"
+        ],
+        "red_files": [
+          "lint.log"
+        ]
+      },
       "name": "evidence",
-      "ok": true,
-      "reason": "evidence present: test.log, build.log, lint.log, verifier.md",
-      "need": "",
-      "details": {}
+      "need": "Fix the failing target (fix the code, not the test), then re-run `python \"${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py\" --root . --id 0002` so changes/0002-harden-the-data-layer-redirects-datetime/evidence/lint.log records a green run.",
+      "ok": false,
+      "reason": "evidence/lint.log: `python -m ruff check .` exited 1"
     },
     {
+      "details": {},
       "name": "proof",
-      "ok": true,
-      "reason": "no drive target: nothing to compare",
       "need": "",
-      "details": {}
+      "ok": true,
+      "reason": "no drive target: nothing to compare"
     },
     {
-      "name": "findings",
-      "ok": true,
-      "reason": "2 Important finding(s) settled by the review panel, none open",
-      "need": "",
       "details": {
+        "settled_by_panel": [
+          "The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the install that delivers it, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`) and 'the one runtime dependency is `polars>=1.0`' are now outdated and on Windows no longer give a passing suite; the run may not edit CLAUDE.md or sdlc.yaml `commands.setup`, and plan.md (lines 18-26) names the replacement lines for the owner's guardrail PR, to merge after this change reaches main.",
+          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+        ],
         "tally": {
           "important": 2,
           "nit": 3,
           "nits_omitted": 0
-        },
-        "settled_by_panel": [
-          "The diff adds the Windows-only runtime dependency `tzdata` and makes `pip install -e .` the install that delivers it, so CLAUDE.md's Setup line (`python -m pip install pytest ruff polars`) and 'the one runtime dependency is `polars>=1.0`' are now outdated and on Windows no longer give a passing suite; the run may not edit CLAUDE.md or sdlc.yaml `commands.setup`, and plan.md (lines 18-26) names the replacement lines for the owner's guardrail PR, to merge after this change reaches main.",
-          "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
-        ]
-      }
+        }
+      },
+      "name": "findings",
+      "need": "",
+      "ok": true,
+      "reason": "2 Important finding(s) settled by the review panel, none open"
     },
     {
-      "name": "plan_sync",
-      "ok": true,
-      "reason": "every committed source file is in plan.md",
-      "need": "",
       "details": {
+        "plan_growth": {
+          "added": [],
+          "removed": []
+        },
         "planned_but_unchanged": [
           "CLAUDE.md",
           "sdlc.yaml",
           ".github/workflows/ci.yml"
-        ],
-        "plan_growth": {
-          "added": [],
-          "removed": []
-        }
-      }
+        ]
+      },
+      "name": "plan_sync",
+      "need": "",
+      "ok": true,
+      "reason": "every committed source file is in plan.md"
     },
     {
+      "details": {},
       "name": "guardrails",
-      "ok": true,
-      "reason": "the diff does not touch a guardrail file",
       "need": "",
-      "details": {}
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file"
     },
     {
+      "details": {
+        "accepted": [],
+        "hits": {}
+      },
       "name": "risk_list",
-      "ok": true,
-      "reason": "no risk-list item touched",
       "need": "",
-      "details": {
-        "hits": {},
-        "accepted": []
-      }
+      "ok": true,
+      "reason": "no risk-list item touched"
     },
     {
-      "name": "owner_actions",
-      "ok": true,
-      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
-      "need": "",
       "details": {
-        "risk_accepted": [],
         "label_actors": {
           "tests_unlocked": "luissiviero"
-        }
-      }
+        },
+        "risk_accepted": []
+      },
+      "name": "owner_actions",
+      "need": "",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label"
     },
     {
+      "details": {},
       "name": "test_lock",
-      "ok": true,
-      "reason": "the lock is not set at HEAD (owner_actions judges a lift)",
       "need": "",
-      "details": {}
+      "ok": true,
+      "reason": "the lock is not set at HEAD (owner_actions judges a lift)"
     },
     {
-      "name": "ratchets",
-      "ok": true,
-      "reason": "no undeclared test file or eval case drop",
-      "need": "",
       "details": {
-        "hits": {},
+        "accepted": [],
         "declared": [],
-        "skip_markers": [],
-        "accepted": []
-      }
+        "hits": {},
+        "skip_markers": []
+      },
+      "name": "ratchets",
+      "need": "",
+      "ok": true,
+      "reason": "no undeclared test file or eval case drop"
     },
     {
+      "details": {},
       "name": "lesson_and_eval",
-      "ok": true,
-      "reason": "not an incident change at gate (deploy): nothing to check",
       "need": "",
-      "details": {}
+      "ok": true,
+      "reason": "not an incident change at gate (deploy): nothing to check"
     },
     {
-      "name": "adversarial_review",
-      "ok": true,
-      "reason": "adversarial reviewer says continue",
-      "need": "",
       "details": {
         "classification": "non-routine",
         "reasons": []
-      }
+      },
+      "name": "adversarial_review",
+      "need": "",
+      "ok": true,
+      "reason": "adversarial reviewer says continue"
     },
     {
-      "name": "reviewer_model",
-      "ok": true,
-      "reason": "the adversarial reviewer ran on claude-opus-5-5",
-      "need": "",
       "details": {
         "wanted": "claude-opus-5-5"
-      }
+      },
+      "name": "reviewer_model",
+      "need": "",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5"
+    },
+    {
+      "details": {
+        "decision": 29
+      },
+      "name": "fix_rounds",
+      "need": "The runner's automatic fix rounds (decision 29) used up the iteration cap and the targets are still red; the partial evidence is in this record, evidence/auto-round.json and evidence/fix-response.md. Fix it by hand, apply sdlc:reset-iterations for another set of rounds (it resets the panel-call count too), or ask for changes in a review: your comments start a round of their own.",
+      "ok": false,
+      "reason": "iteration cap reached after the automatic fix rounds: 2 of 2, the targets still red (lint (exit 1)); the count was not reached by the runner's automatic rounds (the owner's or another phase's rounds used it), so no automatic reset is judged"
     }
   ],
-  "what_i_need": ""
+  "config_note": "",
+  "dry_run": false,
+  "head": "f62fcfdc31604835f46b6e80cb1817b65ce88fdd",
+  "human_gate": true,
+  "label": "sdlc:needs-human",
+  "phase": "deploy",
+  "reason": "commands: not green: lint (exit 1); evidence: evidence/lint.log: `python -m ruff check .` exited 1; fix_rounds: iteration cap reached after the automatic fix rounds: 2 of 2, the targets still red (lint (exit 1)); the count was not reached by the runner's automatic rounds (the owner's or another phase's rounds used it), so no automatic reset is judged",
+  "result": "park",
+  "schema_version": 1,
+  "slug": "harden-the-data-layer-redirects-datetime",
+  "what_i_need": "## What I need from you\nGate (deploy) parked change 0002 (harden-the-data-layer-redirects-datetime) on 2026-11-05T20:51:02Z.\n- **commands**: not green: lint (exit 1)\n  - what I need: Make the failing target pass (fix the code, not the test) and re-run the gate. The tail of each output is in the gate result.\n- **evidence**: evidence/lint.log: `python -m ruff check .` exited 1\n  - what I need: Fix the failing target (fix the code, not the test), then re-run `python \"${CLAUDE_PLUGIN_ROOT}/plugin/evidence/collect.py\" --root . --id 0002` so changes/0002-harden-the-data-layer-redirects-datetime/evidence/lint.log records a green run.\n- **fix_rounds**: iteration cap reached after the automatic fix rounds: 2 of 2, the targets still red (lint (exit 1)); the count was not reached by the runner's automatic rounds (the owner's or another phase's rounds used it), so no automatic reset is judged\n  - what I need: The runner's automatic fix rounds (decision 29) used up the iteration cap and the targets are still red; the partial evidence is in this record, evidence/auto-round.json and evidence/fix-response.md. Fix it by hand, apply sdlc:reset-iterations for another set of rounds (it resets the panel-call count too), or ask for changes in a review: your comments start a round of their own.\nWhen the item is settled, re-run the gate: `python \"${CLAUDE_PLUGIN_ROOT}/plugin/gate/cli.py\" check --root . --id 0002 --phase deploy` (review comments are the change request; /sdlc-fix from B3 re-runs the phase with them).\n"
 }

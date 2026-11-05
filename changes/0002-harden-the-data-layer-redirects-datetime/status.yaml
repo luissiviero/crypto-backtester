@@ -6,10 +6,10 @@ entry_route: idea
 change_type: fix
 gate:
   phase: deploy
-  result: passed
-  reason: waiting for the owner at gate (deploy)
-  at: "2026-11-05T20:51:02Z"
-parked_reason: null
+  result: parked
+  reason: "commands: not green: lint (exit 1); evidence: evidence/lint.log: `python -m ruff check .` exited 1; fix_rounds: iteration cap reached after the automatic fix rounds: 2 of 2, the targets still red (lint (exit 1)); the count was not reached by the runner's automatic rounds (the owner's or another phase's rounds used it), so no automatic reset is judged"
+  at: "2026-11-05T20:51:38Z"
+parked_reason: "commands: not green: lint (exit 1); evidence: evidence/lint.log: `python -m ruff check .` exited 1; fix_rounds: iteration cap reached after the automatic fix rounds: 2 of 2, the targets still red (lint (exit 1)); the count was not reached by the runner's automatic rounds (the owner's or another phase's rounds used it), so no automatic reset is judged"
 iterations: 2
 panel_calls: 3
 external_ref: null
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-11-03T18:42:52Z"
-updated_at: "2026-11-05T20:51:02Z"
+updated_at: "2026-11-05T20:51:38Z"
 schema_version: 1
