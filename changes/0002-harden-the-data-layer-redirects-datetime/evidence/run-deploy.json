@@ -1,11 +1,6 @@
 {
-  "github_run": {
-    "attempt": "1",
-    "id": "42106215518",
-    "url": "https://github.com/luissiviero/crypto-backtester/actions/runs/42106215518"
-  },
   "phase": "deploy",
   "run": "build",
-  "spend_usd": 0.2696602,
-  "started_at": "2026-11-05T20:46:18Z"
+  "spend_usd": null,
+  "started_at": "2026-11-05T20:53:21Z"
 }

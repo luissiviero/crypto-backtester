@@ -1,33 +1,36 @@
-# Fix round 2 — change 0002, phase deploy (PR #11)
+# Fix round 3 — change 0002, phase deploy (PR #11)
 
-Iteration 2 of 2. The tests were unlocked by luissiviero (`sdlc:unlock-tests`) before this
-round.
+`bump-iteration` reported iteration 3 against a cap of 2, so this round changed nothing in the
+code. The trigger, issuecomment-6668928989, was already applied in round 2 (f62fcfd).
 
 ## Requests
 
-- luissiviero (OWNER), https://github.com/luissiviero/crypto-backtester/pull/11#pullrequestreview-5791049725
-  — "add `# noqa: DTZ001` at tests/test_data.py:538, 559 and 561, parametrize values on
-  separate lines, change nothing else": **applied in f62fcfd.** The `moment` parametrize
-  list now has one value per line, with `# noqa: DTZ001` on the naive `datetime(2024, 1, 1)`,
-  and the two `clear_cache` lines have the same comment (100 and 98 characters). Nothing
-  else changed.
-- luissiviero (OWNER), https://github.com/luissiviero/crypto-backtester/pull/11#issuecomment-6668908102
-  — "apply the planned edit in evidence/fix-response.md as written, and nothing else":
-  **applied in f62fcfd**: the same edit as above, exactly as round 1 planned it.
-- luissiviero (OWNER), https://github.com/luissiviero/crypto-backtester/pull/11#issuecomment-6668928989
-  — the same comment again: **applied in f62fcfd**, with the same edit.
+- The gate's park (`commands: not green: lint (exit 1)`): **not applied: iteration cap
+  reached.**
+  Diagnosis, from `evidence/lint.log`: the runner's ruff is 0.17.4 (unpinned), and it reports
+  RUF100 (unused `noqa`, DTZ001 is not enabled in 0.17.x) on the three `# noqa: DTZ001`
+  comments f62fcfd added at tests/test_data.py:540, 563 and 565. CI pins ruff 0.16.9, which
+  needs those comments. With these comments, no single version of the test file passes both
+  rulesets.
+  Proposed edit (not made): on each of the three lines, change `# noqa: DTZ001` to
+  `# noqa: DTZ001, RUF100`. Ruff does not report RUF100 on a directive that lists RUF100,
+  so the line passes both 0.16.9 and 0.17.4. Line 540, the parametrize value, stays short.
+  The two `clear_cache` lines (563 and 565) grow from 100 and 98 characters to 108 and 106,
+  so each call needs to wrap over several lines to stay within the 100-character limit. The other option is to
+  align the ruff that the runner's targets use with the CI pin (`ruff==0.16.9`). The setup
+  command is in `sdlc.yaml`, and only you can edit that file.
 
-Checks on f62fcfd: `python -m pytest` reported 89 passed. Ruff 0.16.9, the version CI pins,
-installed in a temp directory, reported `ruff check .`: All checks passed!. Running
-`python -m compileall -q app tests scripts` printed nothing. The sandbox mounts `framework/`
-read-only, so `compileall .` can't write `__pycache__` there; that is not a code error.
+## What I need from you
 
-Note on ruff versions: the local ruff 0.17.4 (unpinned) reports RUF100 (unused noqa,
-DTZ001 not enabled there) on these three comments, and the edit-time formatter hook strips
-them with `ruff check --fix`. So the edit was written with a one-shot Python replacement
-rather than the Edit tool. CI pins 0.16.9, which needs the comments. If the pin moves to
-0.17.x, these three comments will need to come out again.
+1. Choose one fix: the `# noqa: DTZ001, RUF100` edit (with the two `clear_cache` calls
+   wrapped), or pinning `ruff==0.16.9` in `sdlc.yaml: commands.setup`, which you edit.
+2. Add the `sdlc:reset-iterations` label so another round can apply the edit.
 
 ## Not applied by the collector
 
-None.
+- luissiviero, https://github.com/luissiviero/crypto-backtester/pull/11#pullrequestreview-5791049725
+  — not applied: applied by an earlier round
+- luissiviero, https://github.com/luissiviero/crypto-backtester/pull/11#issuecomment-6668908102
+  — not applied: applied by an earlier round
+- luissiviero, https://github.com/luissiviero/crypto-backtester/pull/11#issuecomment-6668928989
+  — not applied: applied by an earlier round
