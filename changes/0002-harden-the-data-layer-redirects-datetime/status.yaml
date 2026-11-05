@@ -10,14 +10,14 @@ gate:
   reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
   at: "2026-11-05T20:53:34Z"
 parked_reason: "limits: iteration cap reached: 3 fix iterations, cap 2 (non-routine)"
-iterations: 3
-panel_calls: 3
+iterations: 0
+panel_calls: 0
 external_ref: null
 risk_accepted: []
 tests_locked: false
 risk_accepted_by: []
-iterations_reset_by: null
-iterations_reset_at: null
+iterations_reset_by: luissiviero
+iterations_reset_at: "2026-11-05T21:41:10Z"
 tests_unlocked_by: luissiviero
 runbook_authorized_by: null
 abandoned_reason: null
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-11-03T18:42:52Z"
-updated_at: "2026-11-05T20:53:34Z"
+updated_at: "2026-11-05T21:41:10Z"
 schema_version: 1
