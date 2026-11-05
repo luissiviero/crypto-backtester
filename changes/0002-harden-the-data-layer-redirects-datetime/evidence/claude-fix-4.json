@@ -1,0 +1,108 @@
+{
+  "api_error_status": null,
+  "duration_api_ms": 317234,
+  "duration_ms": 335735,
+  "fast_mode_disabled_reason": "sdk_opt_in_required",
+  "fast_mode_state": "off",
+  "first_content_frame_ms": 2743,
+  "is_error": false,
+  "modelUsage": {
+    "claude-opus-5-5": {
+      "cacheCreationInputTokens": 164425,
+      "cacheReadInputTokens": 1951037,
+      "canonicalModel": "claude-opus-5-5",
+      "contextWindow": 1000000,
+      "costBasis": "list",
+      "costUSD": 1.8613094,
+      "inputTokens": 94,
+      "maxOutputTokens": 128000,
+      "outputTokens": 23498,
+      "provider": "firstParty",
+      "thinkingTokens": 6016,
+      "webSearchRequests": 0
+    }
+  },
+  "num_turns": 44,
+  "permission_denials": [],
+  "queued_turn_count": 0,
+  "result": "PR #11 (https://github.com/luissiviero/crypto-backtester/pull/11) is no longer parked: the deploy gate now waits for your approval, with the `sdlc:deploy-ready` label. This round used 1 of the 2 allowed iterations, and no request is left open.\n\n- **The lint park:** this round changed no code. Your `ruff==0.16.9` pin from PR #12 reached this branch with the merge of main, and that fixes it. Results in this session:\n  - `python -m compileall -q .`: no output, exit code 0.\n  - `python -m pytest`: 89 passed.\n  - `python -m ruff check .`: `All checks passed!`\n\n  The runner runs build, test and lint again after this session, as it always does.\n- **Reviews of the new HEAD:**\n  - The adversarial reviewer says `continue` and rates the plan non-routine.\n  - The fresh review pass found 0 Important findings and 2 nits.\n  - The framework flagged one Important finding (an existing test file modified in a fix-type change). Panel decision 1 had already settled it, so the gate passed it.\n- **The `sdlc/review` check on GitHub shows \"failure\" (1 Important, 2 nits)**, even though the gate passed. The check only counts findings and does not see that the panel settled that one. The runner posts this check again on the PR's final commit. If it still shows red then, it may hold up the merge.\n- **For your follow-up guardrail PR:** panel decision 2 gives the new Setup line, for `CLAUDE.md` and `sdlc.yaml`, as `python -m pip install -e . pytest ruff`. That is missing your pin. Use `python -m pip install -e . pytest ruff==0.16.9`, or this same lint failure comes back. The note is in `evidence/fix-response.md`; I edited neither file.\n\nThe evidence is committed and pushed as 4404d5b, and the PR summary is refreshed.",
+  "result_index": 0,
+  "safety_stops": 0,
+  "sdlc_run": {
+    "at": "2026-11-05T21:46:59Z",
+    "credential": "oauth",
+    "seconds": 337.2,
+    "timed_out": false
+  },
+  "session_id": "ec48b32c-21f4-4347-875a-1bbaaa3b47c5",
+  "stop_reason": "end_turn",
+  "subagent_stats": {
+    "by_type": {
+      "general-purpose": 1,
+      "sdlc:adversarial-reviewer": 1
+    },
+    "completed": 2,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "system": 0,
+      "user": 0
+    },
+    "max_depth": 1,
+    "refused": {
+      "budget": 0,
+      "concurrency_limit": 0,
+      "depth_limit": 0
+    },
+    "requested": {
+      "background": 0,
+      "foreground": 0,
+      "unset": 2
+    },
+    "spawned": 2,
+    "spawned_by_subagents": 0,
+    "started_in_background": 0
+  },
+  "subtype": "success",
+  "terminal_reason": "completed",
+  "time_to_request_ms": 102,
+  "total_cost_usd": 1.8613094,
+  "ttft_ms": 3255,
+  "ttft_stream_ms": 2743,
+  "type": "result",
+  "usage": {
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 59547,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "cache_creation_input_tokens": 59547,
+    "cache_read_input_tokens": 1301950,
+    "fallback_credit": null,
+    "inference_geo": "global",
+    "input_tokens": 54,
+    "iterations": [
+      {
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 948,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "cache_creation_input_tokens": 948,
+        "cache_read_input_tokens": 72443,
+        "input_tokens": 2,
+        "output_tokens": 688,
+        "type": "message"
+      }
+    ],
+    "output_tokens": 10207,
+    "output_tokens_details": {
+      "thinking_tokens": 1422
+    },
+    "server_tool_use": {
+      "web_fetch_requests": 0,
+      "web_search_requests": 0
+    },
+    "service_tier": "standard",
+    "speed": "standard"
+  },
+  "uuid": "358baf65-6749-4b2a-b5a4-51440f2cb635"
+}
