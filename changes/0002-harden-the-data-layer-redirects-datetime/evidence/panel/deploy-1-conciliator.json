@@ -1,0 +1,12 @@
+{
+  "reviewer": "dismiss as a false positive: the only edit to tests/test_data.py is the reproducing-test commit the rule requires, 62 lines added and 0 removed",
+  "advocate": "no objection to dismissing, but only because the append was checked for shadowed names, autouse fixtures and lost cases, not just because it adds lines",
+  "decision": "settled: the tests/test_data.py edit is the append-only reproducing-test commit (ff61d01, before every fix commit) that REVIEW.md's 'failing test written first' clause and the intent require; no pre-existing test changed",
+  "rationale": [
+    "Both verdicts agree to close the finding; the advocate adds checks, and they hold: additions only, no new test name collides, no autouse fixture, case count 69 -> 89 = 69 + 20 new.",
+    "REVIEW.md's rule names the failing test written first as the proof; intent.md and plan.md put these regression tests in tests/test_data.py, and CLAUDE.md asks for one test module per area.",
+    "The one commit touching the file comes before the fix commits, and test_lock passed at the build and test gates, so no fix commit weakened a test.",
+    "Moving the tests to a new file would break the intent's placement and the per-area convention, so no fix inside this change is better.",
+    "Changing REVIEW.md's wording to 'change or remove an existing test' is a guardrail edit; it stays with the owner through the companion nit."
+  ]
+}
