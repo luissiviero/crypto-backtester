@@ -8,8 +8,8 @@ missing days) as polars frames, cached per day as Parquet outside the repository
 
 ## Commands
 
-- Setup: `python -m pip install pytest ruff==0.16.9 polars` (the same as `commands.setup` in
-  `sdlc.yaml`; the one runtime dependency is `polars>=1.0` in `pyproject.toml`; CI pins
+- Setup: `python -m pip install -e . pytest ruff==0.16.9` (the same as `commands.setup` in
+  `sdlc.yaml`; the runtime dependencies are `polars>=1.0` and, on Windows only, `tzdata` in `pyproject.toml`; CI pins
   `pytest==9.1.1 ruff==0.16.9 polars==2.1.0`).
 - Build: `python -m compileall -q .` (healthy: no output, exit code 0).
 - Test: `python -m pytest` (healthy: every test passes, `N passed`, exit code 0;
