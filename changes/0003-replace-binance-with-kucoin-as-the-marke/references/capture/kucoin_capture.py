@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Capture real KuCoin kline answers once, for the design of the KuCoin data layer.
 
 Read-only: every request is a public GET with no API key and no account. It places no order
