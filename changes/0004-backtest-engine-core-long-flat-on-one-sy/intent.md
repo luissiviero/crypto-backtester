@@ -97,16 +97,18 @@ How to check it is done:
   live trading, slippage, futures funding, strategies or indicators that produce the positions.
 
 ## Open questions
-- **The default fee.** 0.1% per fill is an assumption. Recommended: keep `0.001` as the default,
-  since it is KuCoin's base spot fee, and make it a keyword argument so a caller can pass a
-  futures or a discounted rate. The design confirms the number.
-- **Is equity marked at close or at open?** Recommended: at each row's close, after any fill at
-  that row's open. The curve then shows the value at the end of each candle, the same moment the
-  next decision is taken. Max drawdown depends on this choice; the total return does not.
-- **How does the summary treat a position still open at the end of the frame?** Recommended:
-  close it at the last row's close, with the fee, as a trade marked as closed at the frame's end,
-  so the trade list, the total return and the final equity agree. The alternative, leaving it out
-  of the trade list and the win rate while the equity keeps it, makes the numbers disagree.
+- **The default fee?** Recommended: 0.1% (`0.001`) per fill.
+  - 0.1% is an assumption: KuCoin's base spot fee. The design confirms the number.
+  - Make it a keyword argument, so a caller can pass a futures or a discounted rate.
+- **Equity marked at close or at open?** Recommended: at close.
+  - Each row's equity is taken at its close, after any fill at that row's open. The curve then
+    shows the value at the end of each candle, the moment the next decision is taken.
+  - Max drawdown depends on this choice; the total return does not.
+- **A position still open at the frame's end?** Recommended: close it at the last close.
+  - Close it at the last row's close, with the fee, as a trade marked as closed at the frame's
+    end, so the trade list, the total return and the final equity agree.
+  - The alternative, leaving it out of the trade list and the win rate while the equity keeps
+    it, makes the numbers disagree.
 
 ## Examples/References
 - **A two-trade example** (fee 0.1%; a row is `open`/`close`; times are any strictly increasing
