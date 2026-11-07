@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-07T23:20:00Z",
+  "at": "2026-11-07T23:11:19Z",
   "findings": [
     {
       "file": "app/backtest/sweep.py",
@@ -11,7 +11,7 @@
       "summary": "The parameter `pairs` of `sweep()` shadows the module-level function `pairs()` defined just above, so a later edit that calls `pairs(...)` inside `sweep` would call the sequence and fail; renaming it (for example `grid`) removes the trap."
     }
   ],
-  "head": "e085aeeda1021a16103783aecb97ac705efce46b",
+  "head": "77d38d5f7e5ef1245fff0a38e162aa39ed6bfe16",
   "schema_version": 1,
   "tally": {
     "important": 0,

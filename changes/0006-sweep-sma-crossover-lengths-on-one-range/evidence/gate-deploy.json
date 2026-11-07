@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "change_id": "0006",
+  "slug": "sweep-sma-crossover-lengths-on-one-range",
+  "phase": "deploy",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:deploy-ready",
+  "head": "77d38d5f7e5ef1245fff0a38e162aa39ed6bfe16",
+  "at": "2026-11-07T23:11:40Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 2,
+        "panel_cap": 4,
+        "elapsed_minutes": 1.7,
+        "spend_usd": null,
+        "spend_usd_total": 11.011868,
+        "spend_entries": 4,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "clean_tree",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder",
+      "need": "",
+      "details": {
+        "ignored": [
+          "CLAUDE.local.md",
+          "changes/.review-seen.json"
+        ]
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "0 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "evidence",
+      "ok": true,
+      "reason": "evidence present: test.log, build.log, lint.log, verifier.md",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof",
+      "ok": true,
+      "reason": "no drive target: nothing to compare",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "findings",
+      "ok": true,
+      "reason": "no Important review finding",
+      "need": "",
+      "details": {
+        "tally": {
+          "important": 0,
+          "nit": 1,
+          "nits_omitted": 0
+        }
+      }
+    },
+    {
+      "name": "plan_sync",
+      "ok": true,
+      "reason": "every committed source file is in plan.md",
+      "need": "",
+      "details": {
+        "planned_but_unchanged": [
+          "Opening"
+        ],
+        "plan_growth": {
+          "added": [],
+          "removed": []
+        }
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "test_lock",
+      "ok": true,
+      "reason": "not a fix-type change: no test-file lock",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "ratchets",
+      "ok": true,
+      "reason": "no undeclared test file or eval case drop",
+      "need": "",
+      "details": {
+        "hits": {},
+        "declared": [],
+        "skip_markers": [],
+        "accepted": []
+      }
+    },
+    {
+      "name": "lesson_and_eval",
+      "ok": true,
+      "reason": "not an incident change at gate (deploy): nothing to check",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "no adversarial verdict required at gate (deploy)",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "no readable verdict to check",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}

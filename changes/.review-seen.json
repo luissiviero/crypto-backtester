@@ -542,11 +542,11 @@
     "changes": [
       "0006"
     ],
-    "count": 1,
+    "count": 2,
     "file": "app/backtest/sweep.py",
     "first_change": "0006",
     "last_change": "0006",
-    "last_seen": "2026-11-07T23:09:31Z",
+    "last_seen": "2026-11-07T23:11:34Z",
     "summary": "The parameter `pairs` of `sweep()` shadows the module-level function `pairs()` defined just above, so a later edit that calls `pairs(...)` inside `sweep` would call the sequence and fail; renaming it (for example `grid`) removes the trap."
   },
   "f8a598e0ccf48f43": {
