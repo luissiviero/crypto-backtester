@@ -6,7 +6,7 @@ requires-python = ">=3.10"
 dependencies = ["polars>=1.0", "tzdata; sys_platform == 'win32'"]
 
 [tool.setuptools]
-packages = ["app", "app.data"]
+packages = ["app", "app.data", "app.backtest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
