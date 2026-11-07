@@ -1,0 +1,36 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "A `--fast` or `--slow` list that starts with a minus sign, written as two words",
+      "key": "concern:bd790dc818cd80c9",
+      "kind": "concern",
+      "n": 1
+    },
+    {
+      "decided": false,
+      "item": "adversarial reviewer says park: plan.md Order of work step 1 has a wrong expected value in a planned test: it says `count_pairs([5, 50], [10, 50]) == (1, 3)`, but under R5 (and the plan's own `bisect.bisect_right(slows, fast)` per fast) the grid is (5,10) kept, (5,50) kept, (50,10) skipped, (50,50) skipped, so the answer is (2, 2). A correct count_pairs fails this test. A build that writes the test first, as the plan says, would either bend count_pairs to match, which breaks the skip count in the run line and the 400-pair cap, or change the expectation on its own. Fix: expect (2, 2), or keep (1, 3) with inputs that give it, e.g. `count_pairs([10, 50], [5, 20]) == (1, 3)`.",
+      "key": "park:b3d34430ced1d56d",
+      "kind": "park",
+      "n": 2
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [],
+  "pending": [
+    1,
+    2
+  ],
+  "phase": "design"
+}

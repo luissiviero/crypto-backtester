@@ -144,7 +144,7 @@ Change id: 0006. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design
   `--top` option (R11).
 
 ## Flagged concerns
-- A `--fast` or `--slow` list that starts with a minus sign, written as two words
+- decided (by panel #1): Keep argparse's refusal with no argv rewrite; correct the aside, since a bare `-5` is a value on every version and only a two-word comma list starting with a minus is refused by argparse on 3.10-3.13; and add to `test_sweep_refuses_bad_lengths` a two-word `--fast -5` case expecting the R4 message and a two-word `--fast -5,10` case asserting only exit 2, nothing on stdout and no stub call. — A `--fast` or `--slow` list that starts with a minus sign, written as two words
   (`--fast -5,10`), may be read by argparse as an option rather than a value, depending on the
   Python version's negative-number rule: argparse then prints its usage and
   `error: argument --fast: expected one argument` and exits 2, which does not name the value

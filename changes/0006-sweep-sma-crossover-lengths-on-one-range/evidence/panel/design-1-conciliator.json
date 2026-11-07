@@ -1,0 +1,11 @@
+{
+  "reviewer": "accept argparse's refusal and the `--fast=-5,10` test as a nit, only correcting the false aside that `run --fast -5` is version dependent",
+  "advocate": "accept argparse's refusal but correct the premise (claims the behaviour is not version dependent) and pin both two-word forms with tests",
+  "decision": "Keep argparse's refusal with no argv rewrite; correct the aside, since a bare `-5` is a value on every version and only a two-word comma list starting with a minus is refused by argparse on 3.10-3.13; and add to `test_sweep_refuses_bad_lengths` a two-word `--fast -5` case expecting the R4 message and a two-word `--fast -5,10` case asserting only exit 2, nothing on stdout and no stub call.",
+  "rationale": [
+    "Both verdicts agree: refuse through argparse, no argv rewrite, and the `run --fast -5` aside is wrong because bare `-5` always parses as a value.",
+    "They disagree on version dependence; checked on this runner (3.14.4, matcher `-\\.?\\d`), `--fast -5,10` parses as a value, so the reviewer is right and the concern's version clause stays.",
+    "The safer reading adds the advocate's tests, shaped so they hold on every version: the two-word comma case pins only what is common to both paths (exit 2, empty stdout, no fetch), not argparse's message.",
+    "This adds tests and corrects text only; no design change, no limit or guardrail touched."
+  ]
+}

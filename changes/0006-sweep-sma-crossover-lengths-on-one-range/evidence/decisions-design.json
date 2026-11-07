@@ -1,0 +1,27 @@
+{
+  "decisions": [
+    {
+      "advocate": "No objection to accepting argparse's refusal and not rewriting argv, but the concern's premise is false (the behaviour is not Python-version dependent) and both two-word forms are deterministic and must be pinned by tests before build; the text should be corrected.",
+      "at": "2026-11-07T22:37:36Z",
+      "cost_usd": null,
+      "decision": "Keep argparse's refusal with no argv rewrite; correct the aside, since a bare `-5` is a value on every version and only a two-word comma list starting with a minus is refused by argparse on 3.10-3.13; and add to `test_sweep_refuses_bad_lengths` a two-word `--fast -5` case expecting the R4 message and a two-word `--fast -5,10` case asserting only exit 2, nothing on stdout and no stub call.",
+      "head": "171354cd3135fd1dca0c072fd5c9c17f0333f544",
+      "item": "A `--fast` or `--slow` list that starts with a minus sign, written as two words",
+      "item_n": 1,
+      "key": "concern:bd790dc818cd80c9",
+      "kind": "concern",
+      "n": 1,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree: refuse through argparse, no argv rewrite, and the `run --fast -5` aside is wrong because bare `-5` always parses as a value.",
+        "They disagree on version dependence; checked on this runner (3.14.4, matcher `-\\.?\\d`), `--fast -5,10` parses as a value, so the reviewer is right and the concern's version clause stays.",
+        "The safer reading adds the advocate's tests, shaped so they hold on every version: the two-word comma case pins only what is common to both paths (exit 2, empty stdout, no fetch), not argparse's message.",
+        "This adds tests and corrects text only; no design change, no limit or guardrail touched."
+      ],
+      "reviewer": "Accept the spec's decision (leave argparse's refusal, test with `--fast=-5,10`) as a nit, not an Important finding; only correct the aside about `run --fast -5`."
+    }
+  ],
+  "phase": "design",
+  "schema_version": 1
+}
