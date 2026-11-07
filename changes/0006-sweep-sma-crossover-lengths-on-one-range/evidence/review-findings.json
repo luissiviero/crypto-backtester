@@ -1,0 +1,21 @@
+{
+  "at": "2026-11-07T23:20:00Z",
+  "findings": [
+    {
+      "file": "app/backtest/sweep.py",
+      "line": 42,
+      "pass": "bugs",
+      "rule": "coding-standards rule 7 (small, clear functions)",
+      "severity": "nit",
+      "signature": "eacbde8749b09982",
+      "summary": "The parameter `pairs` of `sweep()` shadows the module-level function `pairs()` defined just above, so a later edit that calls `pairs(...)` inside `sweep` would call the sequence and fail; renaming it (for example `grid`) removes the trap."
+    }
+  ],
+  "head": "e085aeeda1021a16103783aecb97ac705efce46b",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 1,
+    "nits_omitted": 0
+  }
+}
