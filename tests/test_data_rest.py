@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import polars as pl
@@ -13,6 +14,7 @@ from kucoin_stub import (
     HOUR_MS,
     MINUTE_MS,
     SPOT_1H,
+    TODAY,
     KuCoin,
     fixture,
     ms,
@@ -20,8 +22,8 @@ from kucoin_stub import (
 )
 
 from app.data import KlineGapError, http, load_klines, loader, rest
-from app.data.http import DownloadError, HttpResponse
-from app.data.params import InvalidRequestError
+from app.data.http import DownloadError, HttpResponse, RateLimitPacer
+from app.data.params import InvalidRequestError, make_request
 from app.data.schema import frame_from_spot_rows
 
 
@@ -93,6 +95,33 @@ def test_futures_end_of_window_row_adds_no_next_day_candle(clock: None, tmp_path
     assert_complete(frame, 24)
     assert frame["open_time"][-1] == utc(2026, 10, 1, 23)
     assert len(kucoin.calls) == 1
+
+    request = make_request("XBTUSDTM", "1h", "2026-10-01", "2026-10-01", "futures", TODAY)
+    start_ms, end_ms = ms(utc(2026, 10, 1)), ms(utc(2026, 10, 2))
+    answer = rest.fetch_range(kucoin, RateLimitPacer(), request, start_ms, end_ms)
+    assert answer.failure is None and answer.frame.height == 24
+    assert answer.frame["open_time"].max() == utc(2026, 10, 1, 23)
+
+
+@pytest.mark.parametrize(
+    ("market", "row"),
+    [
+        ("spot", [str(ms(utc(2026, 10, 2)) // 1000), "1", "1", "1", "1", "1", "1"]),
+        ("futures", [ms(utc(2026, 9, 30, 23)), 1, 1, 1, 1, 1, 1]),
+    ],
+)
+def test_page_that_does_not_move_the_window_is_unexpected(
+    clock: None, tmp_path: Path, market: str, row: list[object]
+) -> None:
+    body = json.dumps({"code": "200000", "data": [row]}).encode()
+    kucoin = KuCoin()
+    kucoin.refuse("kucoin.com", HttpResponse(200, HEADERS, body))
+    symbol = "BTC-USDT" if market == "spot" else "XBTUSDTM"
+    with pytest.raises(KlineGapError) as caught:
+        load(kucoin, "2026-10-01", "2026-10-01", tmp_path, symbol, market=market)
+    assert [gap.reason for gap in caught.value.gaps] == ["unexpected KuCoin response"]
+    assert len(kucoin.calls) == 1
+    assert not list(tmp_path.rglob("*.parquet"))
 
 
 def test_futures_day_without_some_minutes_has_no_gap(clock: None, tmp_path: Path) -> None:

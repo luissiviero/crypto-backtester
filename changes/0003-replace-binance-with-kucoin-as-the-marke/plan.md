@@ -243,6 +243,14 @@ each keep `plan.md` in step, and run the suite after step 9.
   the day's grid is settled as `MISSING` (`no candles on this day`), so an empty day is never
   cached as complete. One test beyond Proof checks the two help epilogs
   (`test_help_notes_short_days_and_lost_futures_days`).
+- **Window rule of step 4, after the build review**: the rows that move the window (spot:
+  open before `window_end`; futures: open at or after `window_start`) are taken before the
+  range filter, so a page with rows but none that moves the window is `UNEXPECTED_RESPONSE`
+  (a gap, never cached) rather than the end of the range; rows outside the range (futures:
+  the end-of-window row) are still dropped. Tested by
+  `test_page_that_does_not_move_the_window_is_unexpected`;
+  `test_futures_end_of_window_row_adds_no_next_day_candle` also checks `fetch_range`'s own
+  frame.
 
 ## Options not taken
 - **A contract lookup (`/api/v1/contracts/{symbol}`) per futures request**: clearer error

@@ -132,7 +132,11 @@ def _fetch_spot(
         page, failure, error = _page(fetch, pacer, url, frame_from_spot_rows, request.interval_ms)
         if page is None:
             return _range(frames, failure, window_end, end_ms, error)
-        page = page.filter((_OPEN_MS >= start_ms) & (_OPEN_MS < window_end))
+        moved = page.filter(_OPEN_MS < window_end)
+        if moved.is_empty() and not page.is_empty():
+            # Rows, but none that moves the window: not an answer to this window.
+            return _range(frames, UNEXPECTED_RESPONSE, window_end, end_ms)
+        page = moved.filter(_OPEN_MS >= start_ms)
         if page.is_empty():
             break
         frames.append(page)
@@ -153,8 +157,12 @@ def _fetch_futures(
         )
         if page is None:
             return _range(frames, failure, start_ms, window_start, error)
+        moved = page.filter(_OPEN_MS >= window_start)
+        if moved.is_empty() and not page.is_empty():
+            # Rows, but none that moves the window: not an answer to this window.
+            return _range(frames, UNEXPECTED_RESPONSE, start_ms, window_start)
         # The window's end row (open at `to`, or later) belongs to the next range.
-        page = page.filter((_OPEN_MS >= window_start) & (_OPEN_MS < end_ms))
+        page = moved.filter(_OPEN_MS < end_ms)
         if page.is_empty():
             break
         frames.append(page)
