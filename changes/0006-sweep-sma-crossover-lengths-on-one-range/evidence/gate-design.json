@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "change_id": "0006",
+  "slug": "sweep-sma-crossover-lengths-on-one-range",
+  "phase": "design",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:design-ready",
+  "head": "44ea2daa9018050097cce32db232dd4d2dcec1e0",
+  "at": "2026-11-07T22:39:20Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 2,
+        "panel_cap": 4,
+        "elapsed_minutes": 9.3,
+        "spend_usd": null,
+        "spend_usd_total": null,
+        "spend_entries": 0,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0006-sweep-sma-crossover-lengths-on-one-range/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "CLAUDE.local.md",
+          "changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json",
+          "changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.model.json",
+          "changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/diff-design.patch",
+          "changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof_items",
+      "ok": true,
+      "reason": "the Proof items follow the grammar",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "2 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "concern",
+            "decision": "Keep argparse's refusal with no argv rewrite; correct the aside, since a bare `-5` is a value on every version and only a two-word comma list starting with a minus is refused by argparse on 3.10-3.13; and add to `test_sweep_refuses_bad_lengths` a two-word `--fast -5` case expecting the R4 message and a two-word `--fast -5,10` case asserting only exit 2, nothing on stdout and no stub call."
+          },
+          {
+            "n": 2,
+            "kind": "park",
+            "decision": "continue, after the run corrects plan.md Order of work step 1 to `count_pairs([5, 50], [10, 50]) == (2, 2)` before the design phase closes"
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}
