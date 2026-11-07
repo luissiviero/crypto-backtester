@@ -1,0 +1,9 @@
+## Verdict
+Park (uphold): the design must keep "closed days fetched before a stop stay cached" and name a Proof test for it.
+
+## Why
+- Intent ("Deleting the Binance tests…"): "Behaviours that stay (retries, gaps, cache, CLI, input checks) keep equivalent tests." Spec R28 and plan Proof repeat this. Only Binance-only behaviour may drop under the ratchet.
+- Today `sync_days` promises this in its docstring (app/data/loader.py:93-97): a run "stopped later (a ban, retries exhausted) keeps the days it already downloaded". Exhausted retries are not Binance-only: R4 keeps them, with `DownloadError` after three retries or a `Retry-After` over 60 s. Only the ban trigger goes. The behaviour stays, so it needs an equivalent test. The test that covers it now (tests/test_data.py:452) uses a 418 ban, so it falls under the ratchet. Plan Proof names no replacement, and the ratchet line lists only "ban cancelling the pool".
+- The design breaks the behaviour. In plan step 4, "failure" in `fetch_range` means a `parse_answer` failure on a returned response. `with_retries` *raises* `DownloadError`, so the error leaves `fetch_range` without a `RestRange`. In step 6, `_rest_pass` builds `DayOutcome`s and caches only after `fetch_range` returns. So every page already fetched for that run of consecutive days is lost. A whole requested span is usually one range, so in practice nothing gets cached.
+- REVIEW.md: Important = "would break behavior". It also says plan.md must reflect the proof. A kept behaviour with no test and a design that regresses it is Important. It is not taste.
+- Fix (either way works): catch `DownloadError` in `fetch_range`/`_rest_pass`, settle and cache the complete closed days the covered span vouches for, then re-raise. Or settle each day as soon as the span covers it. Add to Proof a test such as `test_days_fetched_before_a_download_error_stay_cached`, with the error on a later page, for spot and futures.

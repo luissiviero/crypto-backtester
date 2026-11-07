@@ -1,0 +1,93 @@
+{
+  "decisions": [
+    {
+      "advocate": "Close the concern as the owner's decision, not the design's inference, and keep the note half of rule 4: the intent forbids the version bump, not the deprecation note.",
+      "at": "2026-11-07T04:07:50Z",
+      "cost_usd": null,
+      "decision": "Keep version 0.1.0 as intent.md directs, and add a deprecation note naming the removed columns (trades, taker_buy_*), BinanceBanError, the um market and the 1s interval, with the reason (KuCoin does not publish them), to the load_klines docstring and the app/data/__init__.py module docstring; the version half of rule 4 stays the owner's call, to confirm at the merge gate.",
+      "head": "fa40085cfffde75e73e07122fa408db464d187e0",
+      "item": "data-conventions rule 4 (\"a removed or renamed field is a new version with a deprecation",
+      "item_n": 1,
+      "key": "concern:be9e62056ac78dfb",
+      "kind": "concern",
+      "n": 1,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree: intent.md (the owner's words, lines 26-46) settles the version half, so 0.1.0 stays, and nothing in the intent forbids the note, so the note is added.",
+        "They disagree only on whether the run may close the concern; the safer reading is the reviewer's, because closing it would be the run deciding a policy breach for itself (REVIEW.md: policy breaches are Important).",
+        "Rule 4 gives no pre-1.0 or single-caller exemption, so the design must not close on that argument; it records the intent as the source and leaves the version breach for the owner to accept.",
+        "The note costs one sentence of copy, changes no code path, and shrinks the remaining breach to the version alone, which is the owner's decision under the intent."
+      ],
+      "reviewer": "Keep the concern open for the owner to decide at merge, keep 0.1.0 as the intent says, and add a written deprecation note for the removed names now, since the intent does not forbid one."
+    },
+    {
+      "advocate": "Accept 100 / 60 s as the constants, but reject the claim that closes the concern (\"a wrong value costs speed or a 429, which the retries absorb\"): make the 429 path read `gw-ratelimit-reset` when `Retry-After` is absent, and say so in R4, plan step 3 and a Proof test.",
+      "at": "2026-11-07T04:07:54Z",
+      "cost_usd": null,
+      "decision": "Keep RATE_LIMIT_RESERVE = 100 and MAX_RATE_LIMIT_WAIT = 60.0 as module constants; on a 429 with no usable Retry-After, with_retries waits gw-ratelimit-reset ms capped at MAX_RATE_LIMIT_WAIT (R4, plan step 3, Proof test test_429_without_retry_after_waits_for_the_reset), and the plan's Risks line drops 'which the retries absorb'.",
+      "head": "0f1b19ac75c4cf43754ccbd0ec9ca6f40c9f4915",
+      "item": "Rate-limit reserve (a guess; the intent names the headers but no threshold): the design",
+      "item_n": 2,
+      "key": "concern:ad4133f85f1674be",
+      "kind": "concern",
+      "n": 2,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree on the constants 100 and 60 s; they differ only on whether a 429 is harmless.",
+        "Checked: app/data/http.py RETRY_DELAYS = (1.0, 2.0, 4.0), about 7 s in total, while the KuCoin window is 30 s, so a drained pool would end in DownloadError, not a wait.",
+        "The capture shows no 429 and no Retry-After header, and the owner's kucoin_capture.py _wait_seconds sleeps gw-ratelimit-reset on a 429.",
+        "The intent says REST calls pause on gw-ratelimit-remaining and gw-ratelimit-reset; using reset on a 429 follows that and is the safer reading.",
+        "This touches no limit, guardrail or risk-list item. It only makes the existing retry path honour the header the intent names."
+      ],
+      "reviewer": "Close the concern as accepted: the reserve of 100 with the 60 s cap is a design choice within the intent, and no rule asks for more; it is not an Important finding."
+    },
+    {
+      "advocate": "Not a park: the design drops no REST behaviour that exists today and the intent never asks for resumability; record it as a plan risk / spec flagged concern for the owner, not a redesign before build.",
+      "at": "2026-11-07T04:07:57Z",
+      "cost_usd": null,
+      "decision": "continue, after the run amends spec.md and plan.md so that _rest_pass catches DownloadError per range, settles and caches the complete closed days the covered span vouches for, then re-raises, and adds test_days_fetched_before_a_download_error_stay_cached (error on a later page, spot and futures) to Proof",
+      "head": "436f0bcf12afe608ba534f58c27bfb4ba4f1f9c1",
+      "item": "adversarial reviewer says park: Design silently drops an existing behaviour that this change keeps: today sync_days promises (docstring, app/data/loader.py:93-97) and tests (tests/test_data.py:452 test_days_fetched_before_a_ban_stay_cached) that a run stopped part way keeps the closed days it already downloaded in the cache. The plan (step 4: fetch_range returns one RestRange per range; step 6: _rest_pass builds DayOutcomes only after fetch_range returns) means a DownloadError raised by with_retries in the middle of a range (5xx or 429 after three retries, Retry-After over 60 s, connection errors, all of which stay under R4) leaves fetch_range with no result, so every page already fetched for that range is thrown away and nothing gets cached. Once Vision is gone, all data arrives through REST paging (about 22 pages for 3 days of futures 1m, about 2,600 for a year), so this matters more than it does today. DownloadError and the retries stay, so this is not Binance-only behaviour, and the ratchet line in Proof does not cover it (it names 'ban cancelling the pool', not 'days fetched before a stop stay cached'). No Proof test replaces it. Fix in the design: settle and cache each day as soon as the covered span vouches for it (spot covers backwards from end, futures forwards from start), or catch DownloadError per range, settle the covered complete days, then re-raise. Add a Proof test, e.g. test_days_fetched_before_a_download_error_stay_cached, with the error on a later page.",
+      "item_n": 3,
+      "key": "park:acfa63991fdd5a74",
+      "kind": "park",
+      "n": 3,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree on the facts: today's fetch_range/_rest_pass lose a range's pages on a DownloadError; only the Vision pass gave the per-day write, and the design makes REST the only path.",
+        "They disagree on whether that is a kept behaviour: sync_days promises it today for 'retries exhausted', which R4 keeps, and intent line 113 keeps cache and retry behaviours with equivalent tests.",
+        "The safer reading keeps the behaviour that exists at the loader level today rather than letting it drop silently under a ratchet line that names only the 418 ban.",
+        "The fix is small and concrete (catch, settle covered days, re-raise) and the run can write it into the design itself, so parking for the owner is not needed.",
+        "The owner can still overturn this at the gate and take the advocate's risk-line instead."
+      ],
+      "reviewer": "Park (uphold): the design must keep \"closed days fetched before a stop stay cached\" and name a Proof test for it."
+    },
+    {
+      "advocate": "The contradiction is real, but resolve it the other way and apply it in the panel: drop the identifier `BinanceBanError` from the R6 note (describe it as \"the exchange-ban error, which KuCoin has no equivalent of\") and leave R8 and plan step 10 untouched; no owner park.",
+      "at": "2026-11-07T04:15:37Z",
+      "cost_usd": null,
+      "decision": "continue: amend R8 to read 'No CLI message, help text or docstring names Binance or Vision, except R6's deprecation note in the load_klines docstring and the app/data/__init__.py module docstring', and amend plan step 10 so its grep skips only those two docstrings' deprecation notes and cleans every other hit",
+      "head": "4e727e951aab1d3d6405d5e546ed372c69d5b306",
+      "item": "adversarial reviewer says park: Panel decision 1 was applied in a way that contradicts the rest of the spec and plan, so the build cannot meet all of them. R6 (spec.md lines 26-29) and plan step 6 and step 7 require the load_klines docstring and the app/data/__init__.py module docstring to carry a deprecation note that names `BinanceBanError`. R8 (spec.md line 32) still says 'No CLI message, help text or docstring names Binance or Vision', and plan step 10 still says to 'grep app/ and scripts/ for `binance`, `vision`, `um\"` (case-insensitive) and clean what remains', and that grep matches the note. A build that follows the plan in order writes the note in steps 6-7 and then removes it in step 10, which undoes the panel's decision. A build that keeps the note breaks R8, and the build-phase review will flag that against the spec. The fix is a one-line text change at design time: make R8 except the R6 deprecation note (the intent's own wording is narrower, 'CLI messages stop naming Binance or Vision', intent.md line 27), and give step 10's grep the same exception. Today's code has no such note to rely on (app/data/__init__.py line 1 and loader.py line 78), so nothing settles it outside the spec.",
+      "item_n": 1,
+      "key": "park:dc21cf5a02a0232b",
+      "kind": "park",
+      "n": 4,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree the clash is real and is a wording fix the run can apply now, so no park; they differ only on which side gives way.",
+        "intent.md line 27 bans Binance only in CLI messages, so narrowing R8 follows the intent rather than retreating from it.",
+        "The advocate's fix would rewrite panel decision 1, which is already recorded (spec.md line 208); amending it falls outside this item, so the safer reading leaves decision 1 as recorded and changes only R8 and step 10.",
+        "Following the advocate's fallback condition, the exception covers only the two R6 docstrings: help text stays strict, and step 10 names the two places it may skip, so the grep stays a check with no judgment calls.",
+        "The owner can still overturn this at the next gate, including choosing to drop the identifier from the note."
+      ],
+      "reviewer": "Fix now at design time, without parking: change R8 and plan step 10 so both except R6's deprecation note."
+    }
+  ],
+  "phase": "design",
+  "schema_version": 1
+}

@@ -1,0 +1,12 @@
+{
+  "reviewer": "accept the 100 reserve and 60 s cap as a design choice within the intent, since a too-low reserve only costs a 429 that the retries absorb",
+  "advocate": "keep 100 / 60 s but reject the claim that retries absorb a 429: on a 429 without Retry-After, wait gw-ratelimit-reset (capped at 60 s), with a Proof test and a corrected Risks line",
+  "decision": "Keep RATE_LIMIT_RESERVE = 100 and MAX_RATE_LIMIT_WAIT = 60.0 as module constants; on a 429 with no usable Retry-After, with_retries waits gw-ratelimit-reset ms capped at MAX_RATE_LIMIT_WAIT (R4, plan step 3, Proof test test_429_without_retry_after_waits_for_the_reset), and the plan's Risks line drops 'which the retries absorb'.",
+  "rationale": [
+    "Both verdicts agree on the constants 100 and 60 s; they differ only on whether a 429 is harmless.",
+    "Checked: app/data/http.py RETRY_DELAYS = (1.0, 2.0, 4.0), about 7 s in total, while the KuCoin window is 30 s, so a drained pool would end in DownloadError, not a wait.",
+    "The capture shows no 429 and no Retry-After header, and the owner's kucoin_capture.py _wait_seconds sleeps gw-ratelimit-reset on a 429.",
+    "The intent says REST calls pause on gw-ratelimit-remaining and gw-ratelimit-reset; using reset on a 429 follows that and is the safer reading.",
+    "This touches no limit, guardrail or risk-list item. It only makes the existing retry path honour the header the intent names."
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "reviewer": "the R6/R8/step-10 contradiction is real; fix it at design time without parking by making R8 and step 10's grep except R6's deprecation note",
+  "advocate": "the contradiction is real and needs no park, but fix it the other way: drop the `BinanceBanError` identifier from the R6 note and leave R8 and step 10 strict",
+  "decision": "continue: amend R8 to read 'No CLI message, help text or docstring names Binance or Vision, except R6's deprecation note in the load_klines docstring and the app/data/__init__.py module docstring', and amend plan step 10 so its grep skips only those two docstrings' deprecation notes and cleans every other hit",
+  "rationale": [
+    "Both verdicts agree the clash is real and is a wording fix the run can apply now, so no park; they differ only on which side gives way.",
+    "intent.md line 27 bans Binance only in CLI messages, so narrowing R8 follows the intent rather than retreating from it.",
+    "The advocate's fix would rewrite panel decision 1, which is already recorded (spec.md line 208); amending it falls outside this item, so the safer reading leaves decision 1 as recorded and changes only R8 and step 10.",
+    "Following the advocate's fallback condition, the exception covers only the two R6 docstrings: help text stays strict, and step 10 names the two places it may skip, so the grep stays a check with no judgment calls.",
+    "The owner can still overturn this at the next gate, including choosing to drop the identifier from the note."
+  ]
+}

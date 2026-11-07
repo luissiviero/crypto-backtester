@@ -1,0 +1,28 @@
+{
+  "decided": 3,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "adversarial reviewer says park: Panel decision 1 was applied in a way that contradicts the rest of the spec and plan, so the build cannot meet all of them. R6 (spec.md lines 26-29) and plan step 6 and step 7 require the load_klines docstring and the app/data/__init__.py module docstring to carry a deprecation note that names `BinanceBanError`. R8 (spec.md line 32) still says 'No CLI message, help text or docstring names Binance or Vision', and plan step 10 still says to 'grep app/ and scripts/ for `binance`, `vision`, `um\"` (case-insensitive) and clean what remains', and that grep matches the note. A build that follows the plan in order writes the note in steps 6-7 and then removes it in step 10, which undoes the panel's decision. A build that keeps the note breaks R8, and the build-phase review will flag that against the spec. The fix is a one-line text change at design time: make R8 except the R6 deprecation note (the intent's own wording is narrower, 'CLI messages stop naming Binance or Vision', intent.md line 27), and give step 10's grep the same exception. Today's code has no such note to rely on (app/data/__init__.py line 1 and loader.py line 78), so nothing settles it outside the spec.",
+      "key": "park:dc21cf5a02a0232b",
+      "kind": "park",
+      "n": 1
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 1,
+    "used": 3
+  },
+  "parks": [],
+  "pending": [
+    1
+  ],
+  "phase": "design"
+}

@@ -1,0 +1,12 @@
+{
+  "reviewer": "park: the design drops the kept behaviour 'closed days fetched before a stop stay cached' (sync_days docstring, test_days_fetched_before_a_ban_stay_cached) and Proof names no replacement test",
+  "advocate": "continue: today's REST pass already discards a range's pages on a mid-range DownloadError, the per-day write was Vision's, and the intent never promised resumability, so record a plan risk instead",
+  "decision": "continue, after the run amends spec.md and plan.md so that _rest_pass catches DownloadError per range, settles and caches the complete closed days the covered span vouches for, then re-raises, and adds test_days_fetched_before_a_download_error_stay_cached (error on a later page, spot and futures) to Proof",
+  "rationale": [
+    "Both verdicts agree on the facts: today's fetch_range/_rest_pass lose a range's pages on a DownloadError; only the Vision pass gave the per-day write, and the design makes REST the only path.",
+    "They disagree on whether that is a kept behaviour: sync_days promises it today for 'retries exhausted', which R4 keeps, and intent line 113 keeps cache and retry behaviours with equivalent tests.",
+    "The safer reading keeps the behaviour that exists at the loader level today rather than letting it drop silently under a ratchet line that names only the 418 ban.",
+    "The fix is small and concrete (catch, settle covered days, re-raise) and the run can write it into the design itself, so parking for the owner is not needed.",
+    "The owner can still overturn this at the gate and take the advocate's risk-line instead."
+  ]
+}
