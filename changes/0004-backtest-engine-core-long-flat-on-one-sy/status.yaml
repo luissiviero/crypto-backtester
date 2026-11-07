@@ -1,17 +1,17 @@
 id: "0004"
 slug: backtest-engine-core-long-flat-on-one-sy
 title: "Backtest engine core: long/flat on one symbol"
-phase: intent
+phase: design
 entry_route: idea
 change_type: feature
 gate:
-  phase: null
-  result: null
-  reason: null
-  at: null
+  phase: design
+  result: passed
+  reason: waiting for the owner at gate (design)
+  at: "2026-11-07T11:11:09Z"
 parked_reason: null
 iterations: 0
-panel_calls: 0
+panel_calls: 2
 external_ref: null
 risk_accepted: []
 tests_locked: false
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-11-07T10:33:53Z"
-updated_at: "2026-11-07T10:33:53Z"
+updated_at: "2026-11-07T11:11:09Z"
 schema_version: 1

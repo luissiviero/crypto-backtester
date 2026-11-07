@@ -1,0 +1,9 @@
+## Verdict
+Accept the design as written: win rate is `0.0` when there are no trades, kept as a plain `float`, documented on `Summary.win_rate`, with `trade_count == 0` as the way to tell "no trades" apart from "no winners", and pinned by the zero-trade test already in Acceptance.
+
+## Why
+- No rule settles it. The intent (line 43) defines win rate only as "the share of trades whose return after fees is above zero" and says nothing about zero trades. No policy skill (coding-standards, data-conventions, ux-and-brand, security-baseline, definition-of-done) has a rule on empty-ratio values or None/NaN sentinels, so this is a design choice, not a policy question.
+- REVIEW.md line 14 keeps Important for findings that "would break behavior, leak data or breach a policy". `0.0` does none of these: nothing breaks, because `Summary` also carries `trade_count: int` (spec line 109), so a caller loses no information.
+- The safest reading is `0.0`. NaN fails every comparison without an error (`nan > 0.5` is False, and `nan == nan` is False, so `pytest.approx` equality breaks), and it spreads through any later arithmetic. `None` would turn `win_rate` into `float | None` and make every caller check for None. `0.0` matches the spec's own rule for an empty measure: max drawdown is `0.0` on a flat curve (spec lines 39 and 130).
+- It is tested and planned: Acceptance line 199 ("a zero-trade run gives win rate `0.0`") and plan step 2 (line 61) pin it, and the adversarial review (evidence/adversarial-review-design.json) found flagging it as an open concern with an alternative acceptable.
+- One condition: the build should say in the `Summary` docstring that `win_rate` is `0.0` when `trade_count == 0`, so the convention is written where callers see it, not only in spec.md (coding-standards rule 7, explicit names).

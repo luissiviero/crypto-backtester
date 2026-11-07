@@ -1,0 +1,1277 @@
+ .../evidence/adversarial-review-design.json        |  26 ++
+ .../evidence/adversarial-review-design.model.json  |  14 +
+ .../evidence/decisions-design.json                 |  49 +++
+ .../evidence/decisions-design.md                   |   8 +
+ .../evidence/diff-design.patch                     | 443 +++++++++++++++++++++
+ .../evidence/hook-log.jsonl                        |  42 ++
+ .../evidence/panel/design-1-advocate.md            |  10 +
+ .../evidence/panel/design-1-advocate.model.json    |  14 +
+ .../evidence/panel/design-1-conciliator.json       |  12 +
+ .../evidence/panel/design-1-reviewer.md            |  22 +
+ .../evidence/panel/design-2-advocate.md            |  10 +
+ .../evidence/panel/design-2-advocate.model.json    |  14 +
+ .../evidence/panel/design-2-conciliator.json       |  11 +
+ .../evidence/panel/design-2-reviewer.md            |   9 +
+ .../evidence/panel/design-items.json               |  36 ++
+ .../evidence/run-design.json                       |   5 +
+ .../plan.md                                        | 189 +++++++++
+ .../spec.md                                        | 204 ++++++++++
+ .../status.yaml                                    |   6 +-
+ 19 files changed, 1121 insertions(+), 3 deletions(-)
+
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json
+new file mode 100644
+index 0000000..f5a7644
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json
+@@ -0,0 +1,26 @@
++{
++  "schema_version": 1,
++  "phase": "design",
++  "head": "d9b4053c505b208ea7c2d3b5e47441b92a35b3e4",
++  "verdict": "continue",
++  "reasons": [],
++  "classification": "non-routine",
++  "classification_reasons": [
++    "Spec: acceptance is measurable (every worked-example number is pinned to 1e-9), but two flagged concerns are still open for the gate: the pyproject.toml packages line, which departs from the intent's 'pyproject.toml needs no change', and win rate 0.0 when there are no trades.",
++    "Blast radius: a new package of four modules plus a shared-file edit (pyproject.toml [tool.setuptools] packages), where a typo would break the editable install and every CI job. No risk-list item is touched.",
++    "Test coverage: the existing tests cover none of this. All the behaviour is new and is proven only by a new test file that does not exist yet."
++  ],
++  "attempted": [
++    "Intent: the design delivers the intent's long/flat engine on one frame: fill at the next row's open, gap-agnostic, fee per fill, equity/trades/summary, and the refusal list. The three open questions are answered with the recommended options. The fee number is carried forward for the owner, and the default is used meanwhile. Not a quick intent. Nothing found.",
++    "Spec and plan: R1-R19 map to plan steps 1-6 and to the Proof tests. Every intent acceptance bullet (buy-and-hold, two-trade example, decision candle, gap, refusals) has a named test. The extra refusals beyond the intent are a closed concern with its decision. The pyproject and win-rate concerns are flagged openly with an alternative, which is acceptable at design.",
++    "Worked example recomputed by hand: equity 1.0, 0.00999*110=1.0989, *120=1.1988, sell 0.00999*120*0.999=1.1976012, flat, 1.1976012*0.999*85/90=1.1299367322, 1.1976012*0.999*0.9*0.999=1.07568647568108. Trade returns 1.2*0.999^2-1=0.1976012 and 0.9*0.999^2-1=-0.1017991. MDD from peak 1.1988 to 1.0756865 = 1-0.9*0.999^3 = 0.1026973009. Held 0,1,1,0,0,1,0 gives 3/7. All match the spec and plan.",
++    "Lookahead: the pass reads positions[i-1] at row i and fills at opens[i]. positions[last] is never read for a fill. The end-of-frame close uses closes[-1] on the last row only, which matches R17. Equity at row i depends only on decisions at rows < i.",
++    "Claims against today's code: pyproject.toml line 9 is packages = [\"app\", \"app.data\"] (true, so app.backtest would be missing from a wheel; the flagged concern is real). app/data/__init__.py has a sorted __all__ (true). InvalidRequestError(ValueError) is in app/data/params.py (true). KlineGapError.frame exists in loader.py (true). schema.py has TIME_DTYPE = Datetime('ms','UTC') and Float64 open/close (true). combine() returns days sorted and unique in day order, so load_klines output passes the strict-increase check. _finite already guarantees finite prices. The test files listed as unchanged exist (test_smoke, test_data*, conftest, kucoin_stub). The CLAUDE.md line references (4-7 paragraph, app/data item ending at line 33, tests item at 36-37) match the file. docs/decisions/index.md does not exist, and the spec cites no decision.",
++    "Proof: design phase, so there are no toolchain logs yet. The Proof lists 19 named tests covering every acceptance bullet, plus parametrised bad values.",
++    "Blast radius: the diff touches only changes/0004-*/ (spec, plan, status, run/hook records). No guardrail file is in the diff. The planned code touches pyproject.toml (one list entry) and new files only. app/data and the existing tests stay unchanged. No risk-list item: the engine is an in-memory simulation with no funds, orders, credentials or config.",
++    "Policies: security-baseline rule 2 is applied (strict input schema, NaN fee, bool positions, non-positive prices). The no-I/O and no-new-dependency constraints are stated. ux-and-brand rule 4 shapes the error messages. data-conventions is correctly judged not applicable. The CLAUDE.md drift is named for the owner, as the intent asks.",
++    "Tests (design-level): the decision-candle and gap tests use distinct prices on either side, so an off-by-one fill cannot pass. The two-trade test pins every equity value, not only the total. Minor gaps, not parks: plan step 3 records the entry as (i, opens[i]) but never says to store entry_cash, which the return formula needs (R13 defines it, so a builder can follow it). The handling of a non-sequence positions argument (a generator) is unspecified.",
++    "Skip markers: not checked at design (the ratchets check runs at build and test).",
++    "Drive: commands.drive is not relevant at design; the plan lists no drive files."
++  ]
++}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.model.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.model.json
+new file mode 100644
+index 0000000..87771f5
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "ad5c05214107cc2dc",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-11-07T11:04:00Z",
++  "head": "d9b4053c505b208ea7c2d3b5e47441b92a35b3e4",
++  "member": "reviewer",
++  "models": [
++    "claude-opus-5-5"
++  ],
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/fb62a35e-e1e1-4385-9eff-751da85cc054/subagents/agent-ad5c05214107cc2dc.jsonl"
++}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/decisions-design.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/decisions-design.json
+new file mode 100644
+index 0000000..bef24d4
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/decisions-design.json
+@@ -0,0 +1,49 @@
++{
++  "decisions": [
++    {
++      "advocate": "Keep the `pyproject.toml` edit, but not in its easy form: name the proof for it (a wheel listing in the build verifier, as change 0002's verifier did) and prefer `[tool.setuptools.packages.find] include = [\"app*\"]` over a third hand-kept entry, so this concern is not re-filed by every later package; if the owner would rather honour the intent's \"needs no change\" line, leaving the file untouched is safe for every install this project actually performs.",
++      "at": "2026-11-07T11:06:26Z",
++      "cost_usd": null,
++      "decision": "Add \"app.backtest\" to `[tool.setuptools] packages`, have the build verifier build a wheel and list `app/backtest/*.py` in it as proof, and leave the intent's \"needs no change\" line for the owner to overturn at the design gate.",
++      "head": "d9b4053c505b208ea7c2d3b5e47441b92a35b3e4",
++      "item": "Packaging contradicts the intent: the intent says `pyproject.toml` needs no change, but its",
++      "item_n": 1,
++      "key": "concern:cbc50fc5008760a7",
++      "kind": "concern",
++      "n": 1,
++      "overturned": null,
++      "phase": "design",
++      "rationale": [
++        "Both verdicts agree to keep the edit: the explicit list leaves app.backtest out of a non-editable install, and pyproject.toml is not a guardrail file.",
++        "The intent line sits under 'no new dependency'. The edit adds no dependency and leaves ci.yml alone, so it keeps to what that line was for.",
++        "The advocate is right that no test catches the entry being absent or misspelt, so the safer reading adds the wheel listing change 0002 already used as proof.",
++        "Keep the explicit entry rather than switching to packages.find: it is the smaller change plan.md already names, and a discovery change is a wider design choice for the owner.",
++        "Leaving the edit out ships an engine that cannot be imported, and no gate would catch it. Making the edit risks only a typo, which step 6's setup run catches."
++      ],
++      "reviewer": "Keep the design: add `\"app.backtest\"` to `[tool.setuptools] packages` and close the concern as decided."
++    },
++    {
++      "advocate": "Return `None` (field `float | None`) when `trade_count == 0`, not `0.0`; accept `0.0` only if `Summary.win_rate`'s docstring says so and the test pins it together with `trade_count == 0`.",
++      "at": "2026-11-07T11:08:52Z",
++      "cost_usd": null,
++      "decision": "Keep win_rate a plain float that is 0.0 when trade_count == 0; the Summary docstring states \"0.0 when there are no trades; see trade_count\", and the zero-trade test asserts trade_count == 0 and win_rate == 0.0 together.",
++      "head": "bb9fc6155901ab31cf16888a7702d238b7952a27",
++      "item": "Win rate with no trades: the intent defines win rate as a share of trades and is silent",
++      "item_n": 2,
++      "key": "concern:04bd3d7ee0322608",
++      "kind": "concern",
++      "n": 2,
++      "overturned": null,
++      "phase": "design",
++      "rationale": [
++        "No policy rule or intent line settles it: the intent defines win rate only as a share of trades, so this is a design choice.",
++        "Both verdicts accept 0.0 under the same conditions (docstring plus a joint trade_count/win_rate assertion), so this decides with their common ground.",
++        "trade_count is on Summary, so no information is lost; None would widen the type and push a None check onto every caller.",
++        "The advocate's worry about a silent engine bug is met by the joint assertion, which ties the zero win rate to zero trades in the test."
++      ],
++      "reviewer": "Accept the design as written: win rate is `0.0` when there are no trades, kept as a plain `float`, documented on `Summary.win_rate`, with `trade_count == 0` as the way to tell \"no trades\" apart from \"no winners\", and pinned by the zero-trade test already in Acceptance."
++    }
++  ],
++  "phase": "design",
++  "schema_version": 1
++}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/decisions-design.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/decisions-design.md
+new file mode 100644
+index 0000000..df640b2
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/decisions-design.md
+@@ -0,0 +1,8 @@
++# Decisions taken for you — the design phase
++
++One line per panel decision (decision 21): the item, the reviewer's and the devil's advocate's verdicts, the conciliator's decision and rationale, the cost. A review comment on any of them overturns it (/sdlc-fix); an overturned line says so.
++
++- 1. [concern] Packaging contradicts the intent: the intent says `pyproject.toml` needs no change, but its — reviewer: Keep the design: add `"app.backtest"` to `[tool.setuptools] packages` and close the concern as decided.; devil's advocate: Keep the `pyproject.toml` edit, but not in its easy form: name the proof for it (a wheel listing in the build verifier, as change 0002's verifier did) and prefer `[tool.setuptools.packages.find] include = ["app*"]` over a third hand-kept entry, so this concern is not re-filed by every later package; if the owner would rather honour the intent's "needs no change" line, leaving the file untouched is safe for every install this project actually performs.; decision: Add "app.backtest" to `[tool.setuptools] packages`, have the build verifier build a wheel and list `app/backtest/*.py` in it as proof, and leave the intent's "needs no change" line for the owner to overturn at the design gate.; rationale: Both verdicts agree to keep the edit: the explicit list leaves app.backtest out of a non-editable install, and pyproject.toml is not a guardrail file. The intent line sits under 'no new dependency'. The edit adds no dependency and leaves ci.yml alone, so it keeps to what that line was for. The advocate is right that no test catches the entry being absent or misspelt, so the safer reading adds the wheel listing change 0002 already used as proof. Keep the explicit entry rather than switching to packages.find: it is the smaller change plan.md already names, and a discovery change is a wider design choice for the owner. Leaving the edit out ships an engine that cannot be imported, and no gate would catch it. Making the edit risks only a typo, which step 6's setup run catches.; cost: n/a
++- 2. [concern] Win rate with no trades: the intent defines win rate as a share of trades and is silent — reviewer: Accept the design as written: win rate is `0.0` when there are no trades, kept as a plain `float`, documented on `Summary.win_rate`, with `trade_count == 0` as the way to tell "no trades" apart from "no winners", and pinned by the zero-trade test already in Acceptance.; devil's advocate: Return `None` (field `float | None`) when `trade_count == 0`, not `0.0`; accept `0.0` only if `Summary.win_rate`'s docstring says so and the test pins it together with `trade_count == 0`.; decision: Keep win_rate a plain float that is 0.0 when trade_count == 0; the Summary docstring states "0.0 when there are no trades; see trade_count", and the zero-trade test asserts trade_count == 0 and win_rate == 0.0 together.; rationale: No policy rule or intent line settles it: the intent defines win rate only as a share of trades, so this is a design choice. Both verdicts accept 0.0 under the same conditions (docstring plus a joint trade_count/win_rate assertion), so this decides with their common ground. trade_count is on Summary, so no information is lost; None would widen the type and push a None check onto every caller. The advocate's worry about a silent engine bug is met by the joint assertion, which ties the zero win rate to zero trades in the test.; cost: n/a
++
++Total panel cost: n/a
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/diff-design.patch b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/diff-design.patch
+new file mode 100644
+index 0000000..2eb0237
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/diff-design.patch
+@@ -0,0 +1,443 @@
++ .../evidence/hook-log.jsonl                        |   9 +
++ .../evidence/run-design.json                       |   5 +
++ .../plan.md                                        | 173 +++++++++++++++++
++ .../spec.md                                        | 204 +++++++++++++++++++++
++ .../status.yaml                                    |   4 +-
++ 5 files changed, 393 insertions(+), 2 deletions(-)
++
++diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl
++new file mode 100644
++index 0000000..2a72a4b
++--- /dev/null
+++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl
++@@ -0,0 +1,9 @@
+++{"at": "2026-11-07T10:59:29Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T11:01:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T11:01:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T11:01:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T11:01:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T11:02:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T11:02:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T11:02:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T11:02:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/run-design.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/run-design.json
++new file mode 100644
++index 0000000..e0af03f
++--- /dev/null
+++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/run-design.json
++@@ -0,0 +1,5 @@
+++{
+++  "phase": "design",
+++  "spend_usd": null,
+++  "started_at": "2026-11-07T10:59:32Z"
+++}
++\ No newline at end of file
++diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md
++new file mode 100644
++index 0000000..b85c5d3
++--- /dev/null
+++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md
++@@ -0,0 +1,173 @@
+++# Plan: Backtest engine core: long/flat on one symbol (from intent.md 2026-11-07, spec.md 2026-11-07)
+++
+++## Files that change
+++- `app/backtest/__init__.py` — new: module docstring and the public API. It re-exports
+++  `run_backtest`, `DEFAULT_FEE`, `BacktestResult`, `Summary` and `BacktestInputError`, with
+++  `__all__` sorted as in `app/data/__init__.py`.
+++- `app/backtest/inputs.py` — new: `BacktestInputError(ValueError)`, `DEFAULT_FEE = 0.001`,
+++  `REQUIRED_COLUMNS = ("open_time", "open", "close")` and
+++  `validate(frame, positions, fee) -> Inputs`. `Inputs` is a frozen dataclass holding
+++  `open_time: pl.Series`, `opens: list[float]`, `closes: list[float]`,
+++  `positions: list[int]` and `fee: float`. Small private helpers do one check each:
+++  `_check_fee`, `_check_frame`, `_check_positions`.
+++- `app/backtest/engine.py` — new: `run_backtest(frame, positions, *, fee=DEFAULT_FEE) ->
+++  BacktestResult`, the frozen dataclass `BacktestResult(equity, trades, summary)`, the forward
+++  pass `_simulate(inputs)`, and the two frame builders `_equity_frame` and `_trades_frame`.
+++  `TRADE_SCHEMA` is built from the input's `open_time` dtype.
+++- `app/backtest/summary.py` — new: the frozen dataclass `Summary(total_return, max_drawdown,
+++  trade_count, win_rate, time_in_market)` and `summarize(equity: list[float],
+++  held: list[int], returns: list[float]) -> Summary`.
+++- `pyproject.toml` — `[tool.setuptools] packages = ["app", "app.data", "app.backtest"]`
+++  (spec Design, Packaging; an open flagged concern: if the gate decides against it, this
+++  line is dropped from the plan).
+++- `tests/test_backtest.py` — new: every test named in Proof, on frames built by hand with a
+++  `_frame(opens, closes, times=None)` helper in the file. Times default to integers
+++  `0..n-1`; the gap test uses `datetime(…, tzinfo=timezone.utc)` values cast to
+++  `pl.Datetime("ms", "UTC")`.
+++- `changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md` — this file, whenever the
+++  build departs from it.
+++
+++Unchanged: `app/data/` (every module), `app/__init__.py` (version `0.1.0`), every test file
+++already on `main` (`tests/test_smoke.py`, `tests/test_data*.py`, `tests/conftest.py`,
+++`tests/kucoin_stub.py`, `tests/fixtures/`), `.github/workflows/ci.yml`, and the runtime
+++dependencies.
+++
+++For the owner, not the run (guardrail file; the owner edits it in a PR of their own, before
+++the build PR if they want `sdlc/review` green on the first pass, per the intent), `CLAUDE.md`:
+++- lines 4 to 7: "Today the package (`app/`) holds one feature, `app/data/`: …" becomes two
+++  features. Suggested text: "Today the package (`app/`) holds two features: `app/data/`, …
+++  (as now) …; and `app/backtest/`, a long/flat backtest of one symbol on a klines frame."
+++- Architecture, after line 33 (the `app/data/` item), add: "- `app/backtest/` is the backtest
+++  engine, one module per job (inputs, engine, summary); its public API is
+++  `app/backtest/__init__.py` (`run_backtest`). It does no I/O; its tests,
+++  `tests/test_backtest.py`, use frames built by hand and no stub or fixture files."
+++- Lines 36 and 37: "the data tests run offline against …" stays true. No edit is needed.
+++- The Setup and Test lines and the CI install step need no change: no new dependency, and
+++  the same test command.
+++
+++## Order of work
+++1. `app/backtest/inputs.py` and the refusal tests. In order:
+++   - fee: refuse `bool`, anything not `int`/`float`, and `not 0 <= fee < 1` (catches NaN);
+++   - frame: refuse anything not a `pl.DataFrame`, a missing required column, an empty frame,
+++     a null `open_time`, an `open_time` that is not strictly increasing (`diff` of the
+++     series; first offending index), and a null, non-finite or `<= 0` `open`/`close`;
+++   - positions: refuse a length different from `frame.height`, then any value whose type
+++     is not `int` or whose value is not `0`/`1`. Check `type(v) is int`, which refuses
+++     `bool`, `float`, `None` and strings. A polars Series goes through `.to_list()` first,
+++     so a Boolean series gives `bool`s and a Float series gives `float`s; both are refused.
+++   Each message names the input, the first bad index or value, and what is accepted
+++   (spec R15). Commit with its tests.
+++2. `app/backtest/summary.py` and the summary unit tests: max drawdown as a running peak over
+++   the equity list; win rate `0.0` with no trades; time in market =
+++   `sum(held) / len(held)`. Commit with its tests.
+++3. `app/backtest/engine.py`: the pass of spec Design. `cash = 1.0`, `coins = 0.0`,
+++   `held = 0`; row 0 marks `1.0`; for `i >= 1`: `target = positions[i-1]`; on a buy
+++   `coins = cash * (1 - fee) / opens[i]`, `cash = 0.0`, record entry `(i, opens[i])`; on a
+++   sell `cash = coins * opens[i] * (1 - fee)`, `coins = 0.0`, append the trade with
+++   `return = cash / entry_cash - 1`; then `equity[i] = coins * closes[i] if held else cash`.
+++   After the loop, if `held`: sell at `closes[-1]`, append the trade with
+++   `closed_at_end=True`, and set `equity[-1] = cash`. Build the two frames and call
+++   `summarize`. Commit with the engine tests (example, buy-and-hold, decision candle, gap,
+++   last-row decision, open at end).
+++4. `app/backtest/__init__.py` and the API test (`from app.backtest import …`; `__all__`).
+++5. `pyproject.toml` packages line.
+++6. Run build, test and lint. Paste the output.
+++
+++## Risks
+++- **Breaks nothing existing.** No module imports `app.backtest`, and `app/data/` is only
+++  read: the engine imports nothing from it. The data shape it consumes is
+++  `app/data/schema.py: SCHEMA`; it reads three of its columns. The touched shared file is
+++  `pyproject.toml` (one list entry). A typo there would break `pip install -e .` and every
+++  CI job, so step 6's setup and test run is the check.
+++- **Riskiest step: the pass in step 3.** An off-by-one between the decision row and the fill
+++  row is lookahead, the one error the intent forbids, and it can still give plausible
+++  numbers. Mitigations:
+++  - the decision-candle test uses a close different from the next open;
+++  - the gap test uses distinct opens on either side of the gap;
+++  - the two-trade example pins every equity value, not only the total.
+++- **Floating point.** The 1e-9 tolerance holds only if the order of operations stays close
+++  to the intent's formulas. Compute `cash * (1 - fee) / open` and `coins * open * (1 - fee)`
+++  as plain Python floats. Do not take a vectorised cumulative product of returns, whose
+++  rounding differs. Tests use `pytest.approx(x, abs=1e-9)`.
+++- **Speed.** A Python loop over a year of 1-minute rows (about 525,600) takes on the order
+++  of a second. That is acceptable for this change (spec Design). A faster vectorised pass is
+++  a later change if the owner needs it.
+++- **Positions as a polars Series.** An `Int64` Series with nulls gives `None` from
+++  `.to_list()`, which the `type(v) is int` check refuses. A Float Series of `0.0/1.0` is
+++  refused too. This is strict on purpose (spec R14 and the closed concern), and the error
+++  message tells the caller to cast to an integer type.
+++- **Packaging concern open.** If the design gate decides against the `pyproject.toml` edit,
+++  drop step 5 and the file from this list. The tests pass either way (editable install).
+++- **CLAUDE.md drift.** Until the owner lands the CLAUDE.md lines above, the deploy review
+++  may raise an outdated-CLAUDE.md Important finding, as on change 0003. The run cannot edit
+++  that file.
+++- **No new dependency** (coding-standards rule 5; security-baseline rule 6): polars and the
+++  standard library only, no numpy import.
+++- **The default fee** is carried forward for the owner's confirmation (spec, open question
+++  1). A different number changes `DEFAULT_FEE` and `test_default_fee_is_one_tenth_percent`
+++  only.
+++
+++## Options not taken
+++- **Trades as a tuple of `Trade` dataclasses.** Not taken. A polars frame matches the input
+++  type, filters and joins directly with the equity frame, and has a fixed empty schema when
+++  there are no trades. The summary stays a dataclass because it is five scalars.
+++- **Vectorised polars pass** (shifted positions, fill flags, cumulative product). Not taken:
+++  it is harder to read for the off-by-one, and its rounding differs from the hand formulas.
+++  Correctness and exactness are the point of this change.
+++- **Accepting Boolean or float positions** (`True`/`1.0` as long). Not taken: the intent says
+++  "a position value other than 0 or 1" is refused, and security-baseline rule 2 favours a
+++  strict schema. A caller casts with `.cast(pl.Int8)`.
+++- **`win_rate = None` or NaN with no trades.** Not taken: it would make the field
+++  `float | None` and NaN fails equality checks. The choice is an open concern for the gate.
+++- **Equity marked at open, or an open position left out of the trade list.** Not taken: the
+++  intent's recommended answers were accepted (spec, open questions 2 and 3).
+++- **A `Backtest` class with configuration.** Not taken: one function with a keyword fee is
+++  the smallest API. Later changes (shorts, slippage) can add keyword arguments.
+++- **Importing `app.data.schema.SCHEMA` to validate column dtypes.** Not taken: the tests'
+++  hand-built frames use integer times, and the engine needs only three columns. Coupling to
+++  the full schema would refuse valid inputs.
+++- **Leaving `pyproject.toml` unchanged** as the intent states. Not taken pending the gate;
+++  see the open concern.
+++
+++Interrogation answers:
+++1. What could break: nothing that exists calls the new package. The consumers are the
+++   owner's own scripts. The touched shapes are `pyproject.toml`'s package list and the
+++   `load_klines` frame, which is read and never mutated: `validate` reads columns into
+++   lists and does no in-place operation.
+++2. Riskiest step: the engine pass (step 3), for lookahead and off-by-one. Mitigated as
+++   described in Risks.
+++3. Other options: listed above.
+++4. An engineer without this conversation can implement it from spec Design, the formulas in
+++   step 3, and the worked example's numbers in the spec. Nothing is missing.
+++5. Every Proof test is still to be written, in `tests/test_backtest.py`. The existing
+++   tests already exist and must keep passing.
+++
+++## Proof
+++- test: test_two_trade_example_trades
+++- test: test_two_trade_example_equity_curve
+++- test: test_two_trade_example_summary
+++- test: test_buy_and_hold_equals_price_ratio_less_two_fees
+++- test: test_no_fill_on_decision_candle
+++- test: test_gap_fills_at_next_existing_row
+++- test: test_decision_on_last_row_not_filled
+++- test: test_open_position_closed_at_last_close
+++- test: test_no_trades_gives_zero_win_rate_and_flat_equity
+++- test: test_default_fee_is_one_tenth_percent
+++- test: test_positions_accepts_series_and_list
+++- test: test_futures_volume_ignored
+++- test: test_refuses_length_mismatch
+++- test: test_refuses_bad_position_values
+++- test: test_refuses_empty_frame
+++- test: test_refuses_non_increasing_open_time
+++- test: test_refuses_fee_out_of_range
+++- test: test_refuses_bad_frame_schema_and_prices
+++- test: test_public_api
+++- The bad-value tests are parametrised over the values in spec R14 (null, NaN, `2`, `-1`,
+++  `0.5`, `"1"`, `True` for positions; `-0.01`, `1`, `1.5`, NaN, `True` for fees).
+++- Target (spec Acceptance): the worked example matches to 1e-9: total return
+++  `0.07568647568108`, max drawdown `0.1026973009`, 2 trades, win rate `0.5`, time in market
+++  `3/7`, equity `[1.0, 1.0989, 1.1988, 1.1976012, 1.1976012, 1.1299367322,
+++  1.07568647568108]`.
+++- `python -m compileall -q .` prints nothing. `python -m pytest` reports every test passed
+++  (the existing tests plus the new ones). `python -m ruff check .` prints
+++  `All checks passed!`.
++diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md
++new file mode 100644
++index 0000000..e72b004
++--- /dev/null
+++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md
++@@ -0,0 +1,204 @@
+++# Spec: Backtest engine core: long/flat on one symbol
+++Change id: 0004. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.51); overrides: none; policy sources: none
+++
+++## Requirements
+++- R1. A new package `app/backtest/` exposes one entry point, `run_backtest(frame, positions,
+++  *, fee=0.001)`, and its result and error types, in `app/backtest/__init__.py` (`__all__`),
+++  like `app/data/__init__.py` does for the data layer.
+++- R2. `frame` is a polars DataFrame shaped like `app.data.load_klines`'s output (spot or
+++  futures); only `open_time`, `open` and `close` are read. Other columns (`high`, `low`,
+++  `volume`, `close_time`, `quote_volume`, anything extra) are ignored, so a futures frame's
+++  `volume` in contracts is never used.
+++- R3. `positions` holds one target position per row of the frame, as a polars Series or a
+++  Python sequence. Each value must be the integer `0` (flat) or `1` (long).
+++- R4. `fee` is a keyword argument, a proportional fee charged on every fill. Its default is
+++  `0.001`, one named module constant.
+++- R5. The engine starts flat with equity `1.0`. Row 0 is always flat, at equity `1.0`.
+++- R6. The position decided at row `i`'s close is filled at row `i+1`'s open, whatever the
+++  gap in `open_time` between the two rows. Nothing is filled at the decision row's own
+++  prices. The engine never assumes one row per interval.
+++- R7. A fill happens only when the decided position differs from the position held. Buying
+++  turns equity `E` into `E × (1 − fee) / open` coins. Selling turns `q` coins into
+++  `q × open × (1 − fee)`.
+++- R8. A decision on the last row is never filled at a next open, because there is no next row.
+++- R9. If the position is still long after the last row's open, the engine closes it at the
+++  last row's close, with the fee, and records it as a trade marked as closed at the frame's
+++  end (answer to open question 3).
+++- R10. Each row's equity is marked at its close, after any fill at that row's open
+++  (answer to open question 2). For a long row: coins × close. For a flat row: the cash. On
+++  the last row with an open position, the equity is the cash from the end-of-frame close, so
+++  the curve's last value is the final equity.
+++- R11. The output is one result object with three parts:
+++  - an equity frame, one row per row of the input, in input order;
+++  - a trades frame, one row per closed trade: entry time and price, exit time and price,
+++    return after fees, and whether the trade was closed at the frame's end;
+++  - a summary: total return, max drawdown, number of trades, win rate and time in market.
+++- R12. Summary definitions, from the intent:
+++  - total return = final equity / 1.0 − 1;
+++  - max drawdown = the largest value of `1 − equity / running peak` over the equity curve,
+++    as a fraction `>= 0` (`0.0` when the curve never falls);
+++  - win rate = the share of trades whose return after fees is `> 0`;
+++  - time in market = the share of the frame's rows in which the position held after the
+++    row's open is long. It counts rows, not wall time.
+++- R13. A trade's return after fees is `exit value / entry equity − 1`, which is
+++  `(1 − fee)² × exit price / entry price − 1`.
+++- R14. These inputs are refused with `BacktestInputError` (a `ValueError` subclass) before any
+++  calculation:
+++  - a `positions` length that differs from the frame's height;
+++  - a position value other than `0` or `1`: null, NaN, `2`, `-1`, `0.5`, a string, or a
+++    boolean (`True` and `False` are not `0` and `1`; see the closed concern);
+++  - an empty frame, or one whose `open_time` is not strictly increasing;
+++  - a fee below 0 or not below 1. The check is `not 0 <= fee < 1`, so NaN is refused too.
+++    A boolean or a non-number fee is also refused.
+++  - by security-baseline rule 2 (validate every input against a schema; see the closed
+++    concern): a `frame` that is not a polars DataFrame; a frame missing `open_time`, `open`
+++    or `close`; a null `open_time`; an `open` or `close` that is null, non-finite or `<= 0`.
+++- R15. Every error message says which input is wrong and what is accepted. It quotes the
+++  first bad row index or value where there is one, never a stack trace (ux-and-brand rule 4,
+++  applied to messages a caller reads).
+++- R16. The engine does no I/O: no network, no file, no cache, no `load_klines` call, no
+++  logging. No new dependency: polars and the standard library only, no numpy import.
+++- R17. No lookahead: a fill uses only the open of a row after the decision row, or the last
+++  row's close for the end-of-frame close. The position decided at row `i` never affects
+++  equity at or before row `i`.
+++- R18. Results match hand calculations within an absolute tolerance of about 1e-9.
+++- R19. `app/data/` and every test file already on `main` stay unchanged. The tests are new,
+++  in `tests/test_backtest.py`, on frames built by hand in that file, with no stub or fixture
+++  files. The package version stays `0.1.0` (`app/__init__.py` and `pyproject.toml`).
+++- Policies:
+++  - coding-standards applies: CLAUDE.md conventions (Python >= 3.10, type hints on public
+++    functions, ruff at line length 100, one test module per area, one module per job as in
+++    `app/data/`; rule 1); match `app/data/` naming, frozen dataclasses and error style
+++    (rule 2); every behaviour has a test (rule 4); no new dependency (rule 5); small
+++    functions, no dead code (rule 7).
+++  - security-baseline applies to input handling only (rule 2, see R14). Rules 1, 3, 5 and 7
+++    do not apply: no endpoint, no secret, no stored state, no network. Rule 6: no new
+++    dependency, no `eval`, `exec` or `pickle`.
+++  - Risk list (security-baseline rule 8): none of `auth`, `data migrations`, `money movement`
+++    or `production config` applies. The engine simulates equity on historical prices in
+++    memory. It moves no funds, places no orders, holds no credentials, stores nothing and
+++    changes no configuration.
+++  - ux-and-brand: no screen and no CLI (the CLI is out of scope), so rules 1 to 3 and 5 to 7
+++    do not apply and there is no Mock line. Rule 4 shapes the error messages (R15).
+++  - data-conventions does not apply: no stored field, schema of record, migration, event
+++    or personal data. The frames returned are in memory and public market data
+++    (rule 1: public).
+++  - definition-of-done applies: build, test and lint green with their output pasted, the
+++    verifier report and the gates of each phase.
+++
+++## Design
+++- **Place in the codebase.** `app/backtest/` is a sibling of `app/data/`. It is a pure
+++  function of its inputs and imports nothing from `app.data`. It accepts any frame with the
+++  columns of R2, so a frame from `load_klines`, from `KlineGapError.frame` or built by hand
+++  in a test works the same. `open_time` may have any orderable dtype (the data layer's
+++  `Datetime("ms", "UTC")` or plain integers in tests).
+++- **Modules, one per job** (as in `app/data/`):
+++  - input validation: turns `(frame, positions, fee)` into checked plain values, or raises
+++    `BacktestInputError`;
+++  - the engine: one forward pass over the rows that tracks cash, coins, the held position,
+++    the equity per row and the open trade;
+++  - the summary: the four metrics computed from the equity column and the trades;
+++  - `__init__.py`: the public API.
+++- **Public API.**
+++  - `run_backtest(frame: pl.DataFrame, positions: pl.Series | Sequence[int], *, fee: float =
+++    DEFAULT_FEE) -> BacktestResult`.
+++  - `DEFAULT_FEE = 0.001`.
+++  - `BacktestResult`, a frozen dataclass: `equity: pl.DataFrame`, `trades: pl.DataFrame`,
+++    `summary: Summary`.
+++  - `Summary`, a frozen dataclass: `total_return: float`, `max_drawdown: float`,
+++    `trade_count: int`, `win_rate: float`, `time_in_market: float`.
+++  - `BacktestInputError(ValueError)`, like `InvalidRequestError` in `app/data/params.py`.
+++- **Equity frame**: `open_time` (the input's dtype), `position` (`Int8`, the position held
+++  after the row's open), `equity` (`Float64`, marked at the row's close).
+++- **Trades frame**: `entry_time` and `exit_time` (the input's `open_time` dtype),
+++  `entry_price` and `exit_price` (`Float64`), `return` (`Float64`, after fees),
+++  `closed_at_end` (`Boolean`). A normal exit has the `open_time` and `open` of the exit row.
+++  An end-of-frame close has the last row's `open_time` and its `close`, with
+++  `closed_at_end = true`. With no trades, the frame is empty but keeps these columns and
+++  dtypes.
+++- **The pass, row by row.** At row `i > 0`, the target is `positions[i − 1]`. If it differs
+++  from the held position, fill at `open[i]` (R7) and, on an exit, append the trade. Then mark
+++  equity at `close[i]`. After the last row, if long, sell at the last `close` and overwrite
+++  the last equity value with the resulting cash (R9, R10). `positions[last]` is never read
+++  for a fill (R8). A plain Python loop over the validated values is enough at this size: a
+++  year of 1-minute candles is about 525,600 rows. It keeps every number an exact IEEE
+++  product, in the order of the intent's formulas, for the 1e-9 comparisons.
+++- **Validation order.** fee, then frame (type, columns, height, `open_time` nulls and strict
+++  increase, prices), then positions (length, then values). The first failure raises. The
+++  message names the input, the first bad row index and the accepted values. Example:
+++  `positions[3] is 2: each position must be 0 (flat) or 1 (long)`.
+++- **Win rate with no trades** is `0.0` (open concern below). Max drawdown on a flat curve
+++  is `0.0`.
+++- **Packaging.** `pyproject.toml`'s explicit `[tool.setuptools] packages = ["app",
+++  "app.data"]` (added by change 0002) also gets `"app.backtest"`, so a regular
+++  (non-editable) install ships the new package (open concern below).
+++- **Unchanged**: `app/data/`, `app/__init__.py` (version `0.1.0`), every existing test
+++  file, `.github/workflows/ci.yml`, and the runtime dependencies.
+++- **Worked example** (the intent's two-trade table, fee 0.001), with the answers to open
+++  questions 2 and 3:
+++  - equity per row: `1.0`, `1.0989`, `1.1988`, `1.1976012`, `1.1976012`, `1.1299367322`,
+++    `1.07568647568108` (= `1.2 × 0.9 × 0.999⁴`);
+++  - positions held: `0, 1, 1, 0, 0, 1, 0`;
+++  - trades: (row 1, 100) → (row 3, 120), return `0.1976012`; (row 5, 90) → (row 6, 81),
+++    return `−0.1017991`; neither closed at the end;
+++  - summary: total return `0.07568647568108`, max drawdown `1 − 0.9 × 0.999³ =
+++    0.1026973009` (peak `1.1988` at row 2, trough at row 6), 2 trades, win rate `0.5`,
+++    time in market `3/7 ≈ 0.4285714286`.
+++
+++## Open questions from intent
+++- "The default fee? Recommended: 0.1% (`0.001`) per fill." Answered in part: the default is
+++  `0.001`, as the keyword argument `fee`, per the intent's recommendation, which the owner
+++  accepted when they merged the intent. Carried forward: confirming that 0.1% is KuCoin's
+++  current base spot fee. Neither the codebase nor a policy states a fee, and this run has
+++  no network access to check KuCoin's fee page. The owner confirms or corrects the number at
+++  the design gate. Correcting it changes one constant and the default-fee test. The build
+++  can go ahead without it.
+++- "Equity marked at close or at open? Recommended: at close." Answered: at close, after any
+++  fill at that row's open (R10), per the intent's recommendation. The codebase has no
+++  earlier convention: nothing in `app/` computes equity. The worked example under Design
+++  states the max drawdown this gives.
+++- "A position still open at the frame's end? Recommended: close it at the last close."
+++  Answered: closed at the last row's close, with the fee, as a trade with
+++  `closed_at_end = true`. It counts in the trade count and the win rate, so the trade list,
+++  the final equity and the total return agree (R9, R10).
+++
+++## Flagged concerns
+++- Packaging contradicts the intent: the intent says `pyproject.toml` needs no change, but its
+++  explicit `packages = ["app", "app.data"]` leaves `app.backtest` out of a regular
+++  (non-editable) install. The editable install of `commands.setup`, and so CI and the tests,
+++  still import it through the `app` directory. The design adds `"app.backtest"` to the list,
+++  a one-line edit to a non-guardrail file. The alternative is to leave `pyproject.toml`
+++  unchanged, as the intent says, and accept that a wheel install does not ship the engine.
+++- Win rate with no trades: the intent defines win rate as a share of trades and is silent
+++  when there are none. The design returns `0.0`, not `None` or NaN, so `Summary.win_rate`
+++  stays a plain `float`, and "no trades" is read from `trade_count == 0`.
+++- [x] Inputs refused beyond the intent's list (a frame that is not a DataFrame or lacks
+++  `open_time`, `open` or `close`; a null `open_time`; a null, non-finite or non-positive
+++  `open` or `close`; a NaN, boolean or non-number fee; boolean position values): decided:
+++  refuse each with `BacktestInputError` before any calculation, per security-baseline rule 2
+++  ("validate every external input against a schema"). A non-positive price would otherwise
+++  divide by zero or give negative coins, and NaN passes `fee < 0` and `fee >= 1` alike.
+++
+++## Acceptance
+++- `tests/test_backtest.py` (new; no other test file changes) passes offline with frames
+++  built by hand, comparing with an absolute tolerance of about 1e-9 (`pytest.approx(...,
+++  abs=1e-9)` or the same). It shows:
+++  - buy-and-hold: long from row 0, flat decided before the end, so the final equity is
+++    `(1 − fee)² × exit open / entry open`;
+++  - the intent's two-trade example gives the trades, equity curve and summary stated
+++    under Design (total return `0.07568647568108`, max drawdown `0.1026973009`, 2 trades,
+++    win rate `0.5`, time in market `3/7`);
+++  - no fill on the decision candle: a row whose close differs from the next row's open is
+++    entered at that next open;
+++  - a gap: a 1h frame without the 02:00 row, a decision at the 01:00 close fills at the
+++    03:00 open;
+++  - a position open at the end is closed at the last close with the fee and marked
+++    `closed_at_end`, and the final equity equals `1 + total return`;
+++  - a decision on the last row is not filled;
+++  - each refused input of R14 raises `BacktestInputError`;
+++  - the default fee is `0.001`, and a zero-trade run gives win rate `0.0`;
+++  - `run_backtest` reads no network or file: the tests use no stub, fixture or monkeypatch
+++    of `app.data`.
+++- `python -m compileall -q .` prints nothing and exits 0. `python -m pytest` passes every
+++  test, the existing ones included. `python -m ruff check .` prints `All checks passed!`.
+++- `app/data/` is unchanged and the package version is still `0.1.0`.
++diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml b/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml
++index 2d73564..caf6eab 100644
++--- a/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml
+++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml
++@@ -1,7 +1,7 @@
++ id: "0004"
++ slug: backtest-engine-core-long-flat-on-one-sy
++ title: "Backtest engine core: long/flat on one symbol"
++-phase: intent
+++phase: design
++ entry_route: idea
++ change_type: feature
++ gate:
++@@ -26,5 +26,5 @@ released_at: null
++ released_sha: null
++ released_pr: null
++ created_at: "2026-11-07T10:33:53Z"
++-updated_at: "2026-11-07T10:33:53Z"
+++updated_at: "2026-11-07T11:02:48Z"
++ schema_version: 1
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl
+new file mode 100644
+index 0000000..6f93675
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl
+@@ -0,0 +1,42 @@
++{"at": "2026-11-07T10:59:29Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T11:01:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:01:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:01:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:01:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:02:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:02:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:02:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:02:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:02:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T11:04:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:04:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:04:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:04:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:04:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T11:04:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:04:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:04:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:04:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:04:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "panel_blind", "reason": "Review panel blindness (decision 21): this search would read changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-reviewer.md, the reviewer's verdict on item 1 of the design phase, which the advocate must not see before writing its own. Search a folder that does not contain changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/ (for example src/ or plugin/), or limit the search to code with a type (type: py) or a glob (glob: \"*.py\").", "tool": "Grep", "verdict": "block"}
++{"at": "2026-11-07T11:05:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:05:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:05:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:05:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:06:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:06:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:06:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:06:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:06:49Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T11:07:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T11:07:19Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:07:19Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:07:19Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:07:19Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:08:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:08:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:08:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:08:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:08:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:08:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:08:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T11:08:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.md
+new file mode 100644
+index 0000000..e5129cc
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.md
+@@ -0,0 +1,10 @@
++## Verdict
++Keep the `pyproject.toml` edit, but not in its easy form: name the proof for it (a wheel listing in the build verifier, as change 0002's verifier did) and prefer `[tool.setuptools.packages.find] include = ["app*"]` over a third hand-kept entry, so this concern is not re-filed by every later package; if the owner would rather honour the intent's "needs no change" line, leaving the file untouched is safe for every install this project actually performs.
++
++## The case against
++The easy answer is "one line in a non-guardrail file, obviously harmless". Four things weigh against it as written.
++1. It contradicts a line the owner merged (intent.md: "`pyproject.toml` and `.github/workflows/ci.yml` need no change"), and the design does not say the owner is asked to re-decide it; it just proceeds. A merged intent line should be overturned by the owner at the gate, not quietly by the spec.
++2. Nothing in Proof checks it. plan.md's test list has no wheel or install test, and `tests/test_backtest.py` imports `app.backtest` from the checkout, so every test passes with the entry present, absent or misspelt. Change 0002 proved the same table with `pip wheel` and a listing of the wheel's files (its verifier.md, "Packaging"); this plan does not ask the build verifier for that, so the one claim the edit makes ("a regular install ships the new package") stays a claim.
++3. The benefit is for a consumer that does not exist. `commands.setup` is `pip install -e .`; the project's own CI (`.github/workflows/ci.yml`) never installs the package at all, it runs `python -m pytest` from the checkout; the intent names the owner's own scripts as the only consumer. The cost, named in plan.md's Risks, is that a typo breaks `pip install -e .` for every SDLC phase job (not the project CI, which plan.md wrongly includes).
++4. It treats the symptom. The list exists only because change 0002 silenced flat-layout discovery ("Multiple top-level packages discovered"); appending `"app.backtest"` keeps a hand-kept list that every future package (strategies, a CLI, shorts) must remember, each time as a flagged concern. `packages.find` with `include = ["app*"]` is also one line, removes the contradiction for good, and still excludes `changes/`, `evals/`, `lessons/`, `policies/`.
++What I would decide: make the packaging line self-maintaining (`find`/`include = ["app*"]`), and add to Acceptance that the build verifier builds a wheel and lists `app/backtest/*.py` in it. I would accept the obvious one-entry edit if the owner's design-gate merge is recorded as the decision that overrides the intent line and the build verifier's wheel listing is named as its proof; the edit itself is correct in substance.
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.model.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.model.json
+new file mode 100644
+index 0000000..df60b3e
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-advocate.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "ab6c1eaa58c35d2bb",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-11-07T11:05:58Z",
++  "member": "advocate",
++  "models": [
++    "claude-fable-5-1"
++  ],
++  "n": 1,
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/fb62a35e-e1e1-4385-9eff-751da85cc054/subagents/agent-ab6c1eaa58c35d2bb.jsonl"
++}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-conciliator.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-conciliator.json
+new file mode 100644
+index 0000000..0e55f56
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-conciliator.json
+@@ -0,0 +1,12 @@
++{
++  "reviewer": "keep the one-line edit adding \"app.backtest\" to the explicit packages list, since leaving it out silently breaks a regular install",
++  "advocate": "keep the edit but name a wheel-listing proof in the build verifier and prefer packages.find include = [\"app*\"], with the owner's design-gate merge recorded as overriding the intent line",
++  "decision": "Add \"app.backtest\" to `[tool.setuptools] packages`, have the build verifier build a wheel and list `app/backtest/*.py` in it as proof, and leave the intent's \"needs no change\" line for the owner to overturn at the design gate.",
++  "rationale": [
++    "Both verdicts agree to keep the edit: the explicit list leaves app.backtest out of a non-editable install, and pyproject.toml is not a guardrail file.",
++    "The intent line sits under 'no new dependency'. The edit adds no dependency and leaves ci.yml alone, so it keeps to what that line was for.",
++    "The advocate is right that no test catches the entry being absent or misspelt, so the safer reading adds the wheel listing change 0002 already used as proof.",
++    "Keep the explicit entry rather than switching to packages.find: it is the smaller change plan.md already names, and a discovery change is a wider design choice for the owner.",
++    "Leaving the edit out ships an engine that cannot be imported, and no gate would catch it. Making the edit risks only a typo, which step 6's setup run catches."
++  ]
++}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-reviewer.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-reviewer.md
+new file mode 100644
+index 0000000..df29b68
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-1-reviewer.md
+@@ -0,0 +1,22 @@
++## Verdict
++Keep the design: add `"app.backtest"` to `[tool.setuptools] packages` and close the concern as decided.
++
++## Why
++- Fact: `pyproject.toml` lists packages explicitly (`packages = ["app", "app.data"]`), so
++  setuptools ships only those two; a regular (wheel) install would ship `app/backtest/` without
++  its code, and `from app.backtest import ...` would raise ImportError.
++- REVIEW.md, "What Important means here": a finding that "would break behavior" is Important.
++  Leaving the line out ships a package whose headline feature cannot be imported once installed.
++  The editable install in `commands.setup` hides this from CI and the tests, so no gate would
++  catch it later.
++- The intent's line 72 ("`pyproject.toml` ... need no change") sits under "no new dependency":
++  its purpose is no new runtime dependency and no CI change. The edit adds no dependency
++  (`dependencies` is untouched) and leaves `ci.yml` alone, so the goal holds. Only the wording
++  was wrong about the package list.
++- `pyproject.toml` is not a guardrail file (REVIEW.md framework rules; CLAUDE.md lists only
++  `.claude/**`, `CLAUDE.md`, `REVIEW.md`, `sdlc.yaml` and `policies/**`). The version stays `0.1.0` (spec R19).
++- REVIEW.md, "plan.md must reflect the diff": plan.md already names the file (Files, step 5,
++  Risks), so the edit is compliant. If the owner rejects it, plan.md says to drop step 5.
++- Safest reading: the one-line edit is low risk, since step 6's setup and test run catches a
++  typo. A silently broken install is the real failure, so the spec should flag the deviation
++  from the intent for the owner rather than follow the intent's literal wording.
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.md
+new file mode 100644
+index 0000000..2790103
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.md
+@@ -0,0 +1,10 @@
++## Verdict
++Return `None` (field `float | None`) when `trade_count == 0`, not `0.0`; accept `0.0` only if `Summary.win_rate`'s docstring says so and the test pins it together with `trade_count == 0`.
++
++## The case against
++The intent (line 43) defines win rate as "the share of trades whose return after fees is above zero". A share of an empty set is undefined; `0.0` is the value of a different state, "every trade lost". The design collapses the two: a strategy that never traded and one that traded five times and lost five times read the same on this field, and the spec's own remedy ("no trades is read from `trade_count == 0`") admits the field cannot be read alone. That is a sentinel, which the intent's "short summary" the owner reads did not ask for.
++The spec pairs it with "max drawdown on a flat curve is `0.0`", but those are not alike: a flat curve genuinely never fell, so `0.0` is the computed value; no trades yields no value at all.
++The project's own idiom for "absent" is `None`, not a sentinel: `app/data/loader.py` has `_first_day(frame) -> date | None` returning `None` on an empty frame, `Gap.reason: str | None`, and `rest.py` returns `pl.DataFrame | None`. Polars itself gives null for the mean of an empty series. Coding-standards rule 2 (match the surrounding code) points to `None`; the common backtesting libraries report NaN here for the same reason.
++The plan's two reasons for rejecting the alternative are thin: "NaN fails equality checks" argues against NaN only, and "it would make the field `float | None`" names the annotation as if it were a cost. `None` compares with `==` in a test and reads as "undefined" without a second lookup.
++A `0.0` that is a legal value also hides an engine bug: if the pass silently drops every trade (the plan's own riskiest step), the summary stays well formed (0 trades, win rate `0.0`, a non-zero total return) and no single-field assertion flags it; a `None` turns any downstream arithmetic on it into a visible failure.
++I would decide: `win_rate: float | None`, `None` when `trade_count == 0`, and rename the Proof test to say "win rate is None". I would accept the design's `0.0` if the owner prefers an all-numeric record for later tabulation, provided the `Summary` docstring states "0.0 when there are no trades; see `trade_count`" and `test_no_trades_gives_zero_win_rate_and_flat_equity` asserts `trade_count == 0` and `win_rate == 0.0` together, so the convention is written down and not inferred.
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.model.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.model.json
+new file mode 100644
+index 0000000..b2664cb
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-advocate.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "aca8f4ac826ae544e",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-11-07T11:08:27Z",
++  "member": "advocate",
++  "models": [
++    "claude-fable-5-1"
++  ],
++  "n": 2,
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/fb62a35e-e1e1-4385-9eff-751da85cc054/subagents/agent-aca8f4ac826ae544e.jsonl"
++}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-conciliator.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-conciliator.json
+new file mode 100644
+index 0000000..966a880
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-conciliator.json
+@@ -0,0 +1,11 @@
++{
++  "reviewer": "keep win rate 0.0 as a plain float when there are no trades, documented on Summary.win_rate and pinned by the zero-trade test",
++  "advocate": "prefer None (float | None) when trade_count == 0, but accept 0.0 if the Summary docstring states it and the test asserts trade_count == 0 and win_rate == 0.0 together",
++  "decision": "Keep win_rate a plain float that is 0.0 when trade_count == 0; the Summary docstring states \"0.0 when there are no trades; see trade_count\", and the zero-trade test asserts trade_count == 0 and win_rate == 0.0 together.",
++  "rationale": [
++    "No policy rule or intent line settles it: the intent defines win rate only as a share of trades, so this is a design choice.",
++    "Both verdicts accept 0.0 under the same conditions (docstring plus a joint trade_count/win_rate assertion), so this decides with their common ground.",
++    "trade_count is on Summary, so no information is lost; None would widen the type and push a None check onto every caller.",
++    "The advocate's worry about a silent engine bug is met by the joint assertion, which ties the zero win rate to zero trades in the test."
++  ]
++}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-reviewer.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-reviewer.md
+new file mode 100644
+index 0000000..6c24607
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-2-reviewer.md
+@@ -0,0 +1,9 @@
++## Verdict
++Accept the design as written: win rate is `0.0` when there are no trades, kept as a plain `float`, documented on `Summary.win_rate`, with `trade_count == 0` as the way to tell "no trades" apart from "no winners", and pinned by the zero-trade test already in Acceptance.
++
++## Why
++- No rule settles it. The intent (line 43) defines win rate only as "the share of trades whose return after fees is above zero" and says nothing about zero trades. No policy skill (coding-standards, data-conventions, ux-and-brand, security-baseline, definition-of-done) has a rule on empty-ratio values or None/NaN sentinels, so this is a design choice, not a policy question.
++- REVIEW.md line 14 keeps Important for findings that "would break behavior, leak data or breach a policy". `0.0` does none of these: nothing breaks, because `Summary` also carries `trade_count: int` (spec line 109), so a caller loses no information.
++- The safest reading is `0.0`. NaN fails every comparison without an error (`nan > 0.5` is False, and `nan == nan` is False, so `pytest.approx` equality breaks), and it spreads through any later arithmetic. `None` would turn `win_rate` into `float | None` and make every caller check for None. `0.0` matches the spec's own rule for an empty measure: max drawdown is `0.0` on a flat curve (spec lines 39 and 130).
++- It is tested and planned: Acceptance line 199 ("a zero-trade run gives win rate `0.0`") and plan step 2 (line 61) pin it, and the adversarial review (evidence/adversarial-review-design.json) found flagging it as an open concern with an alternative acceptable.
++- One condition: the build should say in the `Summary` docstring that `win_rate` is `0.0` when `trade_count == 0`, so the convention is written where callers see it, not only in spec.md (coding-standards rule 7, explicit names).
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-items.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-items.json
+new file mode 100644
+index 0000000..cb13431
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/panel/design-items.json
+@@ -0,0 +1,36 @@
++{
++  "decided": 0,
++  "gate": "park",
++  "items": [
++    {
++      "decided": false,
++      "item": "Packaging contradicts the intent: the intent says `pyproject.toml` needs no change, but its",
++      "key": "concern:cbc50fc5008760a7",
++      "kind": "concern",
++      "n": 1
++    },
++    {
++      "decided": false,
++      "item": "Win rate with no trades: the intent defines win rate as a share of trades and is silent",
++      "key": "concern:04bd3d7ee0322608",
++      "kind": "concern",
++      "n": 2
++    }
++  ],
++  "iterations": {
++    "cap": 2,
++    "left": 2,
++    "used": 0
++  },
++  "panel_calls": {
++    "cap": 4,
++    "left": 4,
++    "used": 0
++  },
++  "parks": [],
++  "pending": [
++    1,
++    2
++  ],
++  "phase": "design"
++}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/run-design.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/run-design.json
+new file mode 100644
+index 0000000..e0af03f
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/run-design.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "design",
++  "spend_usd": null,
++  "started_at": "2026-11-07T10:59:32Z"
++}
+\ No newline at end of file
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md
+new file mode 100644
+index 0000000..1efefc1
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md
+@@ -0,0 +1,189 @@
++# Plan: Backtest engine core: long/flat on one symbol (from intent.md 2026-11-07, spec.md 2026-11-07)
++
++## Files that change
++- `app/backtest/__init__.py` — new: module docstring and the public API. It re-exports
++  `run_backtest`, `DEFAULT_FEE`, `BacktestResult`, `Summary` and `BacktestInputError`, with
++  `__all__` sorted as in `app/data/__init__.py`.
++- `app/backtest/inputs.py` — new: `BacktestInputError(ValueError)`, `DEFAULT_FEE = 0.001`,
++  `REQUIRED_COLUMNS = ("open_time", "open", "close")` and
++  `validate(frame, positions, fee) -> Inputs`. `Inputs` is a frozen dataclass holding
++  `open_time: pl.Series`, `opens: list[float]`, `closes: list[float]`,
++  `positions: list[int]` and `fee: float`. Small private helpers do one check each:
++  `_check_fee`, `_check_frame`, `_check_positions`.
++- `app/backtest/engine.py` — new: `run_backtest(frame, positions, *, fee=DEFAULT_FEE) ->
++  BacktestResult`, the frozen dataclass `BacktestResult(equity, trades, summary)`, the forward
++  pass `_simulate(inputs)`, and the two frame builders `_equity_frame` and `_trades_frame`.
++  `TRADE_SCHEMA` is built from the input's `open_time` dtype.
++- `app/backtest/summary.py` — new: the frozen dataclass `Summary(total_return, max_drawdown,
++  trade_count, win_rate, time_in_market)` and `summarize(equity: list[float],
++  held: list[int], returns: list[float]) -> Summary`. The `Summary` docstring says of
++  `win_rate`: "0.0 when there are no trades; see trade_count" (panel #2).
++- `pyproject.toml` — `[tool.setuptools] packages = ["app", "app.data", "app.backtest"]`
++  (spec Design, Packaging; decided by panel #1: keep the explicit entry, proven by a wheel
++  listing; the owner may overturn it at the design gate, and then this line is dropped).
++- `tests/test_backtest.py` — new: every test named in Proof, on frames built by hand with a
++  `_frame(opens, closes, times=None)` helper in the file. Times default to integers
++  `0..n-1`; the gap test uses `datetime(…, tzinfo=timezone.utc)` values cast to
++  `pl.Datetime("ms", "UTC")`.
++- `changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md` — this file, whenever the
++  build departs from it.
++
++Unchanged: `app/data/` (every module), `app/__init__.py` (version `0.1.0`), every test file
++already on `main` (`tests/test_smoke.py`, `tests/test_data*.py`, `tests/conftest.py`,
++`tests/kucoin_stub.py`, `tests/fixtures/`), `.github/workflows/ci.yml`, and the runtime
++dependencies.
++
++For the owner, not the run (guardrail file; the owner edits it in a PR of their own, before
++the build PR if they want `sdlc/review` green on the first pass, per the intent), `CLAUDE.md`:
++- lines 4 to 7: "Today the package (`app/`) holds one feature, `app/data/`: …" becomes two
++  features. Suggested text: "Today the package (`app/`) holds two features: `app/data/`, …
++  (as now) …; and `app/backtest/`, a long/flat backtest of one symbol on a klines frame."
++- Architecture, after line 33 (the `app/data/` item), add: "- `app/backtest/` is the backtest
++  engine, one module per job (inputs, engine, summary); its public API is
++  `app/backtest/__init__.py` (`run_backtest`). It does no I/O; its tests,
++  `tests/test_backtest.py`, use frames built by hand and no stub or fixture files."
++- Lines 36 and 37: "the data tests run offline against …" stays true. No edit is needed.
++- The Setup and Test lines and the CI install step need no change: no new dependency, and
++  the same test command.
++
++## Order of work
++1. `app/backtest/inputs.py` and the refusal tests. In order:
++   - fee: refuse `bool`, anything not `int`/`float`, and `not 0 <= fee < 1` (catches NaN);
++   - frame: refuse anything not a `pl.DataFrame`, a missing required column, an empty frame,
++     a null `open_time`, an `open_time` that is not strictly increasing (`diff` of the
++     series; first offending index), and a null, non-finite or `<= 0` `open`/`close`;
++   - positions: refuse a length different from `frame.height`, then any value whose type
++     is not `int` or whose value is not `0`/`1`. Check `type(v) is int`, which refuses
++     `bool`, `float`, `None` and strings. A polars Series goes through `.to_list()` first,
++     so a Boolean series gives `bool`s and a Float series gives `float`s; both are refused.
++   Each message names the input, the first bad index or value, and what is accepted
++   (spec R15). Commit with its tests.
++2. `app/backtest/summary.py` and the summary unit tests: max drawdown as a running peak over
++   the equity list; win rate `0.0` with no trades (panel #2); time in market =
++   `sum(held) / len(held)`. Commit with its tests.
++3. `app/backtest/engine.py`: the pass of spec Design. `cash = 1.0`, `coins = 0.0`,
++   `held = 0`; row 0 marks `1.0`; for `i >= 1`: `target = positions[i-1]`; on a buy
++   `entry_cash = cash`, `coins = cash * (1 - fee) / opens[i]`, `cash = 0.0`, record entry
++   `(i, opens[i])`; on a
++   sell `cash = coins * opens[i] * (1 - fee)`, `coins = 0.0`, append the trade with
++   `return = cash / entry_cash - 1`; then `equity[i] = coins * closes[i] if held else cash`.
++   After the loop, if `held`: sell at `closes[-1]`, append the trade with
++   `closed_at_end=True`, and set `equity[-1] = cash`. Build the two frames and call
++   `summarize`. Commit with the engine tests (example, buy-and-hold, decision candle, gap,
++   last-row decision, open at end).
++4. `app/backtest/__init__.py` and the API test (`from app.backtest import …`; `__all__`).
++5. `pyproject.toml` packages line.
++6. Run build, test and lint. Paste the output. The build verifier also builds a wheel
++   (`python -m pip wheel . --no-deps -w <tmp>`, as change 0002's verifier did) and lists
++   its contents. `app/backtest/__init__.py`, `inputs.py`, `engine.py` and `summary.py`
++   must be in it (panel #1).
++
++## Risks
++- **Breaks nothing existing.** No module imports `app.backtest`, and `app/data/` is only
++  read: the engine imports nothing from it. The data shape it consumes is
++  `app/data/schema.py: SCHEMA`; it reads three of its columns. The touched shared file is
++  `pyproject.toml` (one list entry). A typo there would break `pip install -e .` and every
++  CI job, so step 6's setup and test run is the check.
++- **Riskiest step: the pass in step 3.** An off-by-one between the decision row and the fill
++  row is lookahead, the one error the intent forbids, and it can still give plausible
++  numbers. Mitigations:
++  - the decision-candle test uses a close different from the next open;
++  - the gap test uses distinct opens on either side of the gap;
++  - the two-trade example pins every equity value, not only the total.
++- **Floating point.** The 1e-9 tolerance holds only if the order of operations stays close
++  to the intent's formulas. Compute `cash * (1 - fee) / open` and `coins * open * (1 - fee)`
++  as plain Python floats. Do not take a vectorised cumulative product of returns, whose
++  rounding differs. Tests use `pytest.approx(x, abs=1e-9)`.
++- **Speed.** A Python loop over a year of 1-minute rows (about 525,600) takes on the order
++  of a second. That is acceptable for this change (spec Design). A faster vectorised pass is
++  a later change if the owner needs it.
++- **Positions as a polars Series.** An `Int64` Series with nulls gives `None` from
++  `.to_list()`, which the `type(v) is int` check refuses. A Float Series of `0.0/1.0` is
++  refused too. This is strict on purpose (spec R14 and the closed concern), and the error
++  message tells the caller to cast to an integer type.
++- **Packaging (panel #1).** No test catches a missing or misspelt `"app.backtest"` entry,
++  because the editable install imports through the `app` directory. The wheel listing of
++  step 6 is the check. If the owner overturns the decision at the design gate, drop step 5,
++  the file and the wheel proof.
++- **CLAUDE.md drift.** Until the owner lands the CLAUDE.md lines above, the deploy review
++  may raise an outdated-CLAUDE.md Important finding, as on change 0003. The run cannot edit
++  that file.
++- **No new dependency** (coding-standards rule 5; security-baseline rule 6): polars and the
++  standard library only, no numpy import.
++- **The default fee** is carried forward for the owner's confirmation (spec, open question
++  1). A different number changes `DEFAULT_FEE` and `test_default_fee_is_one_tenth_percent`
++  only.
++
++## Options not taken
++- **Trades as a tuple of `Trade` dataclasses.** Not taken. A polars frame matches the input
++  type, filters and joins directly with the equity frame, and has a fixed empty schema when
++  there are no trades. The summary stays a dataclass because it is five scalars.
++- **Vectorised polars pass** (shifted positions, fill flags, cumulative product). Not taken:
++  it is harder to read for the off-by-one, and its rounding differs from the hand formulas.
++  Correctness and exactness are the point of this change.
++- **Accepting Boolean or float positions** (`True`/`1.0` as long). Not taken: the intent says
++  "a position value other than 0 or 1" is refused, and security-baseline rule 2 favours a
++  strict schema. A caller casts with `.cast(pl.Int8)`.
++- **`win_rate = None` or NaN with no trades.** Not taken (panel #2): it would make the
++  field `float | None`, and NaN fails equality checks. `trade_count == 0` tells "no trades"
++  apart from "no winners".
++- **Equity marked at open, or an open position left out of the trade list.** Not taken: the
++  intent's recommended answers were accepted (spec, open questions 2 and 3).
++- **A `Backtest` class with configuration.** Not taken: one function with a keyword fee is
++  the smallest API. Later changes (shorts, slippage) can add keyword arguments.
++- **Importing `app.data.schema.SCHEMA` to validate column dtypes.** Not taken: the tests'
++  hand-built frames use integer times, and the engine needs only three columns. Coupling to
++  the full schema would refuse valid inputs.
++- **Leaving `pyproject.toml` unchanged** as the intent states. Not taken: a regular
++  install would ship no engine (panel #1).
++- **`[tool.setuptools.packages.find] include = ["app*"]`** instead of a third hand-kept
++  entry. Not taken: it is a wider change to package discovery, so it is the owner's choice
++  (panel #1).
++
++Interrogation answers:
++1. What could break: nothing that exists calls the new package. The consumers are the
++   owner's own scripts. The touched shapes are `pyproject.toml`'s package list and the
++   `load_klines` frame, which is read and never mutated: `validate` reads columns into
++   lists and does no in-place operation.
++2. Riskiest step: the engine pass (step 3), for lookahead and off-by-one. Mitigated as
++   described in Risks.
++3. Other options: listed above.
++4. An engineer without this conversation can implement it from spec Design, the formulas in
++   step 3, and the worked example's numbers in the spec. Nothing is missing.
++5. Every Proof test is still to be written, in `tests/test_backtest.py`. The existing
++   tests already exist and must keep passing.
++
++## Proof
++- test: test_two_trade_example_trades
++- test: test_two_trade_example_equity_curve
++- test: test_two_trade_example_summary
++- test: test_buy_and_hold_equals_price_ratio_less_two_fees
++- test: test_no_fill_on_decision_candle
++- test: test_gap_fills_at_next_existing_row
++- test: test_decision_on_last_row_not_filled
++- test: test_open_position_closed_at_last_close
++- test: test_no_trades_gives_zero_win_rate_and_flat_equity
++- test: test_default_fee_is_one_tenth_percent
++- test: test_positions_accepts_series_and_list
++- test: test_futures_volume_ignored
++- test: test_refuses_length_mismatch
++- test: test_refuses_bad_position_values
++- test: test_refuses_empty_frame
++- test: test_refuses_non_increasing_open_time
++- test: test_refuses_fee_out_of_range
++- test: test_refuses_bad_frame_schema_and_prices
++- test: test_public_api
++- The bad-value tests are parametrised over the values in spec R14 (null, NaN, `2`, `-1`,
++  `0.5`, `"1"`, `True` for positions; `-0.01`, `1`, `1.5`, NaN, `True` for fees).
++- `test_no_trades_gives_zero_win_rate_and_flat_equity` asserts `trade_count == 0` and
++  `win_rate == 0.0` together (panel #2).
++- Target (spec Acceptance): the worked example matches to 1e-9: total return
++  `0.07568647568108`, max drawdown `0.1026973009`, 2 trades, win rate `0.5`, time in market
++  `3/7`, equity `[1.0, 1.0989, 1.1988, 1.1976012, 1.1976012, 1.1299367322,
++  1.07568647568108]`.
++- Wheel listing (panel #1): the build verifier's report shows `app/backtest/__init__.py`,
++  `app/backtest/inputs.py`, `app/backtest/engine.py` and `app/backtest/summary.py` inside
++  the wheel built from the branch.
++- `python -m compileall -q .` prints nothing. `python -m pytest` reports every test passed
++  (the existing tests plus the new ones). `python -m ruff check .` prints
++  `All checks passed!`.
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md
+new file mode 100644
+index 0000000..940de33
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/spec.md
+@@ -0,0 +1,204 @@
++# Spec: Backtest engine core: long/flat on one symbol
++Change id: 0004. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.51); overrides: none; policy sources: none
++
++## Requirements
++- R1. A new package `app/backtest/` exposes one entry point, `run_backtest(frame, positions,
++  *, fee=0.001)`, and its result and error types, in `app/backtest/__init__.py` (`__all__`),
++  like `app/data/__init__.py` does for the data layer.
++- R2. `frame` is a polars DataFrame shaped like `app.data.load_klines`'s output (spot or
++  futures); only `open_time`, `open` and `close` are read. Other columns (`high`, `low`,
++  `volume`, `close_time`, `quote_volume`, anything extra) are ignored, so a futures frame's
++  `volume` in contracts is never used.
++- R3. `positions` holds one target position per row of the frame, as a polars Series or a
++  Python sequence. Each value must be the integer `0` (flat) or `1` (long).
++- R4. `fee` is a keyword argument, a proportional fee charged on every fill. Its default is
++  `0.001`, one named module constant.
++- R5. The engine starts flat with equity `1.0`. Row 0 is always flat, at equity `1.0`.
++- R6. The position decided at row `i`'s close is filled at row `i+1`'s open, whatever the
++  gap in `open_time` between the two rows. Nothing is filled at the decision row's own
++  prices. The engine never assumes one row per interval.
++- R7. A fill happens only when the decided position differs from the position held. Buying
++  turns equity `E` into `E × (1 − fee) / open` coins. Selling turns `q` coins into
++  `q × open × (1 − fee)`.
++- R8. A decision on the last row is never filled at a next open, because there is no next row.
++- R9. If the position is still long after the last row's open, the engine closes it at the
++  last row's close, with the fee, and records it as a trade marked as closed at the frame's
++  end (answer to open question 3).
++- R10. Each row's equity is marked at its close, after any fill at that row's open
++  (answer to open question 2). For a long row: coins × close. For a flat row: the cash. On
++  the last row with an open position, the equity is the cash from the end-of-frame close, so
++  the curve's last value is the final equity.
++- R11. The output is one result object with three parts:
++  - an equity frame, one row per row of the input, in input order;
++  - a trades frame, one row per closed trade: entry time and price, exit time and price,
++    return after fees, and whether the trade was closed at the frame's end;
++  - a summary: total return, max drawdown, number of trades, win rate and time in market.
++- R12. Summary definitions, from the intent:
++  - total return = final equity / 1.0 − 1;
++  - max drawdown = the largest value of `1 − equity / running peak` over the equity curve,
++    as a fraction `>= 0` (`0.0` when the curve never falls);
++  - win rate = the share of trades whose return after fees is `> 0`;
++  - time in market = the share of the frame's rows in which the position held after the
++    row's open is long. It counts rows, not wall time.
++- R13. A trade's return after fees is `exit value / entry equity − 1`, which is
++  `(1 − fee)² × exit price / entry price − 1`.
++- R14. These inputs are refused with `BacktestInputError` (a `ValueError` subclass) before any
++  calculation:
++  - a `positions` length that differs from the frame's height;
++  - a position value other than `0` or `1`: null, NaN, `2`, `-1`, `0.5`, a string, or a
++    boolean (`True` and `False` are not `0` and `1`; see the closed concern);
++  - an empty frame, or one whose `open_time` is not strictly increasing;
++  - a fee below 0 or not below 1. The check is `not 0 <= fee < 1`, so NaN is refused too.
++    A boolean or a non-number fee is also refused.
++  - by security-baseline rule 2 (validate every input against a schema; see the closed
++    concern): a `frame` that is not a polars DataFrame; a frame missing `open_time`, `open`
++    or `close`; a null `open_time`; an `open` or `close` that is null, non-finite or `<= 0`.
++- R15. Every error message says which input is wrong and what is accepted. It quotes the
++  first bad row index or value where there is one, never a stack trace (ux-and-brand rule 4,
++  applied to messages a caller reads).
++- R16. The engine does no I/O: no network, no file, no cache, no `load_klines` call, no
++  logging. No new dependency: polars and the standard library only, no numpy import.
++- R17. No lookahead: a fill uses only the open of a row after the decision row, or the last
++  row's close for the end-of-frame close. The position decided at row `i` never affects
++  equity at or before row `i`.
++- R18. Results match hand calculations within an absolute tolerance of about 1e-9.
++- R19. `app/data/` and every test file already on `main` stay unchanged. The tests are new,
++  in `tests/test_backtest.py`, on frames built by hand in that file, with no stub or fixture
++  files. The package version stays `0.1.0` (`app/__init__.py` and `pyproject.toml`).
++- Policies:
++  - coding-standards applies: CLAUDE.md conventions (Python >= 3.10, type hints on public
++    functions, ruff at line length 100, one test module per area, one module per job as in
++    `app/data/`; rule 1); match `app/data/` naming, frozen dataclasses and error style
++    (rule 2); every behaviour has a test (rule 4); no new dependency (rule 5); small
++    functions, no dead code (rule 7).
++  - security-baseline applies to input handling only (rule 2, see R14). Rules 1, 3, 5 and 7
++    do not apply: no endpoint, no secret, no stored state, no network. Rule 6: no new
++    dependency, no `eval`, `exec` or `pickle`.
++  - Risk list (security-baseline rule 8): none of `auth`, `data migrations`, `money movement`
++    or `production config` applies. The engine simulates equity on historical prices in
++    memory. It moves no funds, places no orders, holds no credentials, stores nothing and
++    changes no configuration.
++  - ux-and-brand: no screen and no CLI (the CLI is out of scope), so rules 1 to 3 and 5 to 7
++    do not apply and there is no Mock line. Rule 4 shapes the error messages (R15).
++  - data-conventions does not apply: no stored field, schema of record, migration, event
++    or personal data. The frames returned are in memory and public market data
++    (rule 1: public).
++  - definition-of-done applies: build, test and lint green with their output pasted, the
++    verifier report and the gates of each phase.
++
++## Design
++- **Place in the codebase.** `app/backtest/` is a sibling of `app/data/`. It is a pure
++  function of its inputs and imports nothing from `app.data`. It accepts any frame with the
++  columns of R2, so a frame from `load_klines`, from `KlineGapError.frame` or built by hand
++  in a test works the same. `open_time` may have any orderable dtype (the data layer's
++  `Datetime("ms", "UTC")` or plain integers in tests).
++- **Modules, one per job** (as in `app/data/`):
++  - input validation: turns `(frame, positions, fee)` into checked plain values, or raises
++    `BacktestInputError`;
++  - the engine: one forward pass over the rows that tracks cash, coins, the held position,
++    the equity per row and the open trade;
++  - the summary: the four metrics computed from the equity column and the trades;
++  - `__init__.py`: the public API.
++- **Public API.**
++  - `run_backtest(frame: pl.DataFrame, positions: pl.Series | Sequence[int], *, fee: float =
++    DEFAULT_FEE) -> BacktestResult`.
++  - `DEFAULT_FEE = 0.001`.
++  - `BacktestResult`, a frozen dataclass: `equity: pl.DataFrame`, `trades: pl.DataFrame`,
++    `summary: Summary`.
++  - `Summary`, a frozen dataclass: `total_return: float`, `max_drawdown: float`,
++    `trade_count: int`, `win_rate: float`, `time_in_market: float`.
++  - `BacktestInputError(ValueError)`, like `InvalidRequestError` in `app/data/params.py`.
++- **Equity frame**: `open_time` (the input's dtype), `position` (`Int8`, the position held
++  after the row's open), `equity` (`Float64`, marked at the row's close).
++- **Trades frame**: `entry_time` and `exit_time` (the input's `open_time` dtype),
++  `entry_price` and `exit_price` (`Float64`), `return` (`Float64`, after fees),
++  `closed_at_end` (`Boolean`). A normal exit has the `open_time` and `open` of the exit row.
++  An end-of-frame close has the last row's `open_time` and its `close`, with
++  `closed_at_end = true`. With no trades, the frame is empty but keeps these columns and
++  dtypes.
++- **The pass, row by row.** At row `i > 0`, the target is `positions[i − 1]`. If it differs
++  from the held position, fill at `open[i]` (R7) and, on an exit, append the trade. Then mark
++  equity at `close[i]`. After the last row, if long, sell at the last `close` and overwrite
++  the last equity value with the resulting cash (R9, R10). `positions[last]` is never read
++  for a fill (R8). A plain Python loop over the validated values is enough at this size: a
++  year of 1-minute candles is about 525,600 rows. It keeps every number an exact IEEE
++  product, in the order of the intent's formulas, for the 1e-9 comparisons.
++- **Validation order.** fee, then frame (type, columns, height, `open_time` nulls and strict
++  increase, prices), then positions (length, then values). The first failure raises. The
++  message names the input, the first bad row index and the accepted values. Example:
++  `positions[3] is 2: each position must be 0 (flat) or 1 (long)`.
++- **Win rate with no trades** is `0.0` (open concern below). Max drawdown on a flat curve
++  is `0.0`.
++- **Packaging.** `pyproject.toml`'s explicit `[tool.setuptools] packages = ["app",
++  "app.data"]` (added by change 0002) also gets `"app.backtest"`, so a regular
++  (non-editable) install ships the new package (open concern below).
++- **Unchanged**: `app/data/`, `app/__init__.py` (version `0.1.0`), every existing test
++  file, `.github/workflows/ci.yml`, and the runtime dependencies.
++- **Worked example** (the intent's two-trade table, fee 0.001), with the answers to open
++  questions 2 and 3:
++  - equity per row: `1.0`, `1.0989`, `1.1988`, `1.1976012`, `1.1976012`, `1.1299367322`,
++    `1.07568647568108` (= `1.2 × 0.9 × 0.999⁴`);
++  - positions held: `0, 1, 1, 0, 0, 1, 0`;
++  - trades: (row 1, 100) → (row 3, 120), return `0.1976012`; (row 5, 90) → (row 6, 81),
++    return `−0.1017991`; neither closed at the end;
++  - summary: total return `0.07568647568108`, max drawdown `1 − 0.9 × 0.999³ =
++    0.1026973009` (peak `1.1988` at row 2, trough at row 6), 2 trades, win rate `0.5`,
++    time in market `3/7 ≈ 0.4285714286`.
++
++## Open questions from intent
++- "The default fee? Recommended: 0.1% (`0.001`) per fill." Answered in part: the default is
++  `0.001`, as the keyword argument `fee`, per the intent's recommendation, which the owner
++  accepted when they merged the intent. Carried forward: confirming that 0.1% is KuCoin's
++  current base spot fee. Neither the codebase nor a policy states a fee, and this run has
++  no network access to check KuCoin's fee page. The owner confirms or corrects the number at
++  the design gate. Correcting it changes one constant and the default-fee test. The build
++  can go ahead without it.
++- "Equity marked at close or at open? Recommended: at close." Answered: at close, after any
++  fill at that row's open (R10), per the intent's recommendation. The codebase has no
++  earlier convention: nothing in `app/` computes equity. The worked example under Design
++  states the max drawdown this gives.
++- "A position still open at the frame's end? Recommended: close it at the last close."
++  Answered: closed at the last row's close, with the fee, as a trade with
++  `closed_at_end = true`. It counts in the trade count and the win rate, so the trade list,
++  the final equity and the total return agree (R9, R10).
++
++## Flagged concerns
++- decided (by panel #1): Add "app.backtest" to `[tool.setuptools] packages`, have the build verifier build a wheel and list `app/backtest/*.py` in it as proof, and leave the intent's "needs no change" line for the owner to overturn at the design gate. — Packaging contradicts the intent: the intent says `pyproject.toml` needs no change, but its
++  explicit `packages = ["app", "app.data"]` leaves `app.backtest` out of a regular
++  (non-editable) install. The editable install of `commands.setup`, and so CI and the tests,
++  still import it through the `app` directory. The design adds `"app.backtest"` to the list,
++  a one-line edit to a non-guardrail file. The alternative is to leave `pyproject.toml`
++  unchanged, as the intent says, and accept that a wheel install does not ship the engine.
++- decided (by panel #2): Keep win_rate a plain float that is 0.0 when trade_count == 0; the Summary docstring states "0.0 when there are no trades; see trade_count", and the zero-trade test asserts trade_count == 0 and win_rate == 0.0 together. — Win rate with no trades: the intent defines win rate as a share of trades and is silent
++  when there are none. The design returns `0.0`, not `None` or NaN, so `Summary.win_rate`
++  stays a plain `float`, and "no trades" is read from `trade_count == 0`.
++- [x] Inputs refused beyond the intent's list (a frame that is not a DataFrame or lacks
++  `open_time`, `open` or `close`; a null `open_time`; a null, non-finite or non-positive
++  `open` or `close`; a NaN, boolean or non-number fee; boolean position values): decided:
++  refuse each with `BacktestInputError` before any calculation, per security-baseline rule 2
++  ("validate every external input against a schema"). A non-positive price would otherwise
++  divide by zero or give negative coins, and NaN passes `fee < 0` and `fee >= 1` alike.
++
++## Acceptance
++- `tests/test_backtest.py` (new; no other test file changes) passes offline with frames
++  built by hand, comparing with an absolute tolerance of about 1e-9 (`pytest.approx(...,
++  abs=1e-9)` or the same). It shows:
++  - buy-and-hold: long from row 0, flat decided before the end, so the final equity is
++    `(1 − fee)² × exit open / entry open`;
++  - the intent's two-trade example gives the trades, equity curve and summary stated
++    under Design (total return `0.07568647568108`, max drawdown `0.1026973009`, 2 trades,
++    win rate `0.5`, time in market `3/7`);
++  - no fill on the decision candle: a row whose close differs from the next row's open is
++    entered at that next open;
++  - a gap: a 1h frame without the 02:00 row, a decision at the 01:00 close fills at the
++    03:00 open;
++  - a position open at the end is closed at the last close with the fee and marked
++    `closed_at_end`, and the final equity equals `1 + total return`;
++  - a decision on the last row is not filled;
++  - each refused input of R14 raises `BacktestInputError`;
++  - the default fee is `0.001`, and a zero-trade run gives win rate `0.0`;
++  - `run_backtest` reads no network or file: the tests use no stub, fixture or monkeypatch
++    of `app.data`.
++- `python -m compileall -q .` prints nothing and exits 0. `python -m pytest` passes every
++  test, the existing ones included. `python -m ruff check .` prints `All checks passed!`.
++- `app/data/` is unchanged and the package version is still `0.1.0`.
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml b/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml
+index 2d73564..6f309a9 100644
+--- a/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml
+@@ -1,7 +1,7 @@
+ id: "0004"
+ slug: backtest-engine-core-long-flat-on-one-sy
+ title: "Backtest engine core: long/flat on one symbol"
+-phase: intent
++phase: design
+ entry_route: idea
+ change_type: feature
+ gate:
+@@ -11,7 +11,7 @@ gate:
+   at: null
+ parked_reason: null
+ iterations: 0
+-panel_calls: 0
++panel_calls: 2
+ external_ref: null
+ risk_accepted: []
+ tests_locked: false
+@@ -26,5 +26,5 @@ released_at: null
+ released_sha: null
+ released_pr: null
+ created_at: "2026-11-07T10:33:53Z"
+-updated_at: "2026-11-07T10:33:53Z"
++updated_at: "2026-11-07T11:08:52Z"
+ schema_version: 1
