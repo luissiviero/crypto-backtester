@@ -1,7 +1,7 @@
 id: "0006"
 slug: sweep-sma-crossover-lengths-on-one-range
 title: Sweep SMA crossover lengths on one range
-phase: design
+phase: build
 entry_route: idea
 change_type: feature
 gate:
@@ -30,5 +30,5 @@ fast_lane:
     sha: "32db462ad4d611dc3237780f0afcfc37f553c279"
     pr: 27
 created_at: "2026-11-07T22:16:39Z"
-updated_at: "2026-11-07T22:39:42Z"
+updated_at: "2026-11-07T22:55:07Z"
 schema_version: 1
