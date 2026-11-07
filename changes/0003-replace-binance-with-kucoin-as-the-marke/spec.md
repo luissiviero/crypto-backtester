@@ -11,8 +11,10 @@ Source and transport
 - R3. 0002's transport rules stay: every redirect is refused, only `https` URLs open, the
   connect and read timeouts and the body size bound (`MAX_BODY_BYTES`) stay.
 - R4. HTTP 429, 5xx and connection errors keep the existing retries (1, 2, 4 s plus jitter,
-  `Retry-After` honoured, a wait over 60 s stops with `DownloadError`). Every other status is
-  returned to the caller, HTTP 418 included (it is no longer a ban).
+  `Retry-After` honoured, a wait over 60 s stops with `DownloadError`). A 429 with no usable
+  `Retry-After` waits the `gw-ratelimit-reset` milliseconds, capped at 60 s, instead of the
+  shorter backoff (panel #2). Every other status is returned to the caller, HTTP 418
+  included (it is no longer a ban).
 - R5. Before each call after the first, the run pauses on the previous answer's
   `gw-ratelimit-remaining` and `gw-ratelimit-reset` headers; when either is absent or not an
   integer it waits 1 s, as today.
@@ -21,6 +23,10 @@ Public interface
 - R6. `load_klines`, `cache_info`, `clear_cache`, `Gap`, `KlineGapError`,
   `InvalidRequestError`, `DownloadError`, `Fetch` and `HttpResponse` keep their names and
   signatures. `BinanceBanError` is removed from `app.data` and from `app/data/http.py`.
+  The `load_klines` docstring and the `app/data/__init__.py` module docstring carry a
+  deprecation note naming what is removed (the `trades`, `taker_buy_base_volume` and
+  `taker_buy_quote_volume` columns, `BinanceBanError`, the `um` market, the `1s`
+  interval) and why: KuCoin does not publish them (panel #1).
 - R7. `python -m app.data download | cache-info | cache-clear` keep their names, positional
   arguments and options in today's order; `--market` takes `spot` or `futures`.
 - R8. No CLI message, help text or docstring names Binance or Vision.
@@ -29,7 +35,7 @@ Public interface
 Inputs (all refused with `InvalidRequestError` before any network call)
 - R10. Markets: `spot` and `futures`; `um` and anything else are refused.
 - R11. Symbols are upper-cased, then: spot accepts 2 to 30 letters, digits and hyphens
-  (`BTC-USDT`); futures accepts 2 to 30 letters and digits ending in `USDTM` (`XBTUSDTM`),
+  (`BTC-USDT`); futures accepts 7 to 30 letters and digits ending in `USDTM` (`XBTUSDTM`),
   so coin-margined (`XBTUSDM`) and dated (`XBTMZ25`) contracts are refused. No name mapping.
 - R12. Intervals: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `8h`, `12h`, `1d`.
   `1s`, weeks and months are refused; `6h` is refused on futures.
@@ -67,8 +73,10 @@ The cache
 - R22. Day files live at `<cache>/kucoin/<market>/<SYMBOL>/<interval>/<SYMBOL>-<interval>-<YYYY-MM-DD>.parquet`
   (zstd level 3, atomic write); the default location, `--cache-dir` and
   `CRYPTO_BACKTESTER_CACHE_DIR` are unchanged. Only complete closed days are written; a
-  second load of them makes no fetch. Nothing under `binance-vision/` is read, written or
-  deleted.
+  second load of them makes no fetch. A run stopped part way by `DownloadError` (retries
+  exhausted, a long `Retry-After`) still caches the complete closed days its answered
+  pages cover, then raises, as `sync_days` promises today (panel #3). Nothing under
+  `binance-vision/` is read, written or deleted.
 - R23. `cache-info` and `cache-clear` list and delete only files under `kucoin/` that match
   the day-file pattern, hyphenated spot symbols included; the `cache-clear` help notes that
   KuCoin may not serve old futures days again.
@@ -114,7 +122,8 @@ Same modules, one job each (`CLAUDE.md` Architecture); `vision.py` is deleted.
   `RateLimitPacer` with the same `wait()` / `record()` shape: missing or non-integer headers
   wait `UNKNOWN_WEIGHT_WAIT` (1 s); `remaining` below a reserve waits the `reset`
   milliseconds, bounded to 0..60 s (an untrusted header never sleeps longer). One pacer per
-  run: both hosts share one pool.
+  run: both hosts share one pool. In `with_retries`, a 429 without a usable `Retry-After`
+  takes the same bounded `gw-ratelimit-reset` wait (R4).
 - `schema.py` — `SCHEMA` of the eight columns (R14). Two row parsers replace the CSV and
   Binance REST ones, each taking the rows and the interval:
   `frame_from_spot_rows` (7 strings; time in seconds, prices in the order of R15) and
@@ -137,7 +146,10 @@ Same modules, one job each (`CLAUDE.md` Architecture); `vision.py` is deleted.
     or after `end` (the measured end-of-window row) are dropped; an empty answer ends the
     range;
   - a page whose rows do not move the window is an unexpected response.
-  `RestRange` carries the frame, the failure reason (or none) and the covered span
+  A `DownloadError` from the transport is caught inside `fetch_range`, which stops paging
+  and returns what it has, with the error attached, so no answered page is lost.
+  `RestRange` carries the frame, the failure reason (or none), that error (or none) and
+  the covered span
   `[covered_from, covered_until)`: the part of the range every answered page vouches for
   (spot grows it downwards from `end`, futures upwards from `start`; with no failure it is
   the whole range).
@@ -149,9 +161,13 @@ Same modules, one job each (`CLAUDE.md` Architecture); `vision.py` is deleted.
   candle for this symbol` when a later day of the range has candles and no earlier one does,
   `no candles on this day` when candles exist before it, and `no candles; check the symbol
   exists` when the range has none at all. `_worth_caching` writes a `rest` closed day
-  whatever its row count. `find_gaps` reports gaps only for `missing` days (their grid open
+  whatever its row count. When the range came back with a `DownloadError`, its days are
+  settled (and complete closed ones cached) first, then the error is raised again, so the
+  CLI and `load_klines` still stop with it. `find_gaps` reports gaps only for `missing`
+  days (their grid open
   times with no row, the current day's grid ending at the last closed interval);
-  `KlineGapError` and `Gap` are unchanged. `load_klines`'s docstring states R17 and R19.
+  `KlineGapError` and `Gap` are unchanged. `load_klines`'s docstring states R17, R19 and
+  the deprecation note of R6.
   The thread pool, `_vision_pass`, `MISSING_IN_FILE` and `MISSING_IN_REST` go.
 - `cache.py` — `SUBTREE = "kucoin"`; `file_name` moves here from `vision.py`; the day-file
   pattern's symbol part admits hyphens (the interval and the date anchor the match, and the
@@ -162,7 +178,8 @@ Same modules, one job each (`CLAUDE.md` Architecture); `vision.py` is deleted.
   source labels `skipped, already cached` and `fetched from KuCoin`; the total line drops
   the Vision count: `<n> fetched, <n> skipped, <n> not found; <n> candles missing`. Exit
   codes stay (0, 1 when gaps, 2 on a refused input, `DownloadError` or `OSError`).
-- `__init__.py` — the docstring names KuCoin; `BinanceBanError` leaves `__all__`.
+- `__init__.py` — the docstring names KuCoin and carries R6's deprecation note;
+  `BinanceBanError` leaves `__all__`.
 - `scripts/measure_storage.py` — builds synthetic rows of the eight columns, reads the
   `kucoin/` subtree and validates symbols per market, so it keeps working.
 - Tests — a KuCoin stub replaces `tests/binance_stub.py`: it answers both endpoints from
@@ -218,8 +235,11 @@ Same modules, one job each (`CLAUDE.md` Architecture); `vision.py` is deleted.
   - HTTP 200 with a KuCoin error code is a refusal whose reason holds KuCoin's message;
   - `6h` on futures, `1s`, `um`, and a futures symbol not ending in `USDTM` are refused with
     no fetch;
-  - the pacer waits on the two KuCoin headers and 1 s without them; 429 and 5xx retry;
-    redirects are not followed;
+  - the pacer waits on the two KuCoin headers and 1 s without them; 429 and 5xx retry; a
+    429 without `Retry-After` waits the bounded `gw-ratelimit-reset`; redirects are not
+    followed;
+  - a `DownloadError` on a later page, spot and futures, still leaves the complete closed
+    days already answered in the cache, and is raised;
   - a second load makes no fetch, and the cache holds Parquet files only, under `kucoin/`;
     `cache-info` and `cache-clear` handle a hyphenated spot symbol;
   - no module under `app/` names a Binance host;

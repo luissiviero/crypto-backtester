@@ -76,7 +76,11 @@ The Setup and Test lines and the CI install step need no change (no new dependen
    (418 is then returned like any 4xx). `RateLimitPacer.wait()`: no previous answer → return;
    `remaining` or `reset` header missing or not an `int` → `sleep(UNKNOWN_WEIGHT_WAIT)`;
    `remaining < RATE_LIMIT_RESERVE` → `sleep(min(max(reset, 0) / 1000, MAX_RATE_LIMIT_WAIT))`;
-   else no sleep. Keep `_int_or_none`.
+   else no sleep. Keep `_int_or_none`. In `with_retries`, when a 429 has no usable
+   `Retry-After`, `retry_after = min(max(reset, 0) / 1000, MAX_RATE_LIMIT_WAIT)` from
+   `gw-ratelimit-reset` (when that header is an integer), so the existing
+   `sleep(max(backoff + jitter, retry_after))` waits for the pool to refill; a 5xx and a
+   429 without either header keep the 1, 2, 4 s backoff (panel #2).
 4. **REST** (`rest.py`).
    - Constants: `SPOT_URL = "https://api.kucoin.com/api/v1/market/candles"`,
      `FUTURES_URL = "https://api-futures.kucoin.com/api/v1/kline/query"`, `SUCCESS_CODE =
@@ -106,8 +110,12 @@ The Setup and Test lines and the CI install step need no change (no new dependen
        end-of-window row); empty → `covered = [start_ms, end_ms)`, stop; `newest = max(open)`;
        append; `window_start = newest + interval_ms`.
        A loop that ends because the window closed is fully covered too.
-     - `RestRange(frame, failure, covered_from_ms, covered_until_ms)`; the frame is the
-       concatenation (sorting and de-duplication stay in the loader's `_on_grid`).
+     - Each `fetch(...)` call sits in `try` / `except DownloadError as error`: paging stops
+       with `failure = str(error)`, `error` kept, and the coverage so far (as for a
+       refused page) (panel #3).
+     - `RestRange(frame, failure, covered_from_ms, covered_until_ms, error=None)`; the
+       frame is the concatenation (sorting and de-duplication stay in the loader's
+       `_on_grid`).
 5. **Cache** (`cache.py`). `SUBTREE = "kucoin"`; `file_name(request, day)` moves from
    `vision.py`; `_DAY_FILE` symbol group `[A-Z0-9-]{2,30}` (the interval `[0-9]{1,2}[mhd]`
    and the date anchor it; the existing check that the symbol equals the directory name
@@ -127,11 +135,17 @@ The Setup and Test lines and the CI install step need no change (no new dependen
    the day's end); rows of the day; `in_span and rows` → `REST`; `not in_span` →
    `MISSING`, reason = the failure; `in_span and not rows` → `MISSING`, reason
    `NO_CANDLES` when the range has no row, `BEFORE_FIRST` when the day is before
-   `first_day_with_rows`, else `NO_CANDLES_ON_DAY`. `_worth_caching`: `source == REST`.
+   `first_day_with_rows`, else `NO_CANDLES_ON_DAY`. After every day of the range is
+   handed to `settle` (which writes complete closed days to the cache), `if answer.error
+   is not None: raise answer.error` (panel #3); keep the `sync_days` docstring's promise
+   that days fetched before a stop stay cached. `_worth_caching`: `source == REST`.
    `find_gaps`: skip outcomes that are not `MISSING`; the rest as today. `_gap_reason`
    returns `outcome.reason or NO_CANDLES`. `load_klines` docstring: rows exist only for
    intervals with trades (a short frame is normal; never assume one row per interval);
-   futures `volume` counts contracts, spot `volume` coins, compare `quote_volume`.
+   futures `volume` counts contracts, spot `volume` coins, compare `quote_volume`; and the
+   deprecation note: the `trades`, `taker_buy_base_volume` and `taker_buy_quote_volume`
+   columns, `BinanceBanError`, the `um` market and the `1s` interval were removed because
+   KuCoin does not publish them (panel #1).
 7. **CLI and package** (`__main__.py`, `__init__.py`). Description `KuCoin kline data and its
    local cache.`; `download` epilog with the two notes of step 6; `cache-clear` epilog:
    `KuCoin may not serve old futures days again: a cleared futures day can be lost.`; use
@@ -140,7 +154,8 @@ The Setup and Test lines and the CI install step need no change (no new dependen
    line `Total for <symbol> <interval> <market>: <n> fetched, <n> skipped, <n> not found;
    <n> candles missing. Cache: <root>`; drop the per-gap "missing inside a file" lines.
    `__init__.py` docstring `The kline data layer: KuCoin REST klines and a local Parquet
-   cache.`; remove `BinanceBanError`.
+   cache.`, followed by the same deprecation note as `load_klines`; remove
+   `BinanceBanError`.
 8. **Script** (`scripts/measure_storage.py`): the synthetic candle dict without `trades`
    and the two taker columns; `validate_symbol(symbol, market)`; usage line `BTC-USDT`.
 9. **Tests.** Copy the six captured bodies into `tests/fixtures/kucoin/` (names in Files that
@@ -177,6 +192,9 @@ each keep `plan.md` in step, and run the suite after step 9.
   an over-long window instead, a range would end early and days would read as
   "no candles" gaps (raised, not silent; never cached). The owner's two real downloads at the
   deploy gate (3 days at 1m futures needs about 22 pages) exercise it.
+- **A stop part way through a range** (`DownloadError`): the pages already answered are
+  kept, their complete closed days cached, then the error is raised (step 6); the test
+  below fails a later page on each market.
 - **Quiet days are no longer gaps; failures still are.** A day partly covered by a failed
   range is a gap, never a short "complete" day; a test checks it is not cached.
 - **The futures `to = end − 1`**: measured only with `to` on a day boundary (the row at
@@ -187,7 +205,9 @@ each keep `plan.md` in step, and run the suite after step 9.
 - **Untrusted text in reasons**: KuCoin's `msg` reaches the terminal; it is cleaned of
   non-printable characters and cut to 200 characters (security-baseline rule 2).
 - **Rate-limit reserve 100 and the 60 s cap** are a guess (spec Flagged concerns); a wrong
-  value costs speed or a 429, which the retries absorb.
+  value costs speed or a 429; a 429 then waits the bounded `gw-ratelimit-reset` (step 3)
+  rather than the 7 s backoff, which alone would end in `DownloadError` against a 30 s
+  window.
 - **Callers touched**: `load_klines` (frame columns drop three; `market="um"` and `1s` now
   refused; short frames), `cache_info` / `clear_cache` (new subtree, so existing Binance
   files are invisible to them — intended), `BinanceBanError` importers (none in the repo
@@ -245,6 +265,8 @@ each keep `plan.md` in step, and run the suite after step 9.
 - test: test_retry_after_is_honoured_and_a_long_one_stops
 - test: test_rate_limit_pacer (headers present above and below the reserve, missing, not an
   integer, reset over the cap)
+- test: test_429_without_retry_after_waits_for_the_reset (reset 20000 → a 20 s sleep;
+  reset 90000 → 60 s)
 - test: test_kucoin_error_code_is_a_refusal_with_its_message (spot-unknown-symbol fixture,
   HTTP 200 code 400100)
 - test: test_http_error_with_kucoin_body_is_a_refusal (futures-from-in-seconds fixture, 400)
@@ -255,6 +277,9 @@ each keep `plan.md` in step, and run the suite after step 9.
 - test: test_empty_day_is_a_gap_and_not_cached
 - test: test_refused_page_is_a_gap_and_not_cached
 - test: test_page_cut_short_is_a_gap_and_not_cached (second page refused; spot and futures)
+- test: test_days_fetched_before_a_download_error_stay_cached (a later page fails with
+  retries exhausted, spot and futures: `DownloadError` raised, the fully answered closed
+  days on disk)
 - test: test_mistyped_futures_symbol_names_the_symbol_check
 - test: test_day_before_first_candle_names_the_oldest_candle
 - test: test_invalid_parameters_raise_before_any_fetch
