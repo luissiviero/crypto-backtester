@@ -5,7 +5,8 @@ as intents (`/sdlc-intent`), one change at a time. Today the package (`app/`) ho
 `app/data/`, KuCoin spot and USDT-margined perpetual klines from KuCoin's public REST API
 as polars frames, cached per day as Parquet outside the repository, with the CLI
 `python -m app.data download | cache-info | cache-clear`; and `app/backtest/`, a long/flat
-backtest of one symbol on a klines frame.
+backtest of one symbol on a klines frame, with an SMA crossover strategy and the CLI
+`python -m app.backtest run`.
 
 ## Commands
 
@@ -32,13 +33,16 @@ backtest of one symbol on a klines frame.
   schema, cache, loader, and the CLI in `__main__.py`); its public API is
   `app/data/__init__.py`. The cache directory is `--cache-dir`, else the environment variable
   `CRYPTO_BACKTESTER_CACHE_DIR`, else the platform default.
-- `app/backtest/` is the backtest engine, one module per job (inputs, engine, summary); its
-  public API is `app/backtest/__init__.py` (`run_backtest`). It does no I/O; its tests,
-  `tests/test_backtest.py`, use frames built by hand and no stub or fixture files.
+- `app/backtest/` is the backtest engine, one module per job (inputs, engine, summary,
+  strategy, and the CLI in `__main__.py`); its public API is `app/backtest/__init__.py`
+  (`run_backtest`, `sma_cross_positions`). Only the CLI does I/O, through
+  `app.data.load_klines`; the engine and strategy tests, `tests/test_backtest.py` and
+  `tests/test_strategies.py`, use frames built by hand, and the CLI tests,
+  `tests/test_backtest_cli.py`, run offline against `tests/kucoin_stub.py`.
 - `scripts/measure_storage.py` measured the cache layout for change 0001; it is not part of
   the package.
-- `tests/` holds the pytest suite; the data tests run offline against `tests/kucoin_stub.py`
-  and the files in `tests/fixtures/kucoin/`.
+- `tests/` holds the pytest suite; the data tests and the backtest CLI tests run offline
+  against `tests/kucoin_stub.py` and the files in `tests/fixtures/kucoin/`.
 - `.github/workflows/ci.yml` is the project's own CI (lint then test on push to `main` and on
   pull requests); it is the one workflow the SDLC maintain metric counts.
 - `changes/<id>-<slug>/` holds each change's intent, spec, plan and status.
