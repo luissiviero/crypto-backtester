@@ -174,7 +174,7 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design
   exits 2 with the engine's message. The alternative is a range check in the CLI before
   loading, which copies the engine's rule (`0 <= fee < 1`) into a second place, since the
   intent keeps `inputs.py` unchanged.
-- The candle-count check follows the intent's literal rule, "fewer candles than `--slow`":
+- decided (by panel #2): Refuse when `frame.height <= slow` (exit 2, message "the range has N candles, not more than slow S: the strategy could never take a position; widen the dates or lower --slow"), and add proof tests pinning `--slow 24` on 24 candles to exit 2 and `--slow 23` on 24 candles to exit 0. — The candle-count check follows the intent's literal rule, "fewer candles than `--slow`":
   a range of exactly `--slow` candles is accepted, although its only possible long signal is
   on the last row, which the engine never fills (change 0004, R8), so such a run always
   prints 0 trades. The intent's stated reason ("so the strategy could never take a position")

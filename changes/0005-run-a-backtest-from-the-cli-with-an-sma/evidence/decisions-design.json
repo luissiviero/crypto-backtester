@@ -20,6 +20,28 @@
         "Adding the calls == [] assertion fixes the order in a test, so the build cannot let it drift back without anyone noticing."
       ],
       "reviewer": "Keep the design as written: parse `--fee` text before loading, leave the range check to the engine after `load_klines`. This is not an Important finding and needs no change."
+    },
+    {
+      "advocate": "Refuse `frame.height <= slow` (not `<`) at design, and pin both sides of the boundary in the proof; the literal `<` is an off-by-one against the intent's own stated reason.",
+      "at": "2026-11-07T18:40:20Z",
+      "cost_usd": null,
+      "decision": "Refuse when `frame.height <= slow` (exit 2, message \"the range has N candles, not more than slow S: the strategy could never take a position; widen the dates or lower --slow\"), and add proof tests pinning `--slow 24` on 24 candles to exit 2 and `--slow 23` on 24 candles to exit 0.",
+      "head": "a02a25a270d8d451d96189169e06088d6d16e3a0",
+      "item": "The candle-count check follows the intent's literal rule, \"fewer candles than `--slow`\":",
+      "item_n": 2,
+      "key": "concern:e95192a0d5bf0f20",
+      "kind": "concern",
+      "n": 2,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree on the fact: at height == slow the only possible long signal sits on the last row, which engine.py never fills, so the run always prints 0 trades.",
+        "intent.md line 52 gives the rule and its purpose in one clause (\"so the strategy could never take a position\"); only `<=` satisfies that purpose, and it still refuses every range the literal `<` refuses.",
+        "The safer reading is to refuse a run the owner's own words call unusable rather than exit 0 with an empty result that looks like a success (ux-and-brand: designed empty/error states).",
+        "The current proof (`--slow 30` on 24 candles) passes under either rule, so the two boundary tests are needed to make the choice deliberate rather than inherited.",
+        "Deferred review (decision 21) lets the owner switch back to the literal `<` at the gate if the number, not the reason, was meant; that would be a one-comparison change plus flipping the boundary test."
+      ],
+      "reviewer": "Keep the literal `<` rule as designed; leave the concern open for the owner as a non-blocking note, not an Important finding."
     }
   ],
   "phase": "design",
