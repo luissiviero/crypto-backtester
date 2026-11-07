@@ -32,8 +32,8 @@ class _Trade:
 
 @dataclass
 class _Pass:
-    equity: list[float] = field(default_factory=list)
-    held: list[int] = field(default_factory=list)
+    equity: list[float]
+    held: list[int]
     trades: list[_Trade] = field(default_factory=list)
 
 

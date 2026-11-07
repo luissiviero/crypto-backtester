@@ -10,7 +10,6 @@ import polars as pl
 
 DEFAULT_FEE = 0.001
 REQUIRED_COLUMNS = ("open_time", "open", "close")
-POSITION_VALUES = (0, 1)
 
 
 class BacktestInputError(ValueError):
@@ -28,12 +27,12 @@ class Inputs:
 
 def validate(frame: pl.DataFrame, positions: pl.Series | Sequence[int], fee: float) -> Inputs:
     checked_fee = _check_fee(fee)
-    _check_frame(frame)
+    opens, closes = _check_frame(frame)
     checked_positions = _check_positions(positions, frame.height)
     return Inputs(
         open_time=frame["open_time"],
-        opens=frame["open"].cast(pl.Float64).to_list(),
-        closes=frame["close"].cast(pl.Float64).to_list(),
+        opens=opens,
+        closes=closes,
         positions=checked_positions,
         fee=checked_fee,
     )
@@ -51,7 +50,7 @@ def _check_fee(fee: float) -> float:
     return float(fee)
 
 
-def _check_frame(frame: pl.DataFrame) -> None:
+def _check_frame(frame: pl.DataFrame) -> tuple[list[float], list[float]]:
     if not isinstance(frame, pl.DataFrame):
         raise BacktestInputError(
             f"frame is a {type(frame).__name__}: pass a polars DataFrame such as load_klines returns"
@@ -65,8 +64,7 @@ def _check_frame(frame: pl.DataFrame) -> None:
     if frame.height == 0:
         raise BacktestInputError("frame is empty: pass at least one candle")
     _check_open_time(frame["open_time"])
-    for name in ("open", "close"):
-        _check_prices(frame[name])
+    return _check_prices(frame["open"]), _check_prices(frame["close"])
 
 
 def _check_open_time(open_time: pl.Series) -> None:
@@ -84,18 +82,19 @@ def _check_open_time(open_time: pl.Series) -> None:
         )
 
 
-def _check_prices(column: pl.Series) -> None:
+def _check_prices(column: pl.Series) -> list[float]:
     try:
-        values = column.cast(pl.Float64)
+        prices = column.cast(pl.Float64).to_list()
     except pl.exceptions.PolarsError:
         raise BacktestInputError(
             f"{column.name} has dtype {column.dtype}: prices must be numbers"
         ) from None
-    for row, value in enumerate(values.to_list()):
+    for row, value in enumerate(prices):
         if value is None or not math.isfinite(value) or value <= 0:
             raise BacktestInputError(
                 f"{column.name}[{row}] is {value!r}: every price must be a finite number above 0"
             )
+    return prices
 
 
 def _check_positions(positions: pl.Series | Sequence[int], height: int) -> list[int]:
@@ -106,7 +105,7 @@ def _check_positions(positions: pl.Series | Sequence[int], height: int) -> list[
             "pass one position per row"
         )
     for row, value in enumerate(values):
-        if type(value) is not int or value not in POSITION_VALUES:
+        if type(value) is not int or value not in (0, 1):
             raise BacktestInputError(
                 f"positions[{row}] is {value!r}: each position must be the integer 0 (flat) "
                 "or 1 (long); cast a Boolean or Float series with .cast(pl.Int8)"
