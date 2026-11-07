@@ -1,30 +1,39 @@
 {
-  "at": "2026-11-07T14:10:00Z",
+  "at": "2026-11-07T13:58:05Z",
   "findings": [
     {
       "file": "app/backtest/inputs.py",
-      "line": 92,
+      "line": 76,
       "pass": "bugs",
-      "rule": "security-baseline rule 2; spec R14, R15",
+      "rule": "spec R14 (null open_time / strictly increasing)",
       "severity": "nit",
-      "signature": "40442704e34e5ea7",
-      "summary": "A non-iterable `positions` (for example an int or None) raises a bare TypeError from `list(positions)` instead of BacktestInputError, so the input is not refused with a clear message as R14/R15 intend for bad inputs; doubt: R14 does not list a non-sequence explicitly."
+      "signature": "57d5acae244d00e0",
+      "summary": "A Float `open_time` with a NaN (for example [0.0, 1.0, NaN]) passes validation, because NaN is not null and polars orders NaN above every number, so the strict-increase check accepts it; doubt: load_klines never gives a Float open_time."
     },
     {
       "file": "app/backtest/inputs.py",
-      "line": 101,
+      "line": 98,
+      "pass": "bugs",
+      "rule": "spec R14, R15; security-baseline rule 2",
+      "severity": "nit",
+      "signature": "a9248cb5b1630bae",
+      "summary": "A non-iterable `positions` (None or an int) escapes as a bare TypeError from `list(positions)` ('NoneType' object is not iterable) instead of a BacktestInputError naming the input and what is accepted; doubt: R14 does not list a non-sequence explicitly."
+    },
+    {
+      "file": "app/backtest/inputs.py",
+      "line": 108,
       "pass": "compliance",
       "rule": "spec R15 (message says what is accepted)",
       "severity": "nit",
-      "signature": "f8a598e0ccf48f43",
-      "summary": "A numpy integer array of 0/1 positions is refused (numpy.int64 is not `int`) with a message that suggests casting 'a Boolean or Float series with .cast(pl.Int8)', which does not apply to a numpy array and may mislead the caller."
+      "signature": "146386ced56a3ff0",
+      "summary": "A numpy integer array of 0/1 positions is refused (numpy.int64 is not `int`) with a hint to cast 'a Boolean or Float series with .cast(pl.Int8)', which does not apply to a numpy array and can mislead the caller."
     }
   ],
-  "head": "83cb2517e44fd73eb62b14a276f84352b40dd6ad",
+  "head": "d254b780cc6412aa868347ea59c930d007bf8be4",
   "schema_version": 1,
   "tally": {
     "important": 0,
-    "nit": 2,
+    "nit": 3,
     "nits_omitted": 0
   }
 }
