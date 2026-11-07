@@ -1,0 +1,1570 @@
+ .../evidence/.gitkeep                              |   0
+ .../evidence/adversarial-review-design.json        |  28 +
+ .../evidence/adversarial-review-design.model.json  |  14 +
+ .../evidence/decisions-design.json                 |  48 ++
+ .../evidence/decisions-design.md                   |   8 +
+ .../evidence/diff-design.patch                     | 594 +++++++++++++++++++++
+ .../evidence/hook-log.jsonl                        |  46 ++
+ .../evidence/panel/design-1-advocate.md            |   8 +
+ .../evidence/panel/design-1-advocate.model.json    |  14 +
+ .../evidence/panel/design-1-conciliator.json       |  11 +
+ .../evidence/panel/design-1-reviewer.md            |  22 +
+ .../evidence/panel/design-2-advocate.md            |   9 +
+ .../evidence/panel/design-2-advocate.model.json    |  14 +
+ .../evidence/panel/design-2-conciliator.json       |  11 +
+ .../evidence/panel/design-2-reviewer.md            |  18 +
+ .../evidence/panel/design-items.json               |  36 ++
+ .../evidence/run-design.json                       |   5 +
+ .../intent.md                                      | 142 +++++
+ .../plan.md                                        | 183 +++++++
+ .../spec.md                                        | 178 ++++++
+ .../status.yaml                                    |  34 ++
+ 21 files changed, 1423 insertions(+)
+
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/.gitkeep b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json
+new file mode 100644
+index 0000000..72a6135
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json
+@@ -0,0 +1,28 @@
++{
++  "schema_version": 1,
++  "phase": "design",
++  "head": "171354cd3135fd1dca0c072fd5c9c17f0333f544",
++  "verdict": "park",
++  "reasons": [
++    "plan.md Order of work step 1 has a wrong expected value in a planned test: it says `count_pairs([5, 50], [10, 50]) == (1, 3)`, but under R5 (and the plan's own `bisect.bisect_right(slows, fast)` per fast) the grid is (5,10) kept, (5,50) kept, (50,10) skipped, (50,50) skipped, so the answer is (2, 2). A correct count_pairs fails this test. A build that writes the test first, as the plan says, would either bend count_pairs to match, which breaks the skip count in the run line and the 400-pair cap, or change the expectation on its own. Fix: expect (2, 2), or keep (1, 3) with inputs that give it, e.g. `count_pairs([10, 50], [5, 20]) == (1, 3)`."
++  ],
++  "classification": "non-routine",
++  "classification_reasons": [
++    "Spec is tight (every open question answered, acceptance measurable), but the blast radius is not small: a new module (app/backtest/sweep.py) plus a refactor of the existing `run` sub-command's argument and output code into shared helpers in app/backtest/__main__.py.",
++    "The new behaviour (grid parsing, skip counting, cap, ranking, table layout) has no existing test coverage. The existing tests/test_backtest_cli.py only pins `run` through the refactor.",
++    "No risk-list item, no schema, no data-layer or public-API (`__all__`) change."
++  ],
++  "attempted": [
++    "Intent: checked each intent outcome (command shape, shared args, list parsing and dedup, skipped pairs counted, single load, row contents, sort with ties, output lines, refusals incl. cap 400 counted after the order skip, every-pair-skipped range, offline tests, run unchanged, no new public name, CLAUDE.md lines for the owner) against R1-R15 and the Design. All are covered. The run line wording '9 pairs tried, 0 skipped' differs from the sketch, which the intent explicitly leaves to the design. OK.",
++    "Spec and plan: every requirement maps to a Proof test; open questions are answered with the intent's recommendations; the one flagged concern (argparse reading `--fast -5,10` as an option) is closed with a decision (accept argparse's exit 2, test with `--fast=-5,10`). Files that change: sweep.py, __main__.py, the new test file, plan.md. Nothing outside app/backtest or tests is touched.",
++    "Plan arithmetic: `count_pairs([5,10,20],[30,50,100]) == (9,0)` is correct. `count_pairs([5,50],[10,50]) == (1,3)` is wrong (correct is (2,2)): this is the reason above. `--fast 2,3,5 --slow 5,8,12,24` on 24 candles: 11 kept, 1 order skip, 3 candle skips, so 8 tried and 4 skipped, which works with the boundary `s < frame.height` (matches run's `frame.height <= slow`). 21x21 grid `1..21` by `22..42` = 441 > 400, correct. The defaults on the 24-candle day skip all 9 by candle count, so the R8 refusal follows. The synthetic 120 hourly candles from 2026-09-28 fill exactly 09-28..10-02, so `9 pairs tried, 0 skipped` follows.",
++    "Proof: design phase, no toolchain logs expected. The Proof list names 16 tests in a new file. The refusal tests assert empty stdout, one error line and `kucoin.calls == []`, mirroring test_backtest_cli.py's assert_refused. The 'loaded once' test also monkeypatches `app.backtest.__main__.load_klines`, which works because `_load` resolves the module global.",
++    "Blast radius: the only caller of __main__.py is `python -m`. The `run` refactor is pinned by the unchanged tests/test_backtest_cli.py (exact stdout lines, the 22-character width, refusals) plus a new option-order help test. `__all__` is unchanged, so test_public_api passes. No guardrail file is in the diff (the diff is the change folder only). CLAUDE.md drift is named for the owner in plan.md. No risk-list item applies.",
++    "Policies: security-baseline rule 2 (input size bounded by the cap, computed by bisect before the grid is built; no eval or shell; the only network call is load_klines's existing one). Coding-standards (type hints, new test module per area). ux-and-brand (each error says what to pass, copy in module constants). data-conventions correctly not applicable.",
++    "Tests: the tie test uses constant closes (no position ever, so total_return exactly 0.0 from START_EQUITY), which makes the fast/slow tiebreak observable. Row equality is computed independently through load_klines(cache=False), sma_cross_positions and run_backtest, so a wrong formatter or a wrong pair would fail. Hand-built frames match inputs.REQUIRED_COLUMNS (open_time, open, close), as in test_strategies._frame. This is a feature change, and no existing test is edited.",
++    "Skip markers: not applicable at design (the ratchets check runs at build/test). The plan declares none.",
++    "Claims against today's code, checked in app/backtest/__main__.py: `_length(text, name)` exists and gives `{name} {text!r} is not a whole number of at least 1`; `_fee`, `_percent`, `SMA_NOTE`, `RUN_HELP` exist; main catches InvalidRequestError, KlineGapError, DownloadError, BacktestInputError -> 2 and OSError -> 2 with the cache-dir hint; run's option order is --market, --fast, --slow, --fee, --cache-dir; buy and hold is `run_backtest(frame, [1] * frame.height, fee=fee)` printed as `{label:<14}{value:>8}`; run refuses `frame.height <= slow`; make_request(..., today) uses loader.utc_now().date(). strategy.validate_lengths' wording `{name} {length!r} is not a whole number of at least 1` gives 'slow 0 ...' for ints as R4 says. STRATEGY_NAME is 'sma-cross'. Summary fields total_return, max_drawdown, trade_count, win_rate and time_in_market are used by run. tests/kucoin_stub.py has KuCoin.calls, add_spot_synthetic(start, count, interval_ms) and SPOT_1H (24 candles per test_backtest_cli). tests/conftest.py's clock fixture sets loader.utc_now to NOW 2026-10-03 12:00 UTC. All of these match. docs/decisions/index.md does not exist, and the spec cites no decision.",
++    "Flagged concern detail: the spec's aside that `run --fast -5` is read as an option 'on some versions' is weak: '-5' matches argparse's negative-number pattern, so run receives it as a value. The '-5,10' list form is the one argparse rejects. The decision taken (test with `--fast=-5,10`) is still sound, so this is not a reason.",
++    "Drive: not applicable at design; commands.drive is not referenced by the plan."
++  ]
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.model.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.model.json
+new file mode 100644
+index 0000000..bf8e758
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "a21af651b30acca77",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-11-07T22:34:50Z",
++  "head": "171354cd3135fd1dca0c072fd5c9c17f0333f544",
++  "member": "reviewer",
++  "models": [
++    "claude-opus-5-5"
++  ],
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/4fb87e13-24c7-4543-b7fc-1f6bcab87cef/subagents/agent-a21af651b30acca77.jsonl"
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/decisions-design.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/decisions-design.json
+new file mode 100644
+index 0000000..784bea3
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/decisions-design.json
+@@ -0,0 +1,48 @@
++{
++  "decisions": [
++    {
++      "advocate": "No objection to accepting argparse's refusal and not rewriting argv, but the concern's premise is false (the behaviour is not Python-version dependent) and both two-word forms are deterministic and must be pinned by tests before build; the text should be corrected.",
++      "at": "2026-11-07T22:37:36Z",
++      "cost_usd": null,
++      "decision": "Keep argparse's refusal with no argv rewrite; correct the aside, since a bare `-5` is a value on every version and only a two-word comma list starting with a minus is refused by argparse on 3.10-3.13; and add to `test_sweep_refuses_bad_lengths` a two-word `--fast -5` case expecting the R4 message and a two-word `--fast -5,10` case asserting only exit 2, nothing on stdout and no stub call.",
++      "head": "171354cd3135fd1dca0c072fd5c9c17f0333f544",
++      "item": "A `--fast` or `--slow` list that starts with a minus sign, written as two words",
++      "item_n": 1,
++      "key": "concern:bd790dc818cd80c9",
++      "kind": "concern",
++      "n": 1,
++      "overturned": null,
++      "phase": "design",
++      "rationale": [
++        "Both verdicts agree: refuse through argparse, no argv rewrite, and the `run --fast -5` aside is wrong because bare `-5` always parses as a value.",
++        "They disagree on version dependence; checked on this runner (3.14.4, matcher `-\\.?\\d`), `--fast -5,10` parses as a value, so the reviewer is right and the concern's version clause stays.",
++        "The safer reading adds the advocate's tests, shaped so they hold on every version: the two-word comma case pins only what is common to both paths (exit 2, empty stdout, no fetch), not argparse's message.",
++        "This adds tests and corrects text only; no design change, no limit or guardrail touched."
++      ],
++      "reviewer": "Accept the spec's decision (leave argparse's refusal, test with `--fast=-5,10`) as a nit, not an Important finding; only correct the aside about `run --fast -5`."
++    },
++    {
++      "advocate": "Do not park on this item: the wrong number is real but it is a nit in a plan example, to be corrected in plan.md by the build's step-1 commit, not a design defect that needs the owner.",
++      "at": "2026-11-07T22:37:38Z",
++      "cost_usd": null,
++      "decision": "continue, after the run corrects plan.md Order of work step 1 to `count_pairs([5, 50], [10, 50]) == (2, 2)` before the design phase closes",
++      "head": "58dee3e4256dbb01fe49d58e0cf386e08a5088e0",
++      "item": "adversarial reviewer says park: plan.md Order of work step 1 has a wrong expected value in a planned test: it says `count_pairs([5, 50], [10, 50]) == (1, 3)`, but under R5 (and the plan's own `bisect.bisect_right(slows, fast)` per fast) the grid is (5,10) kept, (5,50) kept, (50,10) skipped, (50,50) skipped, so the answer is (2, 2). A correct count_pairs fails this test. A build that writes the test first, as the plan says, would either bend count_pairs to match, which breaks the skip count in the run line and the 400-pair cap, or change the expectation on its own. Fix: expect (2, 2), or keep (1, 3) with inputs that give it, e.g. `count_pairs([10, 50], [5, 20]) == (1, 3)`.",
++      "item_n": 2,
++      "key": "park:b3d34430ced1d56d",
++      "kind": "park",
++      "n": 2,
++      "overturned": null,
++      "phase": "design",
++      "rationale": [
++        "Both verdicts agree on the fact: under spec R5 and the plan's bisect_right method the grid gives (2, 2), so (1, 3) is wrong.",
++        "They differ only on where to fix it; plan.md is a design-phase artifact, not a guardrail, so the design run can fix the one line now.",
++        "That is safer than leaving it to the build: no test is written against a wrong value, and nothing needs the owner.",
++        "The contract (R5, R6, the Design's count_pairs) is correct, so once the line is fixed nothing is left to park on."
++      ],
++      "reviewer": "Uphold the park: fix plan.md Order of work step 1 so the expectation reads `count_pairs([5, 50], [10, 50]) == (2, 2)` (or keep `(1, 3)` with inputs that give it, e.g. `([10, 50], [5, 20])`)."
++    }
++  ],
++  "phase": "design",
++  "schema_version": 1
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/decisions-design.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/decisions-design.md
+new file mode 100644
+index 0000000..e56b772
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/decisions-design.md
+@@ -0,0 +1,8 @@
++# Decisions taken for you — the design phase
++
++One line per panel decision (decision 21): the item, the reviewer's and the devil's advocate's verdicts, the conciliator's decision and rationale, the cost. A review comment on any of them overturns it (/sdlc-fix); an overturned line says so.
++
++- 1. [concern] A `--fast` or `--slow` list that starts with a minus sign, written as two words — reviewer: Accept the spec's decision (leave argparse's refusal, test with `--fast=-5,10`) as a nit, not an Important finding; only correct the aside about `run --fast -5`.; devil's advocate: No objection to accepting argparse's refusal and not rewriting argv, but the concern's premise is false (the behaviour is not Python-version dependent) and both two-word forms are deterministic and must be pinned by tests before build; the text should be corrected.; decision: Keep argparse's refusal with no argv rewrite; correct the aside, since a bare `-5` is a value on every version and only a two-word comma list starting with a minus is refused by argparse on 3.10-3.13; and add to `test_sweep_refuses_bad_lengths` a two-word `--fast -5` case expecting the R4 message and a two-word `--fast -5,10` case asserting only exit 2, nothing on stdout and no stub call.; rationale: Both verdicts agree: refuse through argparse, no argv rewrite, and the `run --fast -5` aside is wrong because bare `-5` always parses as a value. They disagree on version dependence; checked on this runner (3.14.4, matcher `-\.?\d`), `--fast -5,10` parses as a value, so the reviewer is right and the concern's version clause stays. The safer reading adds the advocate's tests, shaped so they hold on every version: the two-word comma case pins only what is common to both paths (exit 2, empty stdout, no fetch), not argparse's message. This adds tests and corrects text only; no design change, no limit or guardrail touched.; cost: n/a
++- 2. [park] adversarial reviewer says park: plan.md Order of work step 1 has a wrong expected value in a planned test: it says `count_pairs([5, 50], [10, 50]) == (1, 3)`, but under R5 (and the plan's own `bisect.bisect_right(slows, fast)` per fast) the grid is (5,10) kept, (5,50) kept, (50,10) skipped, (50,50) skipped, so the answer is (2, 2). A correct count_pairs fails this test. A build that writes the test first, as the plan says, would either bend count_pairs to match, which breaks the skip count in the run line and the 400-pair cap, or change the expectation on its own. Fix: expect (2, 2), or keep (1, 3) with inputs that give it, e.g. `count_pairs([10, 50], [5, 20]) == (1, 3)`. — reviewer: Uphold the park: fix plan.md Order of work step 1 so the expectation reads `count_pairs([5, 50], [10, 50]) == (2, 2)` (or keep `(1, 3)` with inputs that give it, e.g. `([10, 50], [5, 20])`).; devil's advocate: Do not park on this item: the wrong number is real but it is a nit in a plan example, to be corrected in plan.md by the build's step-1 commit, not a design defect that needs the owner.; decision: continue, after the run corrects plan.md Order of work step 1 to `count_pairs([5, 50], [10, 50]) == (2, 2)` before the design phase closes; rationale: Both verdicts agree on the fact: under spec R5 and the plan's bisect_right method the grid gives (2, 2), so (1, 3) is wrong. They differ only on where to fix it; plan.md is a design-phase artifact, not a guardrail, so the design run can fix the one line now. That is safer than leaving it to the build: no test is written against a wrong value, and nothing needs the owner. The contract (R5, R6, the Design's count_pairs) is correct, so once the line is fixed nothing is left to park on.; cost: n/a
++
++Total panel cost: n/a
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/diff-design.patch b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/diff-design.patch
+new file mode 100644
+index 0000000..924ab64
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/diff-design.patch
+@@ -0,0 +1,594 @@
++ .../evidence/.gitkeep                              |   0
++ .../evidence/hook-log.jsonl                        |   9 ++
++ .../evidence/run-design.json                       |   5 +
++ .../intent.md                                      | 142 ++++++++++++++++
++ .../plan.md                                        | 177 ++++++++++++++++++++
++ .../spec.md                                        | 178 +++++++++++++++++++++
++ .../status.yaml                                    |  34 ++++
++ 7 files changed, 545 insertions(+)
++
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/.gitkeep b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/.gitkeep
++new file mode 100644
++index 0000000..e69de29
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
++new file mode 100644
++index 0000000..e02a1d4
++--- /dev/null
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
++@@ -0,0 +1,9 @@
+++{"at": "2026-11-07T22:30:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:31:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:31:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:31:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:31:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:32:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:32:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:32:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:32:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-design.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-design.json
++new file mode 100644
++index 0000000..fdd75e4
++--- /dev/null
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-design.json
++@@ -0,0 +1,5 @@
+++{
+++  "phase": "design",
+++  "spend_usd": null,
+++  "started_at": "2026-11-07T22:30:03Z"
+++}
++\ No newline at end of file
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/intent.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/intent.md
++new file mode 100644
++index 0000000..6dbe0b0
++--- /dev/null
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/intent.md
++@@ -0,0 +1,142 @@
+++# Intent: Sweep SMA crossover lengths on one range
+++Author: owner (product owner), drafted by Claude on 2026-11-07 from the owner's request for the next step. Change id: 0006. Entry route: idea.
+++
+++## Problem
+++Since change 0005, `python -m app.backtest run` backtests the SMA crossover with one pair of
+++lengths at a time. The first real run (BTC-USDT 1h spot, 2026-09-01 .. 2026-11-06, fast 20
+++slow 50) lost 10.66% while buy and hold lost 3.74%, and the owner cannot tell whether other
+++lengths would do better without running the command once per pair and comparing the numbers
+++by hand. The owner wants one command that tries a grid of lengths on one date range and shows
+++the results side by side. It is kept small on purpose, so that this change and the ones that
+++build on it stay cheap to run.
+++
+++## Proposed outcome
+++A command `python -m app.backtest sweep` runs the SMA crossover for every pair of a grid of
+++fast and slow lengths on one symbol's klines and prints one row per pair, best first.
+++
+++**The command**
+++```
+++python -m app.backtest sweep SYMBOL INTERVAL START END [--market spot|futures]
+++    [--fast 5,10,20] [--slow 30,50,100] [--fee 0.001] [--cache-dir DIR]
+++```
+++- `SYMBOL`, `INTERVAL`, `START`, `END`, `--market`, `--fee` and `--cache-dir` mean what they
+++  mean for `python -m app.backtest run`: the same values, defaults, checks and messages.
+++- `--fast` and `--slow` are comma-separated lists of whole numbers of at least 1, in candles.
+++  A value may repeat; repeats are tried once.
+++- The grid is every fast length paired with every slow length. A pair whose fast is not below
+++  its slow is skipped, not refused; the output says how many were skipped.
+++- The klines are loaded once, with `app.data.load_klines`, as `run` loads them.
+++
+++**What each row holds**
+++- fast, slow, total return, max drawdown, trades, win rate and time in market, the numbers
+++  `run_backtest` returns for `sma_cross_positions(frame, fast, slow)` and the fee; a row's
+++  numbers equal what `python -m app.backtest run` prints for that pair on the same range.
+++- The rows are sorted by total return, highest first; equal returns are ordered by fast, then
+++  slow, smallest first, so the order never changes between runs.
+++
+++**The output**, plain text on stdout:
+++- one line naming the run: symbol, interval, market, date range, number of candles, strategy,
+++  number of pairs tried (and skipped), fee;
+++- the SMA note `run` prints;
+++- a header line and one row per pair, in aligned columns, the fractions as percentages with
+++  two decimals;
+++- one buy-and-hold line, as `run` prints it;
+++- one warning line: the best pair on past data is often luck, so check it on another date
+++  range before trusting it.
+++
+++**Inputs it must refuse**, each with `error: ...` on stderr and exit code 2, before any
+++backtest:
+++- what `run` refuses for `SYMBOL`, `INTERVAL`, `START`, `END`, `--market`, `--fee` and the
+++  cache directory, with the same messages;
+++- a `--fast` or `--slow` list that is empty or holds a value that is not a whole number of at
+++  least 1, naming the value;
+++- a grid with no pair whose fast is below its slow, checked before any kline is loaded;
+++- a grid of more than 400 such pairs (see Open questions), checked before any kline is loaded;
+++- a range in which every pair is skipped. A pair whose slow length is not below the candle
+++  count (`run` refuses that range) is skipped and counted, as a pair with fast not below slow
+++  is.
+++- Exit code 0 on success.
+++
+++How to check it is done:
+++- Tests run offline, without the network, through `main(argv, fetch=...)` with the existing
+++  stub (`tests/kucoin_stub.py`) and the fixed clock, as the tests of `run` do.
+++- They show that:
+++  - each row equals the numbers `run_backtest` gives for that pair on the same frame;
+++  - the rows are sorted by total return, ties by fast then slow;
+++  - pairs with fast not below slow, and pairs with slow not below the candle count, are
+++    skipped and counted in the header line;
+++  - repeated values are tried once;
+++  - the klines are loaded once for the whole grid (the stub sees one set of requests);
+++  - each refused input above prints its error and exits 2;
+++  - `python -m app.backtest run` prints exactly what it printed before.
+++- Build, test and lint stay green.
+++
+++## Affected users and systems
+++- The owner, who will compare lengths from the terminal.
+++- `app/backtest/__main__.py`: a new `sweep` sub-command next to `run`; the argument handling
+++  `run` and `sweep` share may move into helpers there. Whether the sweep itself lives in the
+++  CLI module or a new module is the design's choice.
+++- `app/backtest/` engine and strategy (`inputs.py`, `engine.py`, `summary.py`,
+++  `strategy.py`): used, not changed.
+++- `app/data/`: called through `load_klines`, not changed.
+++- New test file only, for example `tests/test_backtest_sweep.py`; no test file already on
+++  `main` is edited. `tests/kucoin_stub.py` and the fixture files are read, not changed.
+++- KuCoin's public REST API, only when a day is not cached yet, through `load_klines` as today.
+++- No new dependency. `pyproject.toml` and `.github/workflows/ci.yml` need no change.
+++
+++## Constraints
+++- Feature-type change. Its tests live in a new file, so the change edits no test file already
+++  on `main`.
+++- **No new public name.** `tests/test_backtest.py: test_public_api` pins
+++  `app.backtest.__all__` exactly, so adding a name would force an edit of a test file already
+++  on `main` (change 0005 had to do this). Keep `app/backtest/__init__.py`'s `__all__` as it
+++  is: the sweep is a CLI command, and any helper it needs stays out of `__all__`.
+++- `python -m app.backtest run` keeps its options, output and exit codes.
+++- No new dependency: polars and the standard library, no numpy of its own, no threads or
+++  processes.
+++- No network in the tests: every fetch goes through the stub or a pre-filled cache.
+++- No lookahead: each pair uses `sma_cross_positions` as it is.
+++- Speed: one backtest of a year of 1h candles (8760 rows) takes about 10 ms on the owner's
+++  machine (measured 2026-11-07), so a 400-pair grid on a year of 1h candles takes a few
+++  seconds. 1m candles are 60 times as many rows; the design says whether the output warns
+++  before a long run.
+++- Python >= 3.10, type hints on public functions, ruff clean at line length 100.
+++- The package version stays 0.1.0 unless the design says otherwise.
+++- **Guardrail lines for the owner.** A run cannot edit `CLAUDE.md`, so `plan.md` names the lines
+++  for the owner, who may land them before the build PR is reviewed (on change 0003 an outdated
+++  `CLAUDE.md` kept `sdlc/review` red):
+++  - the opening paragraph names the CLI `python -m app.backtest run`; it needs `sweep` too;
+++  - the `app/backtest/` Architecture bullet lists the modules and test files; it needs any new
+++    module and the new test file.
+++- Out of scope: other strategies or indicators, other ranking measures, a held-out date range
+++  or walk-forward check, saving results to a file, plots, ranges of lengths (`5..50`), several
+++  symbols, shorts, slippage, futures funding, parallel runs.
+++
+++## Open questions
+++- **Default grids?** Recommended: `--fast 5,10,20 --slow 30,50,100`.
+++  Nine pairs, all with fast below slow, around the `run` defaults (20/50); the owner can pass
+++  any lists.
+++- **A cap on the grid size?** Recommended: refuse more than 400 pairs.
+++  Twenty by twenty lengths is plenty for a first look and runs in seconds on 1h candles. The
+++  cap counts the pairs kept, after skipping, so a big list that is mostly skipped still runs.
+++- **Rank by total return only?** Recommended: yes.
+++  It is the number the owner compared first. Max drawdown and the other columns are shown, so
+++  the owner can read them; sorting by another measure is a later change.
+++- **Show every row, or only the best few?** Recommended: every row.
+++  A 400-row table is long but complete; a `--top` option is a later change if it is needed.
+++
+++## Examples/References
+++- A sketch of the output (numbers made up; the design fixes the exact layout):
+++  ```
+++  BTC-USDT 1h spot, 2026-01-01 .. 2026-10-31: 7296 candles; sma-cross, 9 pairs (0 skipped); fee 0.10%
+++  SMAs count candles, not wall time: an interval without a candle is skipped, not filled.
+++  fast  slow  total return  max drawdown  trades  win rate  time in market
+++    10    50        14.20%        11.30%      18    38.89%          47.10%
+++    20   100         9.05%        15.02%       9    44.44%          51.30%
+++     5    30        -2.10%        19.75%      44    27.27%          45.80%
+++  ...
+++  buy and hold     -3.74%
+++  The best pair on past data is often luck: check it on another date range before trusting it.
+++  ```
+++- The command it extends: `app/backtest/__main__.py` (`python -m app.backtest run`) and its
+++  tests, `tests/test_backtest_cli.py`; change `changes/0005-run-a-backtest-from-the-cli-with-an-sma/`.
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
++new file mode 100644
++index 0000000..34aed7a
++--- /dev/null
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
++@@ -0,0 +1,177 @@
+++# Plan: Sweep SMA crossover lengths on one range (from intent.md 2026-11-07, spec.md 2026-11-07)
+++
+++## Files that change
+++- `app/backtest/sweep.py` — new: `MAX_PAIRS = 400`; `count_pairs(fasts: Sequence[int], slows:
+++  Sequence[int]) -> tuple[int, int]` (kept, skipped) by `bisect.bisect_right(slows, fast)` per
+++  fast on the sorted distinct lists; `pairs(fasts, slows) -> list[tuple[int, int]]` (kept
+++  pairs, fast-major order); `SweepRow` frozen dataclass (`fast: int`, `slow: int`,
+++  `summary: Summary`); `sweep(frame: pl.DataFrame, pairs: Sequence[tuple[int, int]], fee:
+++  float) -> list[SweepRow]`, sorted by `(-row.summary.total_return, row.fast, row.slow)`.
+++  No I/O (spec Design, "Sweep module").
+++- `app/backtest/__main__.py` — the `sweep` sub-command (`SWEEP_HELP`, `SWEEP_WARNING`, the
+++  table header constants, `_sweep(args, fetch) -> int`, `_lengths(text, name, example) ->
+++  list[int]`, a `_table(rows) -> list[str]` formatter) and the helpers `run` and `sweep`
+++  share (`_add_range_arguments`, `_add_fee_arguments`, `_load(request, args, fetch)`,
+++  `_hold_line(frame, fee)`); `_run` uses the helpers with identical output.
+++- `tests/test_backtest_sweep.py` — new: the tests of Proof.
+++- `changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md` — this file, whenever the
+++  build departs from it.
+++
+++Unchanged: `app/backtest/__init__.py` (`__all__` and docstring), `inputs.py`, `engine.py`,
+++`summary.py`, `strategy.py`, every module of `app/data/`, `app/__init__.py` (version
+++`0.1.0`), `pyproject.toml` (`app.backtest` is already a package, so `sweep.py` ships),
+++`.github/workflows/ci.yml`, every test file already on `main`, `tests/conftest.py`,
+++`tests/kucoin_stub.py`, `tests/fixtures/`. The Setup and Test commands stay as they are.
+++
+++For the owner, not the run (guardrail file; the owner may land these in a PR of their own
+++before the build PR is reviewed), `CLAUDE.md`:
+++- Opening paragraph, "with an SMA crossover strategy and the CLI `python -m app.backtest
+++  run`." Suggested: "with an SMA crossover strategy and the CLI `python -m app.backtest run |
+++  sweep`."
+++- Architecture, the `app/backtest/` bullet. Suggested: "`app/backtest/` is the backtest
+++  engine, one module per job (inputs, engine, summary, strategy, sweep, and the CLI in
+++  `__main__.py`); its public API is `app/backtest/__init__.py` (`run_backtest`,
+++  `sma_cross_positions`). Only the CLI does I/O, through `app.data.load_klines`; the engine
+++  and strategy tests, `tests/test_backtest.py` and `tests/test_strategies.py`, use frames
+++  built by hand, and the CLI tests, `tests/test_backtest_cli.py` and
+++  `tests/test_backtest_sweep.py`, run offline against `tests/kucoin_stub.py`."
+++
+++## Order of work
+++1. `app/backtest/sweep.py` with its unit tests in `tests/test_backtest_sweep.py` (hand-built
+++   frames: integer `open_time`, `open` = `close`, as `tests/test_strategies.py` builds them).
+++   - `count_pairs([5, 10, 20], [30, 50, 100]) == (9, 0)`; `count_pairs([5, 50], [10, 50]) ==
+++     (1, 3)`.
+++   - `sweep` on a frame of constant closes (every SMA equal, no position, return exactly 0)
+++     returns rows ordered by fast, then slow; on a varying frame each row's summary equals
+++     `run_backtest(frame, sma_cross_positions(frame, f, s), fee=fee).summary` and the order
+++     is by descending total return.
+++   - Commit with its tests.
+++2. Refactor `app/backtest/__main__.py` without behaviour change: `_add_range_arguments(parser)`
+++   adds `symbol`, `interval`, `start`, `end` (same metavars and help) and `--market`;
+++   `_add_fee_arguments(parser)` adds `--fee` and `--cache-dir`; `run` keeps `--fast` and
+++   `--slow` between them, so its help lists the options in today's order. `_load(request,
+++   args, fetch)` wraps the `load_klines` call; `_hold_line(frame, fee)` returns
+++   `f"{'buy and hold':<14}{value:>8}"`. `tests/test_backtest_cli.py` must pass unchanged.
+++   Commit.
+++3. The `sweep` sub-command in `app/backtest/__main__.py`, in the order of spec Design:
+++   - `_lengths(text, name, example)`: `items = text.split(",")`; `text.strip() == ""` →
+++     `BacktestInputError(f"--{name} is empty: pass comma-separated whole numbers, for example
+++     {example}")`; each item `value = _length(item, name)`, then `value < 1` →
+++     `BacktestInputError(f"{name} {value} is not a whole number of at least 1")` (the words
+++     of `validate_lengths`); return `sorted(set(values))`.
+++   - `fee = _fee(args.fee)`; `kept, skipped = count_pairs(fasts, slows)`; `kept == 0` →
+++     `no pair has fast below slow: pass a --fast value below a --slow value`; `kept >
+++     MAX_PAIRS` → `f"the grid has {kept} pairs with fast below slow, more than {MAX_PAIRS}:
+++     pass shorter --fast or --slow lists"`.
+++   - `frame = _load(...)`; `grid = [(f, s) for f, s in pairs(fasts, slows) if s <
+++     frame.height]`; `skipped += kept - len(grid)`; empty → `f"the range has {frame.height}
+++     candles, not more than any slow length with a smaller fast: no pair could take a
+++     position; widen the dates or lower --slow"`.
+++   - Print the run line (spec Design, "Output") and `SMA_NOTE`, `flush=True` on the note;
+++     then `rows = sweep(frame, grid, fee)`, the table from `_table(rows)`, `_hold_line`,
+++     `SWEEP_WARNING`; return 0.
+++   - `_table`: headers `("fast", "slow", "total return", "max drawdown", "trades", "win
+++     rate", "time in market")`; cells `str(fast)`, `str(slow)`, `_percent(...)` for the four
+++     fractions, `str(trade_count)`; width per column `max(len(header), longest cell)`;
+++     `"  ".join(cell.rjust(width) ...)`, the header row the same.
+++   - Parser: `sweep` with `help=SWEEP_HELP`, `epilog=SMA_NOTE`, `--fast default="5,10,20"`,
+++     `--slow default="30,50,100"`, help naming them comma-separated lengths in candles.
+++   - The CLI tests of Proof. Commit with them.
+++4. Run build, test and lint; paste the output.
+++
+++## Risks
+++- **Breaking `run` in the refactor (riskiest step, 2).** Moving the argument lines into
+++  helpers can reorder `run`'s options in `--help` or change a default. Mitigations: the
+++  helpers add the arguments in today's order with today's strings; `tests/test_backtest_cli.py`
+++  pins `run`'s output and refusals and must pass unchanged; a new test compares
+++  `run --help`'s option names in order (`--market`, `--fast`, `--slow`, `--fee`,
+++  `--cache-dir`) to catch a reorder. If a helper makes `run` harder to read, step 2 may keep
+++  `run`'s lines inline and only share `_load` and `_hold_line`; say so here.
+++- **The test data.** `SPOT_1H` holds 24 candles of 2026-10-01, so the default slows
+++  (30, 50, 100) are all skipped there: the success tests pass short lists (for example
+++  `--fast 2,3,5 --slow 5,8,12,24`, where slow 24 is skipped by the candle count and fast 5
+++  with slow 5 by the order rule). The tests compute the expected rows themselves with
+++  `load_klines(..., cache=False, fetch=spot_day())`, `sma_cross_positions` and
+++  `run_backtest`, as `tests/test_backtest_cli.py` does, and sort them by the spec's key.
+++- **"Loaded once".** The test compares the stub's `calls` after one `sweep` with those after
+++  one `run` of the same range on a fresh stub and a fresh cache; a second load from the cache
+++  would make no extra call, so the test also asserts that `_load` is reached once by
+++  counting calls of a monkeypatched `app.backtest.__main__.load_klines` wrapper.
+++- **The clock.** `make_request` refuses an end after `loader.utc_now()`; the tests use the
+++  `clock` fixture (NOW 2026-10-03 12:00 UTC) and read the clock through `loader.utc_now()`,
+++  as `_run` does.
+++- **Negative items and argparse** (spec Flagged concerns): `--fast -5,10` may reach argparse
+++  as an option on some Python versions; the test uses `--fast=-5,10`.
+++- **Header printed before the backtests.** An engine error after the run line would leave
+++  stdout non-empty; `load_klines` frames already pass the engine's checks (the `run` tests
+++  show it), so the only errors after the header are bugs.
+++- **Float ties.** Equal returns on real data are rare; the tie test uses constant closes,
+++  whose returns are exactly `0.0`.
+++- **No new public name.** `sweep.py`'s names are not added to `app/backtest/__init__.py`, so
+++  `tests/test_backtest.py::test_public_api` passes unchanged (intent Constraints).
+++- **No new dependency** (coding-standards rule 5; security-baseline rule 6): `bisect`,
+++  `dataclasses` and polars only.
+++- **CLAUDE.md drift.** Until the owner lands the lines above, the deploy review may flag an
+++  outdated `CLAUDE.md`. The run cannot edit it.
+++
+++## Options not taken
+++- **The sweep loop inside `__main__.py`.** Not taken: a pure module keeps the CLI short and
+++  lets the sort and the skip count be tested on hand-built frames; the intent leaves the choice
+++  to the design.
+++- **Building the grid before the cap check.** Not taken: two long lists would build a large
+++  list of pairs before the refusal; `count_pairs` bisects instead (security-baseline rule 2).
+++- **Counting the candle-count skips toward the cap.** Not taken: they are known only after
+++  loading, and the intent checks the cap before loading.
+++- **A long-run warning on stderr** (above a pairs × candles threshold). Not taken: the run
+++  line shows both counts and is flushed before the first backtest; the 400 cap bounds the
+++  worst case; a threshold would be a number with no source.
+++- **Rewriting argv so `--fast -5,10` reaches the command.** Not taken: it fights argparse for
+++  one edge case; `--fast=-5,10` works (spec Flagged concerns).
+++- **Ranges such as `5..50`, `--top`, other ranking measures.** Out of scope per the intent.
+++- **Threads or processes for speed.** Out of scope per the intent's Constraints.
+++
+++Interrogation answers:
+++1. What could break: `run`, through the step-2 refactor (pinned by the unchanged
+++   `tests/test_backtest_cli.py`); nothing else imports `__main__.py`. Shapes touched: the
+++   `load_klines` frame (read only), `run_backtest`'s inputs (as `run` passes them), `Summary`
+++   (read only).
+++2. Riskiest step: step 2, the shared helpers; mitigated above.
+++3. Other options: listed above.
+++4. An engineer who never saw this conversation can implement it from spec Design (order of
+++   checks, the output shape) and Order of work (messages and calls). Nothing is missing.
+++5. Every Proof test is still to be written, in the new file; the existing tests exist and
+++   must keep passing.
+++
+++## Proof
+++- test: test_count_pairs_counts_kept_and_skipped
+++- test: test_sweep_rows_match_run_backtest
+++- test: test_sweep_ties_sort_by_fast_then_slow
+++- test: test_sweep_prints_table
+++- test: test_sweep_skips_and_counts_pairs
+++- test: test_sweep_tries_repeats_once
+++- test: test_sweep_loads_klines_once
+++- test: test_sweep_refuses_bad_request
+++- test: test_sweep_refuses_bad_market
+++- test: test_sweep_refuses_bad_lengths
+++- test: test_sweep_refuses_bad_fee
+++- test: test_sweep_refuses_empty_grid
+++- test: test_sweep_refuses_grid_over_cap
+++- test: test_sweep_refuses_range_with_every_pair_skipped
+++- test: test_sweep_defaults_give_nine_pairs
+++- test: test_run_help_keeps_option_order
+++- `test_sweep_prints_table` runs `sweep btc-usdt 1h 2026-10-01 2026-10-01 --fast 2,3,5
+++  --slow 5,8,12,24` and compares every stdout line with lines built in the test from
+++  `run_backtest`; it also checks that every table line has the header's length.
+++- The refusal tests assert exit 2, one `error:` line on stderr, empty stdout, and (all but
+++  the every-pair-skipped one) `kucoin.calls == []`. Cases: bad symbol, interval and dates;
+++  `--fast ""`, `--fast 5,,10`, `--fast x`, `--fast=-5,10`, `--slow 0`, `--fast 1.5`; `--fee
+++  abc`, `--fee 1.5`; `--fast 50 --slow 10,20` (no pair); 21 fasts `1..21` by 21 slows
+++  `22..42` (441 pairs, over the cap); the default grid on the 24-candle day (every pair
+++  skipped by the candle count). A bad `--market` raises `SystemExit` with code 2.
+++- `test_sweep_defaults_give_nine_pairs` uses a stub with enough synthetic candles
+++  (`kucoin.add_spot_synthetic(utc(2026, 9, 28), 120, 3_600_000)`, range 2026-09-28 ..
+++  2026-10-02, 120 candles, more than the largest slow 100) and checks `9 pairs tried, 0
+++  skipped` and nine table rows.
+++- `tests/test_backtest_cli.py` and the rest of the suite pass unchanged.
+++- `python -m compileall -q .` prints nothing. `python -m pytest` reports every test passed.
+++  `python -m ruff check .` prints `All checks passed!`.
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md
++new file mode 100644
++index 0000000..04252f4
++--- /dev/null
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md
++@@ -0,0 +1,178 @@
+++# Spec: Sweep SMA crossover lengths on one range
+++Change id: 0006. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.51); overrides: none; policy sources: none
+++
+++## Requirements
+++- R1. `python -m app.backtest sweep SYMBOL INTERVAL START END [--market spot|futures]
+++  [--fast LIST] [--slow LIST] [--fee FEE] [--cache-dir DIR]` exists next to `run`.
+++- R2. `SYMBOL`, `INTERVAL`, `START`, `END`, `--market`, `--fee` and `--cache-dir` behave as
+++  they do for `run`: the same defaults (`spot`, `0.001`, the data layer's cache directory),
+++  the same checks and the same messages (`app/data/params.py: make_request`, `--market`
+++  `choices=MARKETS`, the fee text parse and `app/backtest/inputs.py: _check_fee`, the
+++  `OSError` cache-directory hint of `main`).
+++- R3. `--fast` and `--slow` are comma-separated lists of whole numbers of at least 1; the
+++  defaults are `5,10,20` and `30,50,100`. A repeated value is tried once.
+++- R4. A list that is empty, or holds an item that is not a whole number of at least 1, is
+++  refused naming the item, in the words `run` uses: `fast 'x' is not a whole number of at
+++  least 1`, `slow 0 is not a whole number of at least 1`; an empty list gets
+++  `--fast is empty: pass comma-separated whole numbers, for example 5,10,20` (`--slow`:
+++  `30,50,100`).
+++- R5. The grid is every distinct fast paired with every distinct slow. A pair whose fast is
+++  not below its slow is skipped and counted.
+++- R6. Before any kline is loaded: a grid with no pair whose fast is below its slow is refused;
+++  a grid of more than 400 such pairs is refused, naming the count and the cap.
+++- R7. The klines are loaded once, with `app.data.load_klines`, with the same arguments `run`
+++  passes.
+++- R8. After loading, a pair whose slow is not below the candle count (`run` refuses
+++  `frame.height <= slow`) is skipped and counted with the R5 skips; if every pair is skipped,
+++  the range is refused.
+++- R9. Each remaining pair is backtested as `run_backtest(frame, sma_cross_positions(frame,
+++  fast, slow), fee=fee)`; its row shows fast, slow, total return, max drawdown, trades, win
+++  rate and time in market, formatted as `run` formats them, so each number equals what `run`
+++  prints for that pair on the same range.
+++- R10. Rows are sorted by total return, highest first; equal returns by fast, then slow,
+++  smallest first.
+++- R11. Output on stdout, in order: the run line; `run`'s SMA note (`SMA_NOTE`); a header line
+++  and one row per pair in aligned columns; `run`'s buy-and-hold line, character for character;
+++  the warning line (Design, "Output").
+++- R12. Every refusal prints one `error: ...` line on stderr, prints nothing on stdout and exits
+++  2; success exits 0. Every refusal of R2, R4 and R6 happens before any fetch.
+++- R13. `python -m app.backtest run` keeps its options, help, output and exit codes; every test
+++  already on `main` passes unchanged.
+++- R14. `app.backtest.__all__` is unchanged; any sweep helper stays out of it. `app/data/`,
+++  `inputs.py`, `engine.py`, `summary.py` and `strategy.py` are unchanged. No new dependency
+++  (polars and the standard library, no threads or processes). Version stays `0.1.0`.
+++- R15. Tests live in a new file only and run offline (stub `tests/kucoin_stub.py`, the
+++  `clock` fixture, `--cache-dir` under `tmp_path`).
+++- Policies:
+++  - coding-standards applies: `CLAUDE.md` conventions first (rule 1: Python >= 3.10, type
+++    hints on public functions, ruff at line length 100, one test module per area); rule 2,
+++    the sweep follows `__main__.py`'s style (text options parsed by the command, one
+++    `error:` line, module constants for copy); rule 3, the diff stays inside plan.md; rule 4,
+++    every behaviour has a test; rule 5, no dependency; rule 7, small functions, no dead code.
+++  - security-baseline applies to the command-line input: rule 2, every input is validated
+++    before use and its size is bounded (the 400-pair cap; the pair count is computed without
+++    building the grid, so a long list cannot cost time or memory before the cap refuses it);
+++    no path or URL is built from input beyond what `load_klines` already does. Rule 6: no
+++    `eval`, `exec`, `pickle` or shell. Rule 7: the only network call is `load_klines`'s
+++    existing one; the tests make none. Rules 1, 3, 4 and 5 do not apply: no endpoint, secret,
+++    personal data or stored state of its own.
+++  - Risk list (security-baseline rule 8): none of `auth`, `data migrations`, `money movement`
+++    or `production config` applies. The command simulates a strategy on public historical
+++    prices in memory: no order, no funds, no credential, no stored schema, no configuration.
+++  - ux-and-brand applies to the CLI text output: rule 3 (success and every error state are
+++    specified, R11 and R12), rule 4 (each message says what is wrong and what to pass), rule 6
+++    (labels, note and warning are module constants, as `SMA_NOTE` is). Rule 1: the layout
+++    follows the intent's sketch and `run`'s output. Rules 2, 5 and 7 do not apply: no colours,
+++    fonts, controls or screenshots in plain stdout text.
+++  - data-conventions does not apply: no new stored field, schema, migration, event or
+++    personal data; the command reads and fills the existing public kline cache through
+++    `load_klines` (rule 1), and writes no report file (rule 6).
+++  - definition-of-done applies: build, test and lint green with their output pasted, the
+++    verifier report and each phase's gate.
+++
+++## Design
+++- **Sweep module** (`app/backtest/sweep.py`, new), pure, no I/O, not re-exported from
+++  `app/backtest/__init__.py` (R14), as `strategy.validate_lengths` is a module function:
+++  - `MAX_PAIRS = 400`.
+++  - `count_pairs(fasts, slows) -> tuple[int, int]`: (kept, skipped) for two sorted lists of
+++    distinct lengths, kept = pairs with fast below slow, computed per fast by bisecting the
+++    slows, so the cap check costs nothing on a long list (security-baseline rule 2).
+++  - `pairs(fasts, slows) -> list[tuple[int, int]]`: the kept pairs, built only after the cap
+++    check.
+++  - `SweepRow` (frozen dataclass: `fast`, `slow`, `summary: Summary`) and
+++    `sweep(frame, pairs, fee) -> list[SweepRow]`: one `run_backtest(frame,
+++    sma_cross_positions(frame, fast, slow), fee=fee)` per pair, sorted by the key
+++    `(-summary.total_return, fast, slow)` (R10).
+++- **CLI** (`app/backtest/__main__.py`): a second sub-command `sweep` beside `run`.
+++  - Arguments in `run`'s order: positionals, `--market`, `--fast` (default `"5,10,20"`),
+++    `--slow` (default `"30,50,100"`), `--fee`, `--cache-dir`; the epilog is `SMA_NOTE`. The
+++    lines `run` and `sweep` share move into small helpers (the range arguments, the fee and
+++    cache arguments, the kline load, the buy-and-hold line); `run`'s help text and output stay
+++    byte for byte the same (R13).
+++  - Order of checks: (1) `make_request(...)` with `loader.utc_now().date()`; (2) `--fast` then
+++    `--slow` parsed as lists: split on `,`, each item through `run`'s `_length` (`int()` of
+++    the text, else the R4 message), then `< 1` refused with the same words, then deduplicated
+++    and sorted; (3) `--fee` as `run` parses it; (4) `count_pairs`: 0 kept → `no pair has fast
+++    below slow: pass a --fast value below a --slow value`; more than `MAX_PAIRS` →
+++    `the grid has N pairs with fast below slow, more than 400: pass shorter --fast or --slow
+++    lists`; (5) `load_klines(...)` once; (6) drop pairs with `slow >= frame.height` and add
+++    them to the skipped count; none left → `the range has N candles, not more than any slow
+++    length with a smaller fast: no pair could take a position; widen the dates or lower
+++    --slow`; (7) print the run line and the note, flushed; (8) `sweep(...)` and buy and hold
+++    (`run_backtest(frame, [1] * frame.height, fee=fee)`); (9) print the table, the buy-and-hold
+++    line and the warning.
+++  - Every refusal is a `BacktestInputError` raised by the command (or `run`'s existing
+++    exceptions), so `main`'s existing handler prints it and returns 2; `main` itself does
+++    not change.
+++- **Output, worked shape** (numbers made up):
+++  ```
+++  BTC-USDT 1h spot, 2026-01-01 .. 2026-10-31: 7296 candles; sma-cross, 9 pairs tried, 0 skipped; fee 0.10%
+++  SMAs count candles, not wall time: an interval without a candle is skipped, not filled.
+++  fast  slow  total return  max drawdown  trades  win rate  time in market
+++    10    50        14.20%        11.30%      18    38.89%          47.10%
+++    20   100         9.05%        15.02%       9    44.44%          51.30%
+++     5    30        -2.10%        19.75%      44    27.27%          45.80%
+++  buy and hold     -3.74%
+++  The best pair on past data is often luck: check it on another date range before trusting it.
+++  ```
+++  - The run line: `{symbol} {interval} {market}, {start} .. {end}: {height} candles;
+++    sma-cross, {tried} pairs tried, {skipped} skipped; fee {fee:.2%}`. "Tried" is the number
+++    of rows; "skipped" counts both kinds of skip (R5, R8). The intent's sketch reads
+++    `9 pairs (0 skipped)`; the intent leaves the exact layout to the design, and the explicit
+++    words say which number is which.
+++  - Table: seven columns separated by two spaces, each right-aligned to the width of its
+++    header or its longest cell, whichever is wider; fractions as `f"{x:.2%}"`, trades as an
+++    integer, as `run` prints them (R9).
+++  - Buy-and-hold: `f"{'buy and hold':<14}{value:>8}"`, `run`'s line.
+++- **Long runs**: no separate warning. The run line, which names the candle and pair counts, is
+++  printed and flushed before the first backtest, so a large run shows its size at once
+++  (the intent's speed note: 400 pairs on a year of 1m candles take minutes). The 400 cap
+++  bounds the worst case.
+++- **Unchanged**: `run` (`_run`'s behaviour), `main`, `app/backtest/__init__.py`, the engine,
+++  strategy, summary and inputs modules, `app/data/`, `pyproject.toml`, the CI workflow.
+++
+++## Open questions from intent
+++- "Default grids? Recommended: `--fast 5,10,20 --slow 30,50,100`." Answered: those defaults,
+++  per the recommendation the owner accepted by opening the intent PR (fast lane); nine pairs
+++  around `run`'s defaults 20/50 (`app/backtest/__main__.py`, `--fast`/`--slow` defaults) (R3).
+++- "A cap on the grid size? Recommended: refuse more than 400 pairs." Answered: 400, counted
+++  on the pairs with fast below slow, before loading (R6); a bound on input size is also
+++  security-baseline rule 2. The candle-count skips (R8) cannot count toward it, since they
+++  are known only after loading, which the intent puts after the cap check.
+++- "Rank by total return only? Recommended: yes." Answered: yes, ties by fast then slow (R10).
+++- "Show every row, or only the best few? Recommended: every row." Answered: every row; no
+++  `--top` option (R11).
+++
+++## Flagged concerns
+++- A `--fast` or `--slow` list that starts with a minus sign, written as two words
+++  (`--fast -5,10`), may be read by argparse as an option rather than a value, depending on the
+++  Python version's negative-number rule: argparse then prints its usage and
+++  `error: argument --fast: expected one argument` and exits 2, which does not name the value
+++  as R4 asks. Written as `--fast=-5,10`, or with the minus sign later in the list, the value
+++  reaches the command and gets the R4 message. `run` has the same behaviour for `--fast -5`
+++  on the versions where argparse reads it as an option. The design accepts argparse's refusal
+++  (exit 2, one `error:` line in argparse's form) rather than rewriting argv; the test of a
+++  negative item uses the `--fast=...` form.
+++
+++## Acceptance
+++- A new test file (for example `tests/test_backtest_sweep.py`); no test file already on
+++  `main` changes. Offline, through `main(argv, fetch=stub)` with `tests/kucoin_stub.py`, the
+++  `clock` fixture and a `tmp_path` cache, the tests show:
+++  - each row's numbers equal `run_backtest`'s for that pair on the same frame, formatted as
+++    `run` prints them, and the whole stdout equals the expected lines;
+++  - the rows are sorted by total return, ties by fast then slow (a tie is built with pairs
+++    that never trade, whose return is exactly 0);
+++  - pairs with fast not below slow and pairs with slow not below the candle count are
+++    skipped and counted in the run line;
+++  - repeated values are tried once;
+++  - the stub sees exactly the requests one `run` of the same range makes;
+++  - each refusal of R2, R4, R6 and R8 prints one `error:` line, nothing on stdout, exits 2,
+++    and (R2, R4, R6) the stub sees no request; a bad `--market` exits 2 through argparse;
+++  - the defaults give nine pairs;
+++  - `python -m app.backtest run` prints what `tests/test_backtest_cli.py` expects (that file
+++    passes unchanged).
+++- `python -m compileall -q .` prints nothing and exits 0; `python -m pytest` passes every
+++  test; `python -m ruff check .` prints `All checks passed!`.
+++- `app.backtest.__all__`, `app/data/`, the engine modules, `pyproject.toml` and the version
+++  `0.1.0` are unchanged.
+++- Mock: none, screens follow the UX conventions
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml b/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
++new file mode 100644
++index 0000000..5cdfd21
++--- /dev/null
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
++@@ -0,0 +1,34 @@
+++id: "0006"
+++slug: sweep-sma-crossover-lengths-on-one-range
+++title: Sweep SMA crossover lengths on one range
+++phase: design
+++entry_route: idea
+++change_type: feature
+++gate:
+++  phase: null
+++  result: null
+++  reason: null
+++  at: null
+++parked_reason: null
+++iterations: 0
+++panel_calls: 0
+++external_ref: null
+++risk_accepted: []
+++tests_locked: false
+++risk_accepted_by: []
+++iterations_reset_by: null
+++iterations_reset_at: null
+++tests_unlocked_by: null
+++runbook_authorized_by: null
+++abandoned_reason: null
+++build_pr: null
+++released_at: null
+++released_sha: null
+++released_pr: null
+++fast_lane:
+++  intent:
+++    sha: "32db462ad4d611dc3237780f0afcfc37f553c279"
+++    pr: 27
+++created_at: "2026-11-07T22:16:39Z"
+++updated_at: "2026-11-07T22:32:59Z"
+++schema_version: 1
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
+new file mode 100644
+index 0000000..c464b25
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
+@@ -0,0 +1,46 @@
++{"at": "2026-11-07T22:30:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:31:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:31:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:31:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:31:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:32:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:32:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:32:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:32:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:33:03Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:33:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:34:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:34:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:34:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:34:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:34:50Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:34:50Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:34:50Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:34:50Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:35:24Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:35:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:35:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:35:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:35:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:35:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:35:51Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:35:51Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:35:51Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:35:51Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-reviewer.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:36:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "panel_blind", "reason": "Review panel blindness (decision 21): this search would read changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-reviewer.md, the reviewer's verdict on item 1 of the design phase, which the advocate must not see before writing its own. Search a folder that does not contain changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/ (for example src/ or plugin/), or limit the search to code with a type (type: py) or a glob (glob: \"*.py\").", "tool": "Grep", "verdict": "block"}
++{"at": "2026-11-07T22:36:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:36:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:36:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:36:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:36:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:36:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:36:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:36:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:37:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:37:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:37:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:37:25Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:37:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:37:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:37:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:37:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-conciliator.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.md
+new file mode 100644
+index 0000000..baba919
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.md
+@@ -0,0 +1,8 @@
++## Verdict
++No objection to accepting argparse's refusal and not rewriting argv, but the concern's premise is false (the behaviour is not Python-version dependent) and both two-word forms are deterministic and must be pinned by tests before build; the text should be corrected.
++
++## The case against
++The concern says `--fast -5,10` "may be read by argparse as an option ... depending on the Python version's negative-number rule" and that `run` behaves so for `--fast -5` "on the versions where argparse reads it as an option". Today's code contradicts both halves. `tests/test_backtest_cli.py` line 114 already passes `["--slow", "-5"]` as two words and expects `slow -5 is not a whole number of at least 1`; it is green on CI (Python 3.12). argparse treats a bare `-5` as a value on every Python since 2.7 whenever the parser defines no option that itself looks like a negative number, which `run` does not and the planned `sweep` will not. There is no version on which `run --fast -5` reaches argparse's error.
++The other half is equally fixed: `-5,10` never matches argparse's negative-number pattern (`^-\d+$|^-\d*\.\d+$`; 3.13's variant adds underscores, not commas), so a two-word `--fast -5,10` is an unknown option on every version and always ends in usage plus `error: argument --fast: expected one argument`, exit 2. The real split is bare negative (reaches `_lengths`, gets the R4 message) versus comma list starting with a minus (argparse refuses), not Python version.
++Why it matters: (1) the spec carries a false claim about today's code into build, the case angle 8 exists for; (2) because the behaviour was called uncertain, plan.md's `test_sweep_refuses_bad_lengths` tests only `--fast=-5,10` and neither two-word form, so a build that accidentally gave `--fast -5` argparse's message, or named no value, would still pass; (3) R12 promises "one `error: ...` line on stderr" for every refusal, which argparse's usage-plus-error output breaks; Acceptance carves out `--market` but not this case.
++The resolution itself is sound: the input is invalid either way, exit code is 2 either way, `--fast=-5,10` is a documented escape, and an argv rewrite for an input that can never be valid is more code than the case deserves. I would decide the same and change only the record: restate the concern as the deterministic rule above; add two cases to `test_sweep_refuses_bad_lengths`, two-word `--fast -5` expecting `fast -5 is not a whole number of at least 1` with no stub call, and two-word `--fast -5,10` expecting `SystemExit` 2 with `expected one argument` on stderr, as `test_run_refuses_bad_market` pins argparse; and let R12 name argparse's refusals as the exception to the one-line rule. With those text and test additions, no design change, I accept the obvious resolution.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.model.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.model.json
+new file mode 100644
+index 0000000..2af179e
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-advocate.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "a9210b8137b0290a5",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-11-07T22:36:59Z",
++  "member": "advocate",
++  "models": [
++    "claude-fable-5-1"
++  ],
++  "n": 1,
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/4fb87e13-24c7-4543-b7fc-1f6bcab87cef/subagents/agent-a9210b8137b0290a5.jsonl"
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-conciliator.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-conciliator.json
+new file mode 100644
+index 0000000..68786b3
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-conciliator.json
+@@ -0,0 +1,11 @@
++{
++  "reviewer": "accept argparse's refusal and the `--fast=-5,10` test as a nit, only correcting the false aside that `run --fast -5` is version dependent",
++  "advocate": "accept argparse's refusal but correct the premise (claims the behaviour is not version dependent) and pin both two-word forms with tests",
++  "decision": "Keep argparse's refusal with no argv rewrite; correct the aside, since a bare `-5` is a value on every version and only a two-word comma list starting with a minus is refused by argparse on 3.10-3.13; and add to `test_sweep_refuses_bad_lengths` a two-word `--fast -5` case expecting the R4 message and a two-word `--fast -5,10` case asserting only exit 2, nothing on stdout and no stub call.",
++  "rationale": [
++    "Both verdicts agree: refuse through argparse, no argv rewrite, and the `run --fast -5` aside is wrong because bare `-5` always parses as a value.",
++    "They disagree on version dependence; checked on this runner (3.14.4, matcher `-\\.?\\d`), `--fast -5,10` parses as a value, so the reviewer is right and the concern's version clause stays.",
++    "The safer reading adds the advocate's tests, shaped so they hold on every version: the two-word comma case pins only what is common to both paths (exit 2, empty stdout, no fetch), not argparse's message.",
++    "This adds tests and corrects text only; no design change, no limit or guardrail touched."
++  ]
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-reviewer.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-reviewer.md
+new file mode 100644
+index 0000000..76f0c7c
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-1-reviewer.md
+@@ -0,0 +1,22 @@
++## Verdict
++Accept the spec's decision (leave argparse's refusal, test with `--fast=-5,10`) as a nit, not an Important finding; only correct the aside about `run --fast -5`.
++
++## Why
++- Fact: the behaviour depends on the Python version, as the spec says. On 3.10-3.13 argparse's
++  `_negative_number_matcher` is `^-\d+$|^-\d*\.\d+$`, so `-5,10` looks like an option and gets
++  `error: argument --fast: expected one argument`. On 3.14 (this runner: 3.14.4, matcher
++  `-\.?\d`, prefix match) `-5,10` reaches the command and gets the R4 message.
++- REVIEW.md "What Important means": nothing breaks. The input is still refused with exit 2, an
++  `error:` line on stderr and nothing on stdout (R12), before any fetch, so no backtest runs on a
++  bad length. No data leaks and no policy is breached: security-baseline rule 2 (validate
++  before use) holds, since argparse refuses it first. ux-and-brand rule 4 is only weakened in
++  argparse's own standard form, which is also how `run` handles its argparse errors
++  (`--market`, which the spec's Acceptance already says "exits 2 through argparse").
++- Rewriting argv would add code and risk to `run`'s shared parser, against R13 and
++  coding-standards rule 7. The intent asks for no such thing.
++- The test uses `--fast=-5,10` (plan.md lines 103-104, 129, 167), which reaches the command on
++  every version from 3.10 up, so the proof does not depend on the version.
++- Correction (nit): "`run` has the same behaviour for `--fast -5` on the versions where
++  argparse reads it as an option" is wrong. `-5` matches the negative-number pattern on every
++  version, so `run` always gets it as a value. Only the comma-list form differs (the
++  adversarial review says the same). The build can fix the wording; the decision stands.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.md
+new file mode 100644
+index 0000000..a72fd5c
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.md
+@@ -0,0 +1,9 @@
++## Verdict
++Do not park on this item: the wrong number is real but it is a nit in a plan example, to be corrected in plan.md by the build's step-1 commit, not a design defect that needs the owner.
++
++## The case against
++The reviewer's arithmetic is right: under R5 and the plan's own `bisect.bisect_right(slows, fast)`, `count_pairs([5, 50], [10, 50])` is (2, 2), not (1, 3). But REVIEW.md reserves Important for what would break behavior, leak data or breach a policy, and this line can do none of those: the contract (spec R5, R6, the Design's `count_pairs` definition, the plan's algorithm) is correct and unambiguous; only one illustrative expected value in Order of work step 1 is miscounted.
++The feared failure mode, "the build bends count_pairs to match", cannot happen quietly. (1, 3) is unreachable by any natural off-by-one: `bisect_right` gives (2, 2), `bisect_left` (counting fast == slow as kept) gives (3, 1). A build cannot stumble into (1, 3); it must notice the contradiction, and the spec is the tie-breaker. Even a deliberately bent implementation would then fail the same test's first assertion `(9, 0)`, `test_sweep_defaults_give_nine_pairs` (9 tried, 0 skipped), `test_sweep_skips_and_counts_pairs` (`--fast 2,3,5 --slow 5,8,12,24` on 24 candles: 8 tried, 4 skipped) and the 441-pair cap refusal. The suite pins the skip count and the cap independently of this one example.
++The plan already lists itself under "Files that change" ("whenever the build departs from it"), and REVIEW.md's framework rule asks exactly for a plan.md update in the same commit as the departure. Fixing `(1, 3)` to `(2, 2)` in the step-1 commit is that sanctioned path, not an unsanctioned change "on its own". Parking spends one of two non-routine iterations and the owner's queue time on a number every reader can recompute in ten seconds, for a defect the first `pytest` run of step 1 would surface before any code depends on it.
++I would decide: continue, with this line recorded as a nit for the build to correct in plan.md in the step-1 commit, and the conciliator's note that `(2, 2)` is the expected value.
++I would accept the park if the wrong count sat in spec R5/R6 or the Design (the contract the build implements from) rather than in a plan example; if (1, 3) were reachable by a plausible off-by-one that the rest of the Proof list would not catch; or if the project's rules forbade the build from editing plan.md, so the contradiction could not be repaired in-phase.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.model.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.model.json
+new file mode 100644
+index 0000000..d17a46e
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-advocate.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "aa385ed71ca514ead",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-11-07T22:36:40Z",
++  "member": "advocate",
++  "models": [
++    "claude-fable-5-1"
++  ],
++  "n": 2,
++  "phase": "design",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/4fb87e13-24c7-4543-b7fc-1f6bcab87cef/subagents/agent-aa385ed71ca514ead.jsonl"
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-conciliator.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-conciliator.json
+new file mode 100644
+index 0000000..17ec95b
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-conciliator.json
+@@ -0,0 +1,11 @@
++{
++  "reviewer": "uphold the park until plan.md step 1 expects count_pairs([5, 50], [10, 50]) == (2, 2), since a test-first build would bend count_pairs or silently change the test",
++  "advocate": "continue: the miscount is a nit in one plan example, caught by the rest of the suite, which the build should correct in plan.md in its step-1 commit",
++  "decision": "continue, after the run corrects plan.md Order of work step 1 to `count_pairs([5, 50], [10, 50]) == (2, 2)` before the design phase closes",
++  "rationale": [
++    "Both verdicts agree on the fact: under spec R5 and the plan's bisect_right method the grid gives (2, 2), so (1, 3) is wrong.",
++    "They differ only on where to fix it; plan.md is a design-phase artifact, not a guardrail, so the design run can fix the one line now.",
++    "That is safer than leaving it to the build: no test is written against a wrong value, and nothing needs the owner.",
++    "The contract (R5, R6, the Design's count_pairs) is correct, so once the line is fixed nothing is left to park on."
++  ]
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-reviewer.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-reviewer.md
+new file mode 100644
+index 0000000..e194b88
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-2-reviewer.md
+@@ -0,0 +1,18 @@
++## Verdict
++Uphold the park: fix plan.md Order of work step 1 so the expectation reads `count_pairs([5, 50], [10, 50]) == (2, 2)` (or keep `(1, 3)` with inputs that give it, e.g. `([10, 50], [5, 20])`).
++
++## Why
++- spec.md R5: every distinct fast paired with every distinct slow; a pair is kept only when
++  fast < slow. Grid of `[5, 50] x [10, 50]`: (5,10) kept, (5,50) kept, (50,10) skipped,
++  (50,50) skipped, so (kept, skipped) = (2, 2).
++- plan.md line 4-6's own method agrees: per fast, kept = len(slows) - bisect_right(slows, fast);
++  fast 5 -> 2 - 0 = 2, fast 50 -> 2 - 2 = 0; total kept 2, skipped 4 - 2 = 2.
++- So the planned test `== (1, 3)` (plan.md lines 42-43) fails against a count_pairs that meets
++  R5 and the spec's Design ("kept = pairs with fast below slow", spec.md line 77-78).
++- REVIEW.md "What Important means here": a finding that would break behavior is Important. The
++  plan has the test written first; a build that bends count_pairs to pass it breaks R5, the
++  skipped count in the run output and the R6 400-pair cap. A build that quietly changes the
++  expectation departs from the plan without the review seeing it. Either way the wrong value
++  is a defect in the design artifact, not taste.
++- The fix is one line in plan.md, and the build phase is the wrong place to make it, so the
++  park stands until the design artifact is corrected.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-items.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-items.json
+new file mode 100644
+index 0000000..b919863
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/design-items.json
+@@ -0,0 +1,36 @@
++{
++  "decided": 0,
++  "gate": "park",
++  "items": [
++    {
++      "decided": false,
++      "item": "A `--fast` or `--slow` list that starts with a minus sign, written as two words",
++      "key": "concern:bd790dc818cd80c9",
++      "kind": "concern",
++      "n": 1
++    },
++    {
++      "decided": false,
++      "item": "adversarial reviewer says park: plan.md Order of work step 1 has a wrong expected value in a planned test: it says `count_pairs([5, 50], [10, 50]) == (1, 3)`, but under R5 (and the plan's own `bisect.bisect_right(slows, fast)` per fast) the grid is (5,10) kept, (5,50) kept, (50,10) skipped, (50,50) skipped, so the answer is (2, 2). A correct count_pairs fails this test. A build that writes the test first, as the plan says, would either bend count_pairs to match, which breaks the skip count in the run line and the 400-pair cap, or change the expectation on its own. Fix: expect (2, 2), or keep (1, 3) with inputs that give it, e.g. `count_pairs([10, 50], [5, 20]) == (1, 3)`.",
++      "key": "park:b3d34430ced1d56d",
++      "kind": "park",
++      "n": 2
++    }
++  ],
++  "iterations": {
++    "cap": 2,
++    "left": 2,
++    "used": 0
++  },
++  "panel_calls": {
++    "cap": 4,
++    "left": 4,
++    "used": 0
++  },
++  "parks": [],
++  "pending": [
++    1,
++    2
++  ],
++  "phase": "design"
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-design.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-design.json
+new file mode 100644
+index 0000000..fdd75e4
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-design.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "design",
++  "spend_usd": null,
++  "started_at": "2026-11-07T22:30:03Z"
++}
+\ No newline at end of file
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/intent.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/intent.md
+new file mode 100644
+index 0000000..6dbe0b0
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/intent.md
+@@ -0,0 +1,142 @@
++# Intent: Sweep SMA crossover lengths on one range
++Author: owner (product owner), drafted by Claude on 2026-11-07 from the owner's request for the next step. Change id: 0006. Entry route: idea.
++
++## Problem
++Since change 0005, `python -m app.backtest run` backtests the SMA crossover with one pair of
++lengths at a time. The first real run (BTC-USDT 1h spot, 2026-09-01 .. 2026-11-06, fast 20
++slow 50) lost 10.66% while buy and hold lost 3.74%, and the owner cannot tell whether other
++lengths would do better without running the command once per pair and comparing the numbers
++by hand. The owner wants one command that tries a grid of lengths on one date range and shows
++the results side by side. It is kept small on purpose, so that this change and the ones that
++build on it stay cheap to run.
++
++## Proposed outcome
++A command `python -m app.backtest sweep` runs the SMA crossover for every pair of a grid of
++fast and slow lengths on one symbol's klines and prints one row per pair, best first.
++
++**The command**
++```
++python -m app.backtest sweep SYMBOL INTERVAL START END [--market spot|futures]
++    [--fast 5,10,20] [--slow 30,50,100] [--fee 0.001] [--cache-dir DIR]
++```
++- `SYMBOL`, `INTERVAL`, `START`, `END`, `--market`, `--fee` and `--cache-dir` mean what they
++  mean for `python -m app.backtest run`: the same values, defaults, checks and messages.
++- `--fast` and `--slow` are comma-separated lists of whole numbers of at least 1, in candles.
++  A value may repeat; repeats are tried once.
++- The grid is every fast length paired with every slow length. A pair whose fast is not below
++  its slow is skipped, not refused; the output says how many were skipped.
++- The klines are loaded once, with `app.data.load_klines`, as `run` loads them.
++
++**What each row holds**
++- fast, slow, total return, max drawdown, trades, win rate and time in market, the numbers
++  `run_backtest` returns for `sma_cross_positions(frame, fast, slow)` and the fee; a row's
++  numbers equal what `python -m app.backtest run` prints for that pair on the same range.
++- The rows are sorted by total return, highest first; equal returns are ordered by fast, then
++  slow, smallest first, so the order never changes between runs.
++
++**The output**, plain text on stdout:
++- one line naming the run: symbol, interval, market, date range, number of candles, strategy,
++  number of pairs tried (and skipped), fee;
++- the SMA note `run` prints;
++- a header line and one row per pair, in aligned columns, the fractions as percentages with
++  two decimals;
++- one buy-and-hold line, as `run` prints it;
++- one warning line: the best pair on past data is often luck, so check it on another date
++  range before trusting it.
++
++**Inputs it must refuse**, each with `error: ...` on stderr and exit code 2, before any
++backtest:
++- what `run` refuses for `SYMBOL`, `INTERVAL`, `START`, `END`, `--market`, `--fee` and the
++  cache directory, with the same messages;
++- a `--fast` or `--slow` list that is empty or holds a value that is not a whole number of at
++  least 1, naming the value;
++- a grid with no pair whose fast is below its slow, checked before any kline is loaded;
++- a grid of more than 400 such pairs (see Open questions), checked before any kline is loaded;
++- a range in which every pair is skipped. A pair whose slow length is not below the candle
++  count (`run` refuses that range) is skipped and counted, as a pair with fast not below slow
++  is.
++- Exit code 0 on success.
++
++How to check it is done:
++- Tests run offline, without the network, through `main(argv, fetch=...)` with the existing
++  stub (`tests/kucoin_stub.py`) and the fixed clock, as the tests of `run` do.
++- They show that:
++  - each row equals the numbers `run_backtest` gives for that pair on the same frame;
++  - the rows are sorted by total return, ties by fast then slow;
++  - pairs with fast not below slow, and pairs with slow not below the candle count, are
++    skipped and counted in the header line;
++  - repeated values are tried once;
++  - the klines are loaded once for the whole grid (the stub sees one set of requests);
++  - each refused input above prints its error and exits 2;
++  - `python -m app.backtest run` prints exactly what it printed before.
++- Build, test and lint stay green.
++
++## Affected users and systems
++- The owner, who will compare lengths from the terminal.
++- `app/backtest/__main__.py`: a new `sweep` sub-command next to `run`; the argument handling
++  `run` and `sweep` share may move into helpers there. Whether the sweep itself lives in the
++  CLI module or a new module is the design's choice.
++- `app/backtest/` engine and strategy (`inputs.py`, `engine.py`, `summary.py`,
++  `strategy.py`): used, not changed.
++- `app/data/`: called through `load_klines`, not changed.
++- New test file only, for example `tests/test_backtest_sweep.py`; no test file already on
++  `main` is edited. `tests/kucoin_stub.py` and the fixture files are read, not changed.
++- KuCoin's public REST API, only when a day is not cached yet, through `load_klines` as today.
++- No new dependency. `pyproject.toml` and `.github/workflows/ci.yml` need no change.
++
++## Constraints
++- Feature-type change. Its tests live in a new file, so the change edits no test file already
++  on `main`.
++- **No new public name.** `tests/test_backtest.py: test_public_api` pins
++  `app.backtest.__all__` exactly, so adding a name would force an edit of a test file already
++  on `main` (change 0005 had to do this). Keep `app/backtest/__init__.py`'s `__all__` as it
++  is: the sweep is a CLI command, and any helper it needs stays out of `__all__`.
++- `python -m app.backtest run` keeps its options, output and exit codes.
++- No new dependency: polars and the standard library, no numpy of its own, no threads or
++  processes.
++- No network in the tests: every fetch goes through the stub or a pre-filled cache.
++- No lookahead: each pair uses `sma_cross_positions` as it is.
++- Speed: one backtest of a year of 1h candles (8760 rows) takes about 10 ms on the owner's
++  machine (measured 2026-11-07), so a 400-pair grid on a year of 1h candles takes a few
++  seconds. 1m candles are 60 times as many rows; the design says whether the output warns
++  before a long run.
++- Python >= 3.10, type hints on public functions, ruff clean at line length 100.
++- The package version stays 0.1.0 unless the design says otherwise.
++- **Guardrail lines for the owner.** A run cannot edit `CLAUDE.md`, so `plan.md` names the lines
++  for the owner, who may land them before the build PR is reviewed (on change 0003 an outdated
++  `CLAUDE.md` kept `sdlc/review` red):
++  - the opening paragraph names the CLI `python -m app.backtest run`; it needs `sweep` too;
++  - the `app/backtest/` Architecture bullet lists the modules and test files; it needs any new
++    module and the new test file.
++- Out of scope: other strategies or indicators, other ranking measures, a held-out date range
++  or walk-forward check, saving results to a file, plots, ranges of lengths (`5..50`), several
++  symbols, shorts, slippage, futures funding, parallel runs.
++
++## Open questions
++- **Default grids?** Recommended: `--fast 5,10,20 --slow 30,50,100`.
++  Nine pairs, all with fast below slow, around the `run` defaults (20/50); the owner can pass
++  any lists.
++- **A cap on the grid size?** Recommended: refuse more than 400 pairs.
++  Twenty by twenty lengths is plenty for a first look and runs in seconds on 1h candles. The
++  cap counts the pairs kept, after skipping, so a big list that is mostly skipped still runs.
++- **Rank by total return only?** Recommended: yes.
++  It is the number the owner compared first. Max drawdown and the other columns are shown, so
++  the owner can read them; sorting by another measure is a later change.
++- **Show every row, or only the best few?** Recommended: every row.
++  A 400-row table is long but complete; a `--top` option is a later change if it is needed.
++
++## Examples/References
++- A sketch of the output (numbers made up; the design fixes the exact layout):
++  ```
++  BTC-USDT 1h spot, 2026-01-01 .. 2026-10-31: 7296 candles; sma-cross, 9 pairs (0 skipped); fee 0.10%
++  SMAs count candles, not wall time: an interval without a candle is skipped, not filled.
++  fast  slow  total return  max drawdown  trades  win rate  time in market
++    10    50        14.20%        11.30%      18    38.89%          47.10%
++    20   100         9.05%        15.02%       9    44.44%          51.30%
++     5    30        -2.10%        19.75%      44    27.27%          45.80%
++  ...
++  buy and hold     -3.74%
++  The best pair on past data is often luck: check it on another date range before trusting it.
++  ```
++- The command it extends: `app/backtest/__main__.py` (`python -m app.backtest run`) and its
++  tests, `tests/test_backtest_cli.py`; change `changes/0005-run-a-backtest-from-the-cli-with-an-sma/`.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
+new file mode 100644
+index 0000000..129b18a
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
+@@ -0,0 +1,183 @@
++# Plan: Sweep SMA crossover lengths on one range (from intent.md 2026-11-07, spec.md 2026-11-07)
++
++## Files that change
++- `app/backtest/sweep.py` — new: `MAX_PAIRS = 400`; `count_pairs(fasts: Sequence[int], slows:
++  Sequence[int]) -> tuple[int, int]` (kept, skipped) by `bisect.bisect_right(slows, fast)` per
++  fast on the sorted distinct lists; `pairs(fasts, slows) -> list[tuple[int, int]]` (kept
++  pairs, fast-major order); `SweepRow` frozen dataclass (`fast: int`, `slow: int`,
++  `summary: Summary`); `sweep(frame: pl.DataFrame, pairs: Sequence[tuple[int, int]], fee:
++  float) -> list[SweepRow]`, sorted by `(-row.summary.total_return, row.fast, row.slow)`.
++  No I/O (spec Design, "Sweep module").
++- `app/backtest/__main__.py` — the `sweep` sub-command (`SWEEP_HELP`, `SWEEP_WARNING`, the
++  table header constants, `_sweep(args, fetch) -> int`, `_lengths(text, name, example) ->
++  list[int]`, a `_table(rows) -> list[str]` formatter) and the helpers `run` and `sweep`
++  share (`_add_range_arguments`, `_add_fee_arguments`, `_load(request, args, fetch)`,
++  `_hold_line(frame, fee)`); `_run` uses the helpers with identical output.
++- `tests/test_backtest_sweep.py` — new: the tests of Proof.
++- `changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md` — this file, whenever the
++  build departs from it.
++
++Unchanged: `app/backtest/__init__.py` (`__all__` and docstring), `inputs.py`, `engine.py`,
++`summary.py`, `strategy.py`, every module of `app/data/`, `app/__init__.py` (version
++`0.1.0`), `pyproject.toml` (`app.backtest` is already a package, so `sweep.py` ships),
++`.github/workflows/ci.yml`, every test file already on `main`, `tests/conftest.py`,
++`tests/kucoin_stub.py`, `tests/fixtures/`. The Setup and Test commands stay as they are.
++
++For the owner, not the run (guardrail file; the owner may land these in a PR of their own
++before the build PR is reviewed), `CLAUDE.md`:
++- Opening paragraph, "with an SMA crossover strategy and the CLI `python -m app.backtest
++  run`." Suggested: "with an SMA crossover strategy and the CLI `python -m app.backtest run |
++  sweep`."
++- Architecture, the `app/backtest/` bullet. Suggested: "`app/backtest/` is the backtest
++  engine, one module per job (inputs, engine, summary, strategy, sweep, and the CLI in
++  `__main__.py`); its public API is `app/backtest/__init__.py` (`run_backtest`,
++  `sma_cross_positions`). Only the CLI does I/O, through `app.data.load_klines`; the engine
++  and strategy tests, `tests/test_backtest.py` and `tests/test_strategies.py`, use frames
++  built by hand, and the CLI tests, `tests/test_backtest_cli.py` and
++  `tests/test_backtest_sweep.py`, run offline against `tests/kucoin_stub.py`."
++
++## Order of work
++1. `app/backtest/sweep.py` with its unit tests in `tests/test_backtest_sweep.py` (hand-built
++   frames: integer `open_time`, `open` = `close`, as `tests/test_strategies.py` builds them).
++   - `count_pairs([5, 10, 20], [30, 50, 100]) == (9, 0)`; `count_pairs([5, 50], [10, 50]) ==
++     (2, 2)` (kept (5, 10) and (5, 50); skipped (50, 10) and (50, 50); panel #2).
++   - `sweep` on a frame of constant closes (every SMA equal, no position, return exactly 0)
++     returns rows ordered by fast, then slow; on a varying frame each row's summary equals
++     `run_backtest(frame, sma_cross_positions(frame, f, s), fee=fee).summary` and the order
++     is by descending total return.
++   - Commit with its tests.
++2. Refactor `app/backtest/__main__.py` without behaviour change: `_add_range_arguments(parser)`
++   adds `symbol`, `interval`, `start`, `end` (same metavars and help) and `--market`;
++   `_add_fee_arguments(parser)` adds `--fee` and `--cache-dir`; `run` keeps `--fast` and
++   `--slow` between them, so its help lists the options in today's order. `_load(request,
++   args, fetch)` wraps the `load_klines` call; `_hold_line(frame, fee)` returns
++   `f"{'buy and hold':<14}{value:>8}"`. `tests/test_backtest_cli.py` must pass unchanged.
++   Commit.
++3. The `sweep` sub-command in `app/backtest/__main__.py`, in the order of spec Design:
++   - `_lengths(text, name, example)`: `items = text.split(",")`; `text.strip() == ""` →
++     `BacktestInputError(f"--{name} is empty: pass comma-separated whole numbers, for example
++     {example}")`; each item `value = _length(item, name)`, then `value < 1` →
++     `BacktestInputError(f"{name} {value} is not a whole number of at least 1")` (the words
++     of `validate_lengths`); return `sorted(set(values))`.
++   - `fee = _fee(args.fee)`; `kept, skipped = count_pairs(fasts, slows)`; `kept == 0` →
++     `no pair has fast below slow: pass a --fast value below a --slow value`; `kept >
++     MAX_PAIRS` → `f"the grid has {kept} pairs with fast below slow, more than {MAX_PAIRS}:
++     pass shorter --fast or --slow lists"`.
++   - `frame = _load(...)`; `grid = [(f, s) for f, s in pairs(fasts, slows) if s <
++     frame.height]`; `skipped += kept - len(grid)`; empty → `f"the range has {frame.height}
++     candles, not more than any slow length with a smaller fast: no pair could take a
++     position; widen the dates or lower --slow"`.
++   - Print the run line (spec Design, "Output") and `SMA_NOTE`, `flush=True` on the note;
++     then `rows = sweep(frame, grid, fee)`, the table from `_table(rows)`, `_hold_line`,
++     `SWEEP_WARNING`; return 0.
++   - `_table`: headers `("fast", "slow", "total return", "max drawdown", "trades", "win
++     rate", "time in market")`; cells `str(fast)`, `str(slow)`, `_percent(...)` for the four
++     fractions, `str(trade_count)`; width per column `max(len(header), longest cell)`;
++     `"  ".join(cell.rjust(width) ...)`, the header row the same.
++   - Parser: `sweep` with `help=SWEEP_HELP`, `epilog=SMA_NOTE`, `--fast default="5,10,20"`,
++     `--slow default="30,50,100"`, help naming them comma-separated lengths in candles.
++   - The CLI tests of Proof. Commit with them.
++4. Run build, test and lint; paste the output.
++
++## Risks
++- **Breaking `run` in the refactor (riskiest step, 2).** Moving the argument lines into
++  helpers can reorder `run`'s options in `--help` or change a default. Mitigations: the
++  helpers add the arguments in today's order with today's strings; `tests/test_backtest_cli.py`
++  pins `run`'s output and refusals and must pass unchanged; a new test compares
++  `run --help`'s option names in order (`--market`, `--fast`, `--slow`, `--fee`,
++  `--cache-dir`) to catch a reorder. If a helper makes `run` harder to read, step 2 may keep
++  `run`'s lines inline and only share `_load` and `_hold_line`; say so here.
++- **The test data.** `SPOT_1H` holds 24 candles of 2026-10-01, so the default slows
++  (30, 50, 100) are all skipped there: the success tests pass short lists (for example
++  `--fast 2,3,5 --slow 5,8,12,24`, where slow 24 is skipped by the candle count and fast 5
++  with slow 5 by the order rule). The tests compute the expected rows themselves with
++  `load_klines(..., cache=False, fetch=spot_day())`, `sma_cross_positions` and
++  `run_backtest`, as `tests/test_backtest_cli.py` does, and sort them by the spec's key.
++- **"Loaded once".** The test compares the stub's `calls` after one `sweep` with those after
++  one `run` of the same range on a fresh stub and a fresh cache; a second load from the cache
++  would make no extra call, so the test also asserts that `_load` is reached once by
++  counting calls of a monkeypatched `app.backtest.__main__.load_klines` wrapper.
++- **The clock.** `make_request` refuses an end after `loader.utc_now()`; the tests use the
++  `clock` fixture (NOW 2026-10-03 12:00 UTC) and read the clock through `loader.utc_now()`,
++  as `_run` does.
++- **Negative items and argparse** (spec Flagged concerns, panel #1): a bare `-5` is a value
++  on every Python version (`run --slow -5` already gets its message), so `--fast -5` gets the
++  R4 message; a two-word comma list starting with a minus (`--fast -5,10`) is refused by
++  argparse itself on Python 3.10 to 3.13 and reaches the command on 3.14. The design keeps
++  argparse's refusal (no argv rewrite); the tests pin only what both paths share for that form
++  (exit 2, empty stdout, no stub call) and use `--fast=-5,10` for the R4 message.
++- **Header printed before the backtests.** An engine error after the run line would leave
++  stdout non-empty; `load_klines` frames already pass the engine's checks (the `run` tests
++  show it), so the only errors after the header are bugs.
++- **Float ties.** Equal returns on real data are rare; the tie test uses constant closes,
++  whose returns are exactly `0.0`.
++- **No new public name.** `sweep.py`'s names are not added to `app/backtest/__init__.py`, so
++  `tests/test_backtest.py::test_public_api` passes unchanged (intent Constraints).
++- **No new dependency** (coding-standards rule 5; security-baseline rule 6): `bisect`,
++  `dataclasses` and polars only.
++- **CLAUDE.md drift.** Until the owner lands the lines above, the deploy review may flag an
++  outdated `CLAUDE.md`. The run cannot edit it.
++
++## Options not taken
++- **The sweep loop inside `__main__.py`.** Not taken: a pure module keeps the CLI short and
++  lets the sort and the skip count be tested on hand-built frames; the intent leaves the choice
++  to the design.
++- **Building the grid before the cap check.** Not taken: two long lists would build a large
++  list of pairs before the refusal; `count_pairs` bisects instead (security-baseline rule 2).
++- **Counting the candle-count skips toward the cap.** Not taken: they are known only after
++  loading, and the intent checks the cap before loading.
++- **A long-run warning on stderr** (above a pairs × candles threshold). Not taken: the run
++  line shows both counts and is flushed before the first backtest; the 400 cap bounds the
++  worst case; a threshold would be a number with no source.
++- **Rewriting argv so `--fast -5,10` reaches the command.** Not taken: it fights argparse for
++  one edge case; `--fast=-5,10` works (spec Flagged concerns).
++- **Ranges such as `5..50`, `--top`, other ranking measures.** Out of scope per the intent.
++- **Threads or processes for speed.** Out of scope per the intent's Constraints.
++
++Interrogation answers:
++1. What could break: `run`, through the step-2 refactor (pinned by the unchanged
++   `tests/test_backtest_cli.py`); nothing else imports `__main__.py`. Shapes touched: the
++   `load_klines` frame (read only), `run_backtest`'s inputs (as `run` passes them), `Summary`
++   (read only).
++2. Riskiest step: step 2, the shared helpers; mitigated above.
++3. Other options: listed above.
++4. An engineer who never saw this conversation can implement it from spec Design (order of
++   checks, the output shape) and Order of work (messages and calls). Nothing is missing.
++5. Every Proof test is still to be written, in the new file; the existing tests exist and
++   must keep passing.
++
++## Proof
++- test: test_count_pairs_counts_kept_and_skipped
++- test: test_sweep_rows_match_run_backtest
++- test: test_sweep_ties_sort_by_fast_then_slow
++- test: test_sweep_prints_table
++- test: test_sweep_skips_and_counts_pairs
++- test: test_sweep_tries_repeats_once
++- test: test_sweep_loads_klines_once
++- test: test_sweep_refuses_bad_request
++- test: test_sweep_refuses_bad_market
++- test: test_sweep_refuses_bad_lengths
++- test: test_sweep_refuses_bad_fee
++- test: test_sweep_refuses_empty_grid
++- test: test_sweep_refuses_grid_over_cap
++- test: test_sweep_refuses_range_with_every_pair_skipped
++- test: test_sweep_defaults_give_nine_pairs
++- test: test_run_help_keeps_option_order
++- `test_sweep_prints_table` runs `sweep btc-usdt 1h 2026-10-01 2026-10-01 --fast 2,3,5
++  --slow 5,8,12,24` and compares every stdout line with lines built in the test from
++  `run_backtest`; it also checks that every table line has the header's length.
++- The refusal tests assert exit 2, one `error:` line on stderr, empty stdout, and (all but
++  the every-pair-skipped one) `kucoin.calls == []`. Cases: bad symbol, interval and dates;
++  `--fast ""`, `--fast 5,,10`, `--fast x`, `--fast=-5,10`, two-word `--fast -5` (the R4 message), `--slow 0`,
++  `--fast 1.5`; two-word `--fast -5,10` (exit 2, empty stdout and no stub call only, since
++  argparse or the command refuses it depending on the Python version, panel #1); `--fee
++  abc`, `--fee 1.5`; `--fast 50 --slow 10,20` (no pair); 21 fasts `1..21` by 21 slows
++  `22..42` (441 pairs, over the cap); the default grid on the 24-candle day (every pair
++  skipped by the candle count). A bad `--market` raises `SystemExit` with code 2.
++- `test_sweep_defaults_give_nine_pairs` uses a stub with enough synthetic candles
++  (`kucoin.add_spot_synthetic(utc(2026, 9, 28), 120, 3_600_000)`, range 2026-09-28 ..
++  2026-10-02, 120 candles, more than the largest slow 100) and checks `9 pairs tried, 0
++  skipped` and nine table rows.
++- `tests/test_backtest_cli.py` and the rest of the suite pass unchanged.
++- `python -m compileall -q .` prints nothing. `python -m pytest` reports every test passed.
++  `python -m ruff check .` prints `All checks passed!`.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md
+new file mode 100644
+index 0000000..7429aec
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/spec.md
+@@ -0,0 +1,178 @@
++# Spec: Sweep SMA crossover lengths on one range
++Change id: 0006. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.51); overrides: none; policy sources: none
++
++## Requirements
++- R1. `python -m app.backtest sweep SYMBOL INTERVAL START END [--market spot|futures]
++  [--fast LIST] [--slow LIST] [--fee FEE] [--cache-dir DIR]` exists next to `run`.
++- R2. `SYMBOL`, `INTERVAL`, `START`, `END`, `--market`, `--fee` and `--cache-dir` behave as
++  they do for `run`: the same defaults (`spot`, `0.001`, the data layer's cache directory),
++  the same checks and the same messages (`app/data/params.py: make_request`, `--market`
++  `choices=MARKETS`, the fee text parse and `app/backtest/inputs.py: _check_fee`, the
++  `OSError` cache-directory hint of `main`).
++- R3. `--fast` and `--slow` are comma-separated lists of whole numbers of at least 1; the
++  defaults are `5,10,20` and `30,50,100`. A repeated value is tried once.
++- R4. A list that is empty, or holds an item that is not a whole number of at least 1, is
++  refused naming the item, in the words `run` uses: `fast 'x' is not a whole number of at
++  least 1`, `slow 0 is not a whole number of at least 1`; an empty list gets
++  `--fast is empty: pass comma-separated whole numbers, for example 5,10,20` (`--slow`:
++  `30,50,100`).
++- R5. The grid is every distinct fast paired with every distinct slow. A pair whose fast is
++  not below its slow is skipped and counted.
++- R6. Before any kline is loaded: a grid with no pair whose fast is below its slow is refused;
++  a grid of more than 400 such pairs is refused, naming the count and the cap.
++- R7. The klines are loaded once, with `app.data.load_klines`, with the same arguments `run`
++  passes.
++- R8. After loading, a pair whose slow is not below the candle count (`run` refuses
++  `frame.height <= slow`) is skipped and counted with the R5 skips; if every pair is skipped,
++  the range is refused.
++- R9. Each remaining pair is backtested as `run_backtest(frame, sma_cross_positions(frame,
++  fast, slow), fee=fee)`; its row shows fast, slow, total return, max drawdown, trades, win
++  rate and time in market, formatted as `run` formats them, so each number equals what `run`
++  prints for that pair on the same range.
++- R10. Rows are sorted by total return, highest first; equal returns by fast, then slow,
++  smallest first.
++- R11. Output on stdout, in order: the run line; `run`'s SMA note (`SMA_NOTE`); a header line
++  and one row per pair in aligned columns; `run`'s buy-and-hold line, character for character;
++  the warning line (Design, "Output").
++- R12. Every refusal prints one `error: ...` line on stderr, prints nothing on stdout and exits
++  2; success exits 0. Every refusal of R2, R4 and R6 happens before any fetch.
++- R13. `python -m app.backtest run` keeps its options, help, output and exit codes; every test
++  already on `main` passes unchanged.
++- R14. `app.backtest.__all__` is unchanged; any sweep helper stays out of it. `app/data/`,
++  `inputs.py`, `engine.py`, `summary.py` and `strategy.py` are unchanged. No new dependency
++  (polars and the standard library, no threads or processes). Version stays `0.1.0`.
++- R15. Tests live in a new file only and run offline (stub `tests/kucoin_stub.py`, the
++  `clock` fixture, `--cache-dir` under `tmp_path`).
++- Policies:
++  - coding-standards applies: `CLAUDE.md` conventions first (rule 1: Python >= 3.10, type
++    hints on public functions, ruff at line length 100, one test module per area); rule 2,
++    the sweep follows `__main__.py`'s style (text options parsed by the command, one
++    `error:` line, module constants for copy); rule 3, the diff stays inside plan.md; rule 4,
++    every behaviour has a test; rule 5, no dependency; rule 7, small functions, no dead code.
++  - security-baseline applies to the command-line input: rule 2, every input is validated
++    before use and its size is bounded (the 400-pair cap; the pair count is computed without
++    building the grid, so a long list cannot cost time or memory before the cap refuses it);
++    no path or URL is built from input beyond what `load_klines` already does. Rule 6: no
++    `eval`, `exec`, `pickle` or shell. Rule 7: the only network call is `load_klines`'s
++    existing one; the tests make none. Rules 1, 3, 4 and 5 do not apply: no endpoint, secret,
++    personal data or stored state of its own.
++  - Risk list (security-baseline rule 8): none of `auth`, `data migrations`, `money movement`
++    or `production config` applies. The command simulates a strategy on public historical
++    prices in memory: no order, no funds, no credential, no stored schema, no configuration.
++  - ux-and-brand applies to the CLI text output: rule 3 (success and every error state are
++    specified, R11 and R12), rule 4 (each message says what is wrong and what to pass), rule 6
++    (labels, note and warning are module constants, as `SMA_NOTE` is). Rule 1: the layout
++    follows the intent's sketch and `run`'s output. Rules 2, 5 and 7 do not apply: no colours,
++    fonts, controls or screenshots in plain stdout text.
++  - data-conventions does not apply: no new stored field, schema, migration, event or
++    personal data; the command reads and fills the existing public kline cache through
++    `load_klines` (rule 1), and writes no report file (rule 6).
++  - definition-of-done applies: build, test and lint green with their output pasted, the
++    verifier report and each phase's gate.
++
++## Design
++- **Sweep module** (`app/backtest/sweep.py`, new), pure, no I/O, not re-exported from
++  `app/backtest/__init__.py` (R14), as `strategy.validate_lengths` is a module function:
++  - `MAX_PAIRS = 400`.
++  - `count_pairs(fasts, slows) -> tuple[int, int]`: (kept, skipped) for two sorted lists of
++    distinct lengths, kept = pairs with fast below slow, computed per fast by bisecting the
++    slows, so the cap check costs nothing on a long list (security-baseline rule 2).
++  - `pairs(fasts, slows) -> list[tuple[int, int]]`: the kept pairs, built only after the cap
++    check.
++  - `SweepRow` (frozen dataclass: `fast`, `slow`, `summary: Summary`) and
++    `sweep(frame, pairs, fee) -> list[SweepRow]`: one `run_backtest(frame,
++    sma_cross_positions(frame, fast, slow), fee=fee)` per pair, sorted by the key
++    `(-summary.total_return, fast, slow)` (R10).
++- **CLI** (`app/backtest/__main__.py`): a second sub-command `sweep` beside `run`.
++  - Arguments in `run`'s order: positionals, `--market`, `--fast` (default `"5,10,20"`),
++    `--slow` (default `"30,50,100"`), `--fee`, `--cache-dir`; the epilog is `SMA_NOTE`. The
++    lines `run` and `sweep` share move into small helpers (the range arguments, the fee and
++    cache arguments, the kline load, the buy-and-hold line); `run`'s help text and output stay
++    byte for byte the same (R13).
++  - Order of checks: (1) `make_request(...)` with `loader.utc_now().date()`; (2) `--fast` then
++    `--slow` parsed as lists: split on `,`, each item through `run`'s `_length` (`int()` of
++    the text, else the R4 message), then `< 1` refused with the same words, then deduplicated
++    and sorted; (3) `--fee` as `run` parses it; (4) `count_pairs`: 0 kept → `no pair has fast
++    below slow: pass a --fast value below a --slow value`; more than `MAX_PAIRS` →
++    `the grid has N pairs with fast below slow, more than 400: pass shorter --fast or --slow
++    lists`; (5) `load_klines(...)` once; (6) drop pairs with `slow >= frame.height` and add
++    them to the skipped count; none left → `the range has N candles, not more than any slow
++    length with a smaller fast: no pair could take a position; widen the dates or lower
++    --slow`; (7) print the run line and the note, flushed; (8) `sweep(...)` and buy and hold
++    (`run_backtest(frame, [1] * frame.height, fee=fee)`); (9) print the table, the buy-and-hold
++    line and the warning.
++  - Every refusal is a `BacktestInputError` raised by the command (or `run`'s existing
++    exceptions), so `main`'s existing handler prints it and returns 2; `main` itself does
++    not change.
++- **Output, worked shape** (numbers made up):
++  ```
++  BTC-USDT 1h spot, 2026-01-01 .. 2026-10-31: 7296 candles; sma-cross, 9 pairs tried, 0 skipped; fee 0.10%
++  SMAs count candles, not wall time: an interval without a candle is skipped, not filled.
++  fast  slow  total return  max drawdown  trades  win rate  time in market
++    10    50        14.20%        11.30%      18    38.89%          47.10%
++    20   100         9.05%        15.02%       9    44.44%          51.30%
++     5    30        -2.10%        19.75%      44    27.27%          45.80%
++  buy and hold     -3.74%
++  The best pair on past data is often luck: check it on another date range before trusting it.
++  ```
++  - The run line: `{symbol} {interval} {market}, {start} .. {end}: {height} candles;
++    sma-cross, {tried} pairs tried, {skipped} skipped; fee {fee:.2%}`. "Tried" is the number
++    of rows; "skipped" counts both kinds of skip (R5, R8). The intent's sketch reads
++    `9 pairs (0 skipped)`; the intent leaves the exact layout to the design, and the explicit
++    words say which number is which.
++  - Table: seven columns separated by two spaces, each right-aligned to the width of its
++    header or its longest cell, whichever is wider; fractions as `f"{x:.2%}"`, trades as an
++    integer, as `run` prints them (R9).
++  - Buy-and-hold: `f"{'buy and hold':<14}{value:>8}"`, `run`'s line.
++- **Long runs**: no separate warning. The run line, which names the candle and pair counts, is
++  printed and flushed before the first backtest, so a large run shows its size at once
++  (the intent's speed note: 400 pairs on a year of 1m candles take minutes). The 400 cap
++  bounds the worst case.
++- **Unchanged**: `run` (`_run`'s behaviour), `main`, `app/backtest/__init__.py`, the engine,
++  strategy, summary and inputs modules, `app/data/`, `pyproject.toml`, the CI workflow.
++
++## Open questions from intent
++- "Default grids? Recommended: `--fast 5,10,20 --slow 30,50,100`." Answered: those defaults,
++  per the recommendation the owner accepted by opening the intent PR (fast lane); nine pairs
++  around `run`'s defaults 20/50 (`app/backtest/__main__.py`, `--fast`/`--slow` defaults) (R3).
++- "A cap on the grid size? Recommended: refuse more than 400 pairs." Answered: 400, counted
++  on the pairs with fast below slow, before loading (R6); a bound on input size is also
++  security-baseline rule 2. The candle-count skips (R8) cannot count toward it, since they
++  are known only after loading, which the intent puts after the cap check.
++- "Rank by total return only? Recommended: yes." Answered: yes, ties by fast then slow (R10).
++- "Show every row, or only the best few? Recommended: every row." Answered: every row; no
++  `--top` option (R11).
++
++## Flagged concerns
++- decided (by panel #1): Keep argparse's refusal with no argv rewrite; correct the aside, since a bare `-5` is a value on every version and only a two-word comma list starting with a minus is refused by argparse on 3.10-3.13; and add to `test_sweep_refuses_bad_lengths` a two-word `--fast -5` case expecting the R4 message and a two-word `--fast -5,10` case asserting only exit 2, nothing on stdout and no stub call. — A `--fast` or `--slow` list that starts with a minus sign, written as two words
++  (`--fast -5,10`), may be read by argparse as an option rather than a value, depending on the
++  Python version's negative-number rule: argparse then prints its usage and
++  `error: argument --fast: expected one argument` and exits 2, which does not name the value
++  as R4 asks. Written as `--fast=-5,10`, or with the minus sign later in the list, the value
++  reaches the command and gets the R4 message. `run` has the same behaviour for `--fast -5`
++  on the versions where argparse reads it as an option. The design accepts argparse's refusal
++  (exit 2, one `error:` line in argparse's form) rather than rewriting argv; the test of a
++  negative item uses the `--fast=...` form.
++
++## Acceptance
++- A new test file (for example `tests/test_backtest_sweep.py`); no test file already on
++  `main` changes. Offline, through `main(argv, fetch=stub)` with `tests/kucoin_stub.py`, the
++  `clock` fixture and a `tmp_path` cache, the tests show:
++  - each row's numbers equal `run_backtest`'s for that pair on the same frame, formatted as
++    `run` prints them, and the whole stdout equals the expected lines;
++  - the rows are sorted by total return, ties by fast then slow (a tie is built with pairs
++    that never trade, whose return is exactly 0);
++  - pairs with fast not below slow and pairs with slow not below the candle count are
++    skipped and counted in the run line;
++  - repeated values are tried once;
++  - the stub sees exactly the requests one `run` of the same range makes;
++  - each refusal of R2, R4, R6 and R8 prints one `error:` line, nothing on stdout, exits 2,
++    and (R2, R4, R6) the stub sees no request; a bad `--market` exits 2 through argparse;
++  - the defaults give nine pairs;
++  - `python -m app.backtest run` prints what `tests/test_backtest_cli.py` expects (that file
++    passes unchanged).
++- `python -m compileall -q .` prints nothing and exits 0; `python -m pytest` passes every
++  test; `python -m ruff check .` prints `All checks passed!`.
++- `app.backtest.__all__`, `app/data/`, the engine modules, `pyproject.toml` and the version
++  `0.1.0` are unchanged.
++- Mock: none, screens follow the UX conventions
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml b/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
+new file mode 100644
+index 0000000..ea09484
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
+@@ -0,0 +1,34 @@
++id: "0006"
++slug: sweep-sma-crossover-lengths-on-one-range
++title: Sweep SMA crossover lengths on one range
++phase: design
++entry_route: idea
++change_type: feature
++gate:
++  phase: null
++  result: null
++  reason: null
++  at: null
++parked_reason: null
++iterations: 0
++panel_calls: 2
++external_ref: null
++risk_accepted: []
++tests_locked: false
++risk_accepted_by: []
++iterations_reset_by: null
++iterations_reset_at: null
++tests_unlocked_by: null
++runbook_authorized_by: null
++abandoned_reason: null
++build_pr: null
++released_at: null
++released_sha: null
++released_pr: null
++fast_lane:
++  intent:
++    sha: "32db462ad4d611dc3237780f0afcfc37f553c279"
++    pr: 27
++created_at: "2026-11-07T22:16:39Z"
++updated_at: "2026-11-07T22:37:38Z"
++schema_version: 1
