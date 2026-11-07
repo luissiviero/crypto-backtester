@@ -11,7 +11,13 @@
       "run": "build",
       "source": "claude-build.json",
       "usd": 5.071710200000001
+    },
+    {
+      "at": "2026-11-07T13:54:36Z",
+      "run": "test",
+      "source": "claude-test.json",
+      "usd": 1.5163760000000006
     }
   ],
-  "total_usd": 10.729729
+  "total_usd": 12.246105
 }
