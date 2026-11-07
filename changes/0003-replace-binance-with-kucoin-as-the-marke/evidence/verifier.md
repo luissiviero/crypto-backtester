@@ -1,125 +1,100 @@
-**Verdict: matches the plan.** In change 0003 (build phase), every behaviour I called through the KuCoin stub matched plan.md and spec.md. This does not prove the change works on the final tree: that result is the runner's, in the check run `sdlc/test`.
+# Verifier report: change 0003 (test phase), replace Binance with KuCoin
 
-## Commands run
+This ran in CI (`SDLC_GATE_COMMANDS=runner`), so I did not run build, test or lint myself. Short version: the build gate's record is green on all three targets, every Proof test in plan.md exists, and the code and tests match spec.md and plan.md. **Verdict: matches the plan.**
 
-All three entries were read from `evidence/gate-design.json`, not run. That file records the runner's run on commit `f7f047d5f17fa4888d8770bc3298736bc71d7395` at 2026-11-07T04:18:59Z, the design-phase commit this build phase started from. It is not the final build tree. The runner runs the three targets once after this session and shows the result in `sdlc/test` and in this phase's own gate record. A red target there starts the next fix round by itself, and nothing in this report stands in for it.
+## Commands run (read, not run)
 
-- **Overall:** `commands`: `"ok": true`, `"reason": "build, test and lint exit 0"`, `"ran_by": "runner"`. No `deferred` flag is set.
-- **Build:** `python -m compileall -q .` exited 0 with output `""`.
-- **Test:** `python -m pytest` exited 0 and ended with `============================== 89 passed in 0.63s ==============================`. That suite is the old Binance one.
-- **Lint:** `python -m ruff check .` exited 0 with `All checks passed!`.
-- **Logs:** there is no `evidence/build.log`, `test.log` or `lint.log`, so there is no first line to quote.
-- **Not started here:** I did not run pytest, even with `-k`, because `SDLC_GATE_COMMANDS=runner` is set. I also did not run `compileall`, because it writes `.pyc` files and this role writes nothing. Instead, an in-memory `compile()` of all 17 `.py` files under `app/`, `tests/` and `scripts/` printed `compiled in memory 17 files, no SyntaxError`.
+I read `evidence/gate-build.json`, the runner's run on commit `4ce80acd9a47527e73b2e3c1e1b94f8081dcaaf8` of 2026-11-07T05:17:28Z. That is the tree this phase started from, not the final one. The final tree's result is the runner's: it runs the three targets once after this session and shows the result in the check run `sdlc/test` and in `gate-test.json`. A red target there starts the next fix round by itself, and nothing here stands in for it.
+
+Between that commit and HEAD (`2180fdc`), `git diff --stat 4ce80ac HEAD` shows changes only under `changes/0003-.../evidence/` and `status.yaml`. No file under `app/`, `tests/` or `scripts/` changed.
+
+The `commands` entry has `ok: true`, `ran_by: runner`, and no `deferred` flag. Its `evidence` check is also `ok: true` and not deferred.
+- `python -m compileall -q .`: exit 0, output `""`
+- `python -m pytest`: exit 0, last lines:
+  ```
+  tests/test_data.py ..................................................... [ 50%]
+  .............                                                            [ 63%]
+  tests/test_data_cache.py .....                                           [ 68%]
+  tests/test_data_cli.py ..........                                        [ 77%]
+  tests/test_data_rest.py ......................                           [ 99%]
+  tests/test_smoke.py .                                                    [100%]
+  ============================= 104 passed in 0.35s ==============================
+  ```
+- `python -m ruff check .`: exit 0, `All checks passed!`
+
+The first line of each log:
+- `evidence/test.log`: `# python -m pytest — deferred to the runner — 2026-11-07T05:19:17Z`
+- `evidence/build.log`: `# python -m compileall -q . — deferred to the runner — 2026-11-07T05:19:17Z`
+- `evidence/lint.log`: `# python -m ruff check . — deferred to the runner — 2026-11-07T05:19:17Z`
+
+These three are not failures. This session wrote them minutes ago, and the runner replaces them with the targets' own output.
 
 ## Behavior exercised
 
-All calls went through `python -c`, using `tests/kucoin_stub.KuCoin` or a sequence fetch, with temporary cache dirs under `$TMPDIR`. The clock was patched to `NOW` (2026-10-03 12:00 UTC) and `http.sleep` was patched out. Nothing touched the network.
+**Static checks:**
+- **Proof tests:** I compared every `- test:` name in plan.md Proof with the `def test_` names under `tests/`. None is missing.
+  - There are three extra tests: `test_page_that_does_not_move_the_window_is_unexpected` and `test_help_notes_short_days_and_lost_futures_days` are both declared in plan.md Risks; `test_package_imports` is the existing smoke test.
+  - No `skip` or `xfail` markers are present.
+- **Binance names:** `grep -rniE "binance|vision" app scripts` hits only the deprecation notes that R6 and R8 allow: `app/data/__init__.py:4` and `app/data/loader.py:88`.
+- **Files:** `app/data/vision.py` is deleted. The source files the build changed (`git diff --name-status 38082bd 4ce80ac`) are exactly the ones plan.md lists. `pyproject.toml` and `.github/` are unchanged, and the version is still `0.1.0` in both places.
 
-**Fixtures**
-- All six files in `tests/fixtures/kucoin/` are byte-identical to their `references/capture/` originals (`True` for each).
+**Direct calls through `tests/kucoin_stub.py`**, with sleep stubbed out, clock at `NOW` and no `.env*` read:
+- **Package API:** `BinanceBanError` is gone from both `app.data` and `app.data.http` (`False False`).
+- **Spot fixture (`btc-usdt 1h 2026-10-01`):** `24` rows, columns `['open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_volume']`, time dtype `Datetime(time_unit='ms', time_zone='UTC')`, sorted, 1 call. `high is max: True low is min: True`.
+- **Second load:** `second load calls: 0 True`, so no fetch and an equal frame.
+- **Futures 1m fixture:** `200` rows in 2 calls, with no gap.
+- **Inputs just outside the accepted ones:**
 
-**Invalid inputs** — all refused with `calls 0`:
-- `um`: `unknown market 'um': use 'spot' or 'futures' (USDT-margined perpetuals)`
-- `1s` and `1w`: `unknown interval ...`
-- `6h` on futures: `interval '6h' is not offered on the futures market`
-- `XBTUSDM` and `XBTMZ25`: `invalid futures symbol ... ending in USDTM, for example XBTUSDTM`
-- `BTC/USDT` and `../etc`: `invalid spot symbol ...`
-- Just inside the rules, `btc-usdt` at `6h` on spot loaded 4 rows.
+  | Input | Result |
+  |---|---|
+  | `6h` on futures | refused, 0 calls |
+  | `USDTM`, `AUSDTM` (6 characters) | refused, 0 calls |
+  | `ABUSDTM` (7 characters, the boundary) | accepted |
+  | 31-letter spot symbol | refused |
+  | 30-letter spot symbol | accepted |
+  | `1w` | refused |
+  | `XBTUSDM` | refused |
+  | `um` | refused (`unknown market 'um': use 'spot' or 'futures'`) |
 
-**Multi-page loads**
-- Spot, 1m over 2 days (2880 rows): `rows 2880 calls 2 sorted True unique True`, and `high`/`low` hold the extremes on every row.
-- Futures, 1m over 2 days: `rows 2880 calls 15 sorted True unique True`. The first URL is `from=1790812800000&to=1790985599999`, so `to = end − 1`.
-- The schema has the 8 columns of R14 with `Datetime(ms, UTC)` and `Float64`.
+- **Spot page fails mid-range** (1h, 3 days, page size 30, second page malformed): one gap `('2026-09-28 00:00', '2026-09-29 17:00', 42, 'unexpected KuCoin response')`. The frame holds 30 rows; 2026-09-30 is complete and 2026-09-29 is a gap even though it is partly covered, as planned.
+- **Futures `1d` with page size 2:** 5 rows in 3 calls.
+- **Current day, spot, at 05:30 UTC:** hours `[0, 1, 2, 3, 4]` and no file written.
+- **Transport:**
+  - A 429 with `gw-ratelimit-reset: 45000` and then one with `abc`: sleeps `[45.0, 2.25]`, then status 200.
+  - A 418 is returned, not retried.
 
-**Quiet intervals and the end-of-window row**
-- The futures 1m fixture day loaded with no gap: `00:14 present False 02:15 present False`.
-- The futures 1h fixture has 25 rows, the last at the next day's 00:00. The load returned `rows 24 max 2026-10-01 23:00`.
+**CLI** (`python -m app.data`, offline, in a temporary cache directory):
+- **`cache-info`:** both the plain form and `--symbol btc-usdt` list `spot BTC-USDT 1h 1 10 B`, exit 0.
+- **`cache-clear btc-usdt 1h`:** `Deleted 1 day file (10 B) for BTC-USDT 1h spot.`, exit 0. The `binance-vision/` file is left alone (`True`).
+- **Refused inputs:**
+  - `download XBTUSDTM 6h ... --market futures` prints `error: interval '6h' is not offered on the futures market`, exit 2.
+  - `--market um` gets argparse's `invalid choice: 'um' (choose from spot, futures)`, exit 2.
+- **Help text:**
+  - `download --help` ends with the R17/R19 note: `... a short day is normal, never assume one row per interval. Futures volume counts contracts, spot volume coins; only quote_volume compares across markets.`
+  - `cache-clear --help` ends with `KuCoin may not serve old futures days again: a cleared futures day can be lost.`
 
-**Gaps** — each raised `KlineGapError` and cached nothing for the gap day:
-- Empty first day: `no candles before 2026-10-02: the date may be before KuCoin's oldest candle for this symbol`. Only `BTC-USDT-1h-2026-10-02.parquet` was cached.
-- Empty later day: `no candles on this day`.
-- No rows at all: `no candles; check the symbol exists`.
-- HTTP 200 with code 400100: `KuCoin refused (HTTP 200, code 400100): Unsupported trading pair.`
-- HTTP 400 with a KuCoin body: `KuCoin refused (HTTP 400, code 300000): Parameter 'from' must be milliseconds`.
-- A `msg` carrying an ESC character plus 300 characters came back with the ESC stripped, and the message part cut to 200 characters.
-
-**Second page refused**
-- Spot: `2820 candle(s) missing ... KuCoin refused (HTTP 400, code 400000): nope`, with only the fully answered day `BTC-USDT-1m-2026-10-01.parquet` cached.
-- Futures: `4120 candle(s) missing`, with nothing cached (no complete day had been answered).
-
-**`DownloadError` on a later page** (503 until retries ran out)
-- Spot: raised `... HTTP 503 after 3 retries; check the network and run again`, with `BTC-USDT-1m-2026-10-01.parquet` cached.
-- Futures, failing on call 9: raised, with `XBTUSDTM-1m-2026-09-29.parquet` cached holding 1440 rows.
-
-**Cache behaviour**
-- A second load made `second-load calls 0`.
-- The current day loaded 12 rows and cached nothing.
-- Files were laid out as `kucoin/spot/BTC-USDT/1h/BTC-USDT-1h-2026-10-01.parquet`.
-
-**CLI** (`main(argv, fetch=stub)`)
-- A download with a gap printed `not found: no candles before ...`, then `fetched from KuCoin (2 days)`, then `Total for BTC-USDT 1h spot: 2 fetched, 0 skipped, 1 not found; 24 candles missing. Cache: ...`, and exited 1.
-- A cached rerun printed `skipped, already cached (1 day)` and exited 0.
-- A futures download exited 0.
-- `cache-info` listed `BTC-USDT`, `ETH-USDT` and `XBTUSDTM` (`Total: 5 day files, 10.7 KiB under .../kucoin`). `--symbol xbtusdtm` with no market was accepted, and `--symbol BTC/USDT` printed one line and exited 2.
-- `cache-clear eth-usdt 1m --end 2026-09-01` printed `Deleted 1 day file (100 B) for ETH-USDT 1m spot.`. `XBTUSDM --market futures` exited 2.
-- Afterwards, `binance-vision/...parquet` and `kucoin/spot/ETH-USDT/1m/notes.txt` were still in place.
-- `--market um` is refused by argparse with exit 2.
-- `6h` on futures printed `error: ...` and exited 2 without calling the fetch.
-- A 500 answer on every try printed `error: ... HTTP 500 after 3 retries ...` and exited 2.
-- The help texts carry the plan's description and epilogs. Top-level help reads `KuCoin kline data and its local cache.`; `download --help` ends with the short-day and contract-volume note; `cache-clear --help` ends with `KuCoin may not serve old futures days again: a cleared futures day can be lost.`
-
-**Transport**
-- Retries:
-  - 429, 503, then 200 retried with sleeps `[1.0, 2.0]`.
-  - 404 and 418 were returned on the first call with no retry.
-  - `Retry-After: 5` slept `[5.0]`.
-  - A 429 with only the reset header: 20000 ms slept `[20.0]`, 90000 ms slept `[60.0]`, and a non-numeric value slept `[1.0]`.
-  - Four 500s raised `DownloadError` after sleeps `[1.0, 2.0, 4.0]`.
-  - `Retry-After: 61` stopped at once.
-- Pacer:
-  - No previous answer: no sleep.
-  - Remaining 1997, and remaining exactly 100: no sleep.
-  - Remaining 50 with reset 12000 slept 12.0; with reset 999999 it slept 60.0; with reset −5 it slept 0.0.
-  - Remaining 99 with reset 1000 slept 1.0.
-  - A missing header, or a non-integer one, slept 1.0.
-- Opener and redirects:
-  - The opener's handlers are `ProxyHandler, UnknownHandler, _HTTPSHandler, HTTPDefaultErrorHandler, HTTPErrorProcessor`, with no redirect handler.
-  - A faked 302 was returned as `status 302`, and only the original URL was opened.
-  - `http://` and `file://` URLs were refused with `URLError unknown url type`.
-
-**Leftover names and Proof tests**
-- A search of `app/` and `scripts/` for `binance`, `vision` and `um` finds only the two deprecation notes the plan allows (`app/data/loader.py:88`, `app/data/__init__.py:4`).
-- Every Proof test name is present, plus `test_help_notes_short_days_and_lost_futures_days`.
+**Reading the code and tests against spec.md Acceptance:**
+- Every Acceptance bullet maps to at least one test in `tests/test_data.py`, `tests/test_data_rest.py`, `tests/test_data_cache.py` or `tests/test_data_cli.py`.
+- R1–R27 are each covered as plan.md steps 1–10 describe.
+- `test_page_cut_short_is_a_gap_and_not_cached` covers both spot and futures. So does `test_days_fetched_before_a_download_error_stay_cached`.
 
 ## Not exercised
 
-- The test suite itself, and all three targets on the final build tree. That is the runner's job, shown in `sdlc/test`.
-- Windows. I ran on Linux only.
-- Real KuCoin. Whether its paging matches the stub is left to the owner's two downloads at the deploy gate.
-- The futures current-day forward window against a live API.
-- The `scripts/measure_storage.py` run itself. I only checked the lines changed for step 8.
-- The real network paths: an actual HTTPS redirect from a server, the connect and read timeouts, and the body-size cap on a real stream.
-- Intervals other than 1m, 1h and 6h; symbols at the 30-character limit; and the malformed-row variants (bool, NaN, wrong length), which I did not call directly.
-- An old Binance-schema Parquet file placed under `kucoin/`.
+- **Targets on the final tree:** I did not run build, test or lint on any tree. The result above is the runner's run on `4ce80ac`; the final tree's result is in the check run `sdlc/test`.
+- **Live KuCoin:** nothing here confirms the real endpoints' window rules, page caps, error codes or rate-limit headers. The stub encodes the measured rules, and the owner's two deploy-gate downloads are the only live check.
+- **Fixture provenance:** I could not check that `tests/fixtures/kucoin/*.json` are byte copies of `references/capture/`. The comparison command was denied in this session (a shell variable cannot be approved here).
+- **Real network transport:** I did not call `urllib_fetch` against a real HTTPS host. Redirects and only-https are covered only by the suite's monkeypatched tests.
+- **Platform:** I ran on Linux only, not Windows, so the Windows cache root and `tzdata` path were not run.
+- **Futures on the current day:** the last window KuCoin may refuse is not exercised by the stub; plan.md Risks names this.
+- **Extreme inputs:** I tried no very long ranges (months at 1m), no real `Retry-After` HTTP-date values, and nothing beyond the parser rows already in `test_malformed_rows_are_rejected`.
+- **`scripts/measure_storage.py`:** I only read it (`validate_symbol(symbol, market)`, `cache.SUBTREE`); I did not run it.
 
 ## Mismatches with plan.md / spec.md
 
 None.
 
-One note that is not a mismatch: plan.md step 4 asks for an explicit "strictly smaller, else `UNEXPECTED_RESPONSE`" guard on spot paging. `app/data/rest.py:135` filters out rows at or after `window_end` before taking the minimum, so the window always moves and the guard can never fire. The behaviour is the same.
+One observation that is not a mismatch: `app/data/cache.py:122` checks the `--interval` of `cache_info` against `"spot"`. So `cache-info --market futures --interval 6h` is accepted and simply lists nothing. That is harmless, and no spec line covers it.
 
 ## Verdict
 
-`matches the plan`
-
-Two things were blocked or skipped:
-- A shell `cmp` loop over the fixtures was denied, because a variable in it could not be checked before it ran and approval cannot be given in this session. I did the same comparison in Python instead.
-- I did not run the `pytest -k` commands your prompt suggested. My instructions forbid starting the test runner when `SDLC_GATE_COMMANDS=runner` is set, so the runner judges the suite.
-
-Files:
-- /home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/plan.md
-- /home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/spec.md
-- /home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/gate-design.json
-- /home/runner/work/crypto-backtester/crypto-backtester/app/data/rest.py
-- /home/runner/work/crypto-backtester/crypto-backtester/app/data/loader.py
-- /home/runner/work/crypto-backtester/crypto-backtester/tests/kucoin_stub.py
+matches the plan
