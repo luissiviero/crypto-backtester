@@ -1,7 +1,7 @@
 id: "0005"
 slug: run-a-backtest-from-the-cli-with-an-sma
 title: Run a backtest from the CLI with an SMA crossover
-phase: test
+phase: deploy
 entry_route: idea
 change_type: feature
 gate:
@@ -11,7 +11,7 @@ gate:
   at: "2026-11-07T20:32:11Z"
 parked_reason: null
 iterations: 0
-panel_calls: 2
+panel_calls: 3
 external_ref: null
 risk_accepted: []
 tests_locked: false
@@ -30,5 +30,5 @@ fast_lane:
     sha: "1a1b3be5cd24094c53a764efe6f0af6b9c09b08c"
     pr: 23
 created_at: "2026-11-07T18:02:30Z"
-updated_at: "2026-11-07T20:32:11Z"
+updated_at: "2026-11-07T20:38:03Z"
 schema_version: 1

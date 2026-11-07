@@ -1,21 +1,57 @@
 {
-  "at": "2026-11-07T20:45:00Z",
+  "at": "2026-11-07T20:35:23Z",
   "findings": [
     {
       "file": "tests/test_backtest.py",
       "line": 299,
       "pass": "compliance",
-      "rule": "spec.md R14 (every test file already on main unchanged); intent.md Constraints",
+      "rule": "spec R14; spec Acceptance ('New test files only ... no test file already on main changes')",
+      "severity": "important",
+      "signature": "7b0aeb6738fdc838",
+      "summary": "The diff edits a test file already on main (adds \"sma_cross_positions\" to test_public_api's pinned __all__ set), which spec R14 and the Acceptance line 'no test file already on main changes' forbid; plan.md records the departure in the same commit and explains that R1 and R14 contradict, but spec.md was not amended, so the owner must choose between this edit and dropping the name from __all__ before merge."
+    },
+    {
+      "file": "app/backtest/__main__.py",
+      "line": 10,
+      "pass": "compliance",
+      "rule": "coding-standards (module boundaries); plan.md Risks 'The CLI calls a private engine helper'",
       "severity": "nit",
-      "signature": "138006de07bbf375",
-      "summary": "The diff edits a test file already on main (one name added to test_public_api's exact __all__ set), against spec R14 and the intent's constraint that no existing test file is edited; this is a feature change, so the fix-type framework rule does not apply. R1/Acceptance require the export, so the conflict is real, and plan.md records the departure in the same commit (91dff56). Graded a nit because the edit weakens nothing, but the owner should confirm the choice."
+      "signature": "b63a53e55c7309ec",
+      "summary": "The CLI imports the private helper app.backtest.inputs._check_fee across modules; this is deliberate (panel #1, recorded in plan.md Risks) and keeps one copy of the fee rule, but it couples the CLI to a private name."
+    },
+    {
+      "file": "app/backtest/__main__.py",
+      "line": 94,
+      "pass": "bugs",
+      "rule": "security-baseline rule 2 (input checked before use) \u2014 satisfied, cosmetic only",
+      "severity": "nit",
+      "signature": "c897df1f6bd1d769",
+      "summary": "_length uses int(text), which also accepts forms like '1_0', ' +3 ' or full-width digits; the values are still range-checked by validate_lengths, so this is cosmetic, not a defect (stated with doubt that anyone relies on stricter parsing)."
+    },
+    {
+      "file": "changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md",
+      "line": 191,
+      "pass": "compliance",
+      "rule": "REVIEW.md framework rule: plan.md must reflect the diff (proof)",
+      "severity": "nit",
+      "signature": "a26b32876183e705",
+      "summary": "The Proof list omits test_run_reports_unusable_cache_dir, a test the diff adds for the OSError path of R12; harmless, but plan.md does not fully reflect the tests delivered."
+    },
+    {
+      "file": "tests/test_backtest_cli.py",
+      "line": 32,
+      "pass": "bugs",
+      "rule": "",
+      "severity": "nit",
+      "signature": "dc34405797310bee",
+      "summary": "expected_lines computes the expected summary numbers with the same load_klines, sma_cross_positions and run_backtest the CLI calls, so a defect shared by strategy and CLI would still pass this test; only the header and the 22-character line widths are pinned literally (the strategy itself is pinned by hand-computed tests in tests/test_strategies.py, which limits the risk)."
     }
   ],
-  "head": "e32914620cadbd6afaef046762c2bab07469d107",
+  "head": "9b14e3b3c53451d20ca05493eeb7b16fd72976b0",
   "schema_version": 1,
   "tally": {
-    "important": 0,
-    "nit": 1,
+    "important": 1,
+    "nit": 4,
     "nits_omitted": 0
   }
 }

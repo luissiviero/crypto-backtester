@@ -1,0 +1,28 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "Important finding at tests/test_backtest.py:299: The diff edits a test file already on main (adds \"sma_cross_positions\" to test_public_api's pinned __all__ set), which spec R14 and the Acceptance line 'no test file already on main changes' forbid; plan.md records the departure in the same commit and explains that R1 and R14 contradict, but spec.md was not amended, so the owner must choose between this edit and dropping the name from __all__ before merge. [spec R14; spec Acceptance ('New test files only ... no test file already on main changes')]",
+      "key": "finding:7b0aeb6738fdc838",
+      "kind": "finding",
+      "n": 1
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 2,
+    "used": 2
+  },
+  "parks": [],
+  "pending": [
+    1
+  ],
+  "phase": "deploy"
+}
