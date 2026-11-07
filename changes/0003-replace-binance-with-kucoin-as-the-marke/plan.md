@@ -35,7 +35,12 @@
   `spot-unknown-symbol.json`, `futures-unknown-symbol.json`,
   `futures-from-in-seconds.json` — byte copies of the captured bodies in
   `references/capture/` (same content, shorter names).
-- `tests/test_data.py` — rewritten for KuCoin (tests listed in Proof).
+- `tests/test_data.py` — rewritten for KuCoin (tests listed in Proof): parameters, rows and
+  the transport.
+- `tests/test_data_rest.py` — new (split from `tests/test_data.py`, see Risks): paging,
+  completeness and gaps.
+- `tests/test_data_cache.py` — new (split from `tests/test_data.py`): the cache.
+- `tests/conftest.py` — new: the `sleeps` and `clock` fixtures the three modules share.
 - `tests/test_data_cli.py` — rewritten for KuCoin.
 - `tests/binance_stub.py` — deleted.
 - `tests/fixtures/binance/` — deleted (all six files).
@@ -228,6 +233,24 @@ each keep `plan.md` in step, and run the suite after step 9.
 - **A file over 500 lines**: `tests/test_data.py` is 566 today; keep the rewrite under 500
   or split by area (`test_data_rest.py`, `test_data_cache.py`) per the one-module-per-area
   convention, and list any new test file here in the same commit.
+  Build: the rewrite came to 610 lines, so it is split into `tests/test_data.py`
+  (parameters, rows, transport), `tests/test_data_rest.py` (paging, gaps, loading) and
+  `tests/test_data_cache.py` (cache), with the shared fixtures in `tests/conftest.py`; every
+  Proof test keeps its name.
+- **Build details inside the plan's files**: the time bound of step 2 is `_open_ms`, which
+  also keeps `open + interval − 1` inside 64 bits (an extreme time would otherwise overflow
+  outside `MalformedDataError`); in `sync_days`, a closed `REST` day whose rows all fall off
+  the day's grid is settled as `MISSING` (`no candles on this day`), so an empty day is never
+  cached as complete. One test beyond Proof checks the two help epilogs
+  (`test_help_notes_short_days_and_lost_futures_days`).
+- **Window rule of step 4, after the build review**: the rows that move the window (spot:
+  open before `window_end`; futures: open at or after `window_start`) are taken before the
+  range filter, so a page with rows but none that moves the window is `UNEXPECTED_RESPONSE`
+  (a gap, never cached) rather than the end of the range; rows outside the range (futures:
+  the end-of-window row) are still dropped. Tested by
+  `test_page_that_does_not_move_the_window_is_unexpected`;
+  `test_futures_end_of_window_row_adds_no_next_day_candle` also checks `fetch_range`'s own
+  frame.
 
 ## Options not taken
 - **A contract lookup (`/api/v1/contracts/{symbol}`) per futures request**: clearer error

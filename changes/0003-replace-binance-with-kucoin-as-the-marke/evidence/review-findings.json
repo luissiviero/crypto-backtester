@@ -1,0 +1,39 @@
+{
+  "at": "2026-11-07T05:29:06Z",
+  "findings": [
+    {
+      "file": "CLAUDE.md",
+      "line": 5,
+      "pass": "compliance",
+      "rule": "REVIEW.md Framework rules: Flag when the change has made CLAUDE.md outdated",
+      "severity": "important",
+      "signature": "e582b8be74664c77",
+      "summary": "The diff makes CLAUDE.md outdated: lines 5-6 still describe Binance spot/USD-M klines from Binance Vision, line 30 lists the deleted `vision` module, and lines 36-37 name the deleted tests/binance_stub.py and tests/fixtures/binance/; plan.md names the replacement lines for the owner's follow-up PR, but until that lands the guardrail file misdescribes the package."
+    },
+    {
+      "file": "app/data/cache.py",
+      "line": 122,
+      "pass": "bugs",
+      "rule": "",
+      "severity": "nit",
+      "signature": "c2f548e6da771536",
+      "summary": "cache_info validates --interval against the spot market regardless of --market, so `cache-info --market futures --interval 6h` is accepted (and lists nothing) instead of being refused like the other futures-only checks."
+    },
+    {
+      "file": "app/data/rest.py",
+      "line": 161,
+      "pass": "bugs",
+      "rule": "",
+      "severity": "nit",
+      "signature": "d1665fbc43fcdd32",
+      "summary": "Doubtful, unverifiable offline: on the current day the futures loop asks one more window starting after the in-progress candle; if KuCoin answers a future `from` with the latest (older) row instead of an empty list, the 'rows but none that moves the window' rule turns it into UNEXPECTED_RESPONSE, so every load that includes today raises KlineGapError for today (plan Risks covers only a refusal, not this answer shape)."
+    }
+  ],
+  "head": "bcbab67a43ea948cf0b0443dec72f16f913fd28e",
+  "schema_version": 1,
+  "tally": {
+    "important": 1,
+    "nit": 2,
+    "nits_omitted": 0
+  }
+}

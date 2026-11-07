@@ -6,10 +6,9 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
-MARKETS = ("spot", "um")
+MARKETS = ("spot", "futures")
 
 INTERVAL_MS = {
-    "1s": 1_000,
     "1m": 60_000,
     "3m": 180_000,
     "5m": 300_000,
@@ -23,10 +22,40 @@ INTERVAL_MS = {
     "12h": 43_200_000,
     "1d": 86_400_000,
 }
-SPOT_ONLY_INTERVALS = frozenset({"1s"})
+FUTURES_REFUSED_INTERVALS = frozenset({"6h"})
 DAY_MS = 86_400_000
 
-_SYMBOL = re.compile(r"[A-Z0-9]{2,30}")
+# KuCoin's names for our intervals: the spot `type` and the futures `granularity` in minutes.
+SPOT_TYPES = {
+    "1m": "1min",
+    "3m": "3min",
+    "5m": "5min",
+    "15m": "15min",
+    "30m": "30min",
+    "1h": "1hour",
+    "2h": "2hour",
+    "4h": "4hour",
+    "6h": "6hour",
+    "8h": "8hour",
+    "12h": "12hour",
+    "1d": "1day",
+}
+FUTURES_GRANULARITY = {
+    "1m": 1,
+    "3m": 3,
+    "5m": 5,
+    "15m": 15,
+    "30m": 30,
+    "1h": 60,
+    "2h": 120,
+    "4h": 240,
+    "8h": 480,
+    "12h": 720,
+    "1d": 1440,
+}
+
+_SPOT_SYMBOL = re.compile(r"[A-Z0-9-]{2,30}")
+_FUTURES_SYMBOL = re.compile(r"[A-Z0-9]{2,25}USDTM")
 
 
 class InvalidRequestError(ValueError):
@@ -52,7 +81,9 @@ class KlineRequest:
 
 def validate_market(market: str) -> str:
     if market not in MARKETS:
-        raise InvalidRequestError(f"unknown market {market!r}: use 'spot' or 'um' (USD-M futures)")
+        raise InvalidRequestError(
+            f"unknown market {market!r}: use 'spot' or 'futures' (USDT-margined perpetuals)"
+        )
     return market
 
 
@@ -60,16 +91,23 @@ def validate_interval(interval: str, market: str) -> str:
     if interval not in INTERVAL_MS:
         choices = ", ".join(INTERVAL_MS)
         raise InvalidRequestError(f"unknown interval {interval!r}: use one of {choices}")
-    if interval in SPOT_ONLY_INTERVALS and market != "spot":
-        raise InvalidRequestError(f"interval {interval!r} exists on the spot market only")
+    if interval in FUTURES_REFUSED_INTERVALS and market == "futures":
+        raise InvalidRequestError(f"interval {interval!r} is not offered on the futures market")
     return interval
 
 
-def validate_symbol(symbol: str) -> str:
+def validate_symbol(symbol: str, market: str) -> str:
     normalized = symbol.upper()
-    if not _SYMBOL.fullmatch(normalized):
+    if market == "futures":
+        if not _FUTURES_SYMBOL.fullmatch(normalized):
+            raise InvalidRequestError(
+                f"invalid futures symbol {symbol!r}: use a USDT-margined perpetual, 7 to 30 "
+                "letters or digits ending in USDTM, for example XBTUSDTM"
+            )
+    elif not _SPOT_SYMBOL.fullmatch(normalized):
         raise InvalidRequestError(
-            f"invalid symbol {symbol!r}: use 2 to 30 letters or digits, for example BTCUSDT"
+            f"invalid spot symbol {symbol!r}: use 2 to 30 letters, digits or hyphens, "
+            "for example BTC-USDT"
         )
     return normalized
 
@@ -100,7 +138,7 @@ def make_request(
 ) -> KlineRequest:
     market = validate_market(market)
     interval = validate_interval(interval, market)
-    symbol = validate_symbol(symbol)
+    symbol = validate_symbol(symbol, market)
     start_day = parse_date(start, "start")
     end_day = parse_date(end, "end")
     if start_day > end_day:

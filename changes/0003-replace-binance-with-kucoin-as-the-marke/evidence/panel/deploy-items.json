@@ -1,0 +1,28 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "Important finding at CLAUDE.md:5: The diff makes CLAUDE.md outdated: lines 5-6 still describe Binance spot/USD-M klines from Binance Vision, line 30 lists the deleted `vision` module, and lines 36-37 name the deleted tests/binance_stub.py and tests/fixtures/binance/; plan.md names the replacement lines for the owner's follow-up PR, but until that lands the guardrail file misdescribes the package. [REVIEW.md Framework rules: Flag when the change has made CLAUDE.md outdated]",
+      "key": "finding:e582b8be74664c77",
+      "kind": "finding",
+      "n": 1
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 0,
+    "used": 4
+  },
+  "parks": [],
+  "pending": [
+    1
+  ],
+  "phase": "deploy"
+}

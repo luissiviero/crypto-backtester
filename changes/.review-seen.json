@@ -109,6 +109,17 @@
     "last_seen": "2026-11-05T18:14:16Z",
     "summary": "With an environment http_proxy whose scheme is https:// (uncommon), ProxyHandler re-types a plain http:// request to https and _HTTPSHandler sends it to the proxy, so an http URL is fetched instead of refused; unverified, and the layer only builds https URLs, so only a direct urllib_fetch call can reach it."
   },
+  "2a03adfe8cd0e80d": {
+    "changes": [
+      "0003"
+    ],
+    "count": 1,
+    "file": "app/data/cache.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-11-07T05:26:55Z",
+    "summary": "cache_info validates --interval against the spot market even when --market futures is given, so `cache-info --market futures --interval 6h` is accepted and silently lists nothing instead of being refused like everywhere else; harmless today, and no spec line covers it."
+  },
   "4293ca6feec9d572": {
     "changes": [
       "0001"
@@ -186,6 +197,17 @@
     "last_seen": "2026-10-28T17:18:27Z",
     "summary": "build_opener keeps urllib's default redirect and plain-HTTP handlers. A 3xx answer would be followed, including to an http:// URL, and that request skips the custom 10 s/60 s timeouts. I am not sure this matters: an attacker cannot inject the redirect while the hosts are reached over TLS."
   },
+  "6fdee199cc578629": {
+    "changes": [
+      "0003"
+    ],
+    "count": 1,
+    "file": "CLAUDE.md",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-11-07T05:26:55Z",
+    "summary": "The change leaves CLAUDE.md outdated: lines 5-6 still describe Binance Vision, line 30 lists a vision module and lines 36-37 name tests/binance_stub.py and tests/fixtures/binance/, none of which exist after this diff. Reported as a nit with a doubt stated: plan.md (Files that change, 'For the owner') already names every one of these lines for the owner's own PR, as CLAUDE.md's 'Things Claude gets wrong' entry asks, and a run cannot edit the file."
+  },
   "7012c1473a58568e": {
     "changes": [
       "0002"
@@ -241,6 +263,17 @@
     "last_seen": "2026-11-05T18:21:41Z",
     "summary": "The module-level loop leaves `_handler` bound in the module namespace after import; harmless, but a tuple passed to a small helper or `del _handler` would keep the module surface clean."
   },
+  "a332de12ab568c77": {
+    "changes": [
+      "0003"
+    ],
+    "count": 1,
+    "file": "app/data/http.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-11-07T05:26:55Z",
+    "summary": "UNKNOWN_WEIGHT_WAIT keeps the Binance 'weight' name after WeightPacer became RateLimitPacer and the weight header was removed; a naming leftover only."
+  },
   "bca56c45b2be62e2": {
     "changes": [
       "0002"
@@ -274,6 +307,17 @@
     "last_seen": "2026-11-05T18:14:16Z",
     "summary": "Adding tzdata and the [tool.setuptools] table leaves CLAUDE.md's Setup line and 'the one runtime dependency is polars>=1.0' outdated; plan.md names both edits (and sdlc.yaml commands.setup) for the owner as R12 requires, so this is graded a nit, with the doubt that the rule may want it tracked until the owner's guardrail PR lands after this merges."
   },
+  "c2f548e6da771536": {
+    "changes": [
+      "0003"
+    ],
+    "count": 1,
+    "file": "app/data/cache.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-11-07T05:29:24Z",
+    "summary": "cache_info validates --interval against the spot market regardless of --market, so `cache-info --market futures --interval 6h` is accepted (and lists nothing) instead of being refused like the other futures-only checks."
+  },
   "c3b73ce1597573be": {
     "changes": [
       "0002"
@@ -284,6 +328,17 @@
     "last_change": "0002",
     "last_seen": "2026-11-05T21:46:13Z",
     "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+  },
+  "d1665fbc43fcdd32": {
+    "changes": [
+      "0003"
+    ],
+    "count": 1,
+    "file": "app/data/rest.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-11-07T05:29:24Z",
+    "summary": "Doubtful, unverifiable offline: on the current day the futures loop asks one more window starting after the in-progress candle; if KuCoin answers a future `from` with the latest (older) row instead of an empty list, the 'rows but none that moves the window' rule turns it into UNEXPECTED_RESPONSE, so every load that includes today raises KlineGapError for today (plan Risks covers only a refusal, not this answer shape)."
   },
   "d47002cb4e08c30a": {
     "changes": [
@@ -306,5 +361,16 @@
     "last_change": "0002",
     "last_seen": "2026-11-05T21:46:13Z",
     "summary": "The new Windows-only tzdata dependency and the [tool.setuptools] table make CLAUDE.md's Setup line and its 'the one runtime dependency is polars>=1.0' outdated; plan.md (lines 18-26) names each line for the owner's follow-up PR as required, so this is a nit for the owner's tracking, not an unacknowledged breach (doubt: if the gate expects the outdated text itself to count as Important, it applies here)."
+  },
+  "e582b8be74664c77": {
+    "changes": [
+      "0003"
+    ],
+    "count": 1,
+    "file": "CLAUDE.md",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-11-07T05:29:24Z",
+    "summary": "The diff makes CLAUDE.md outdated: lines 5-6 still describe Binance spot/USD-M klines from Binance Vision, line 30 lists the deleted `vision` module, and lines 36-37 name the deleted tests/binance_stub.py and tests/fixtures/binance/; plan.md names the replacement lines for the owner's follow-up PR, but until that lands the guardrail file misdescribes the package."
   }
 }

@@ -2,7 +2,7 @@
 
 Usage:
     python scripts/measure_storage.py                    # synthetic year, fixed seed
-    python scripts/measure_storage.py --from-cache BTCUSDT 1m [--market spot] [--cache-dir DIR]
+    python scripts/measure_storage.py --from-cache BTC-USDT 1m [--market spot] [--cache-dir DIR]
 
 Prints a markdown table of the total size at zstd levels 3 and 9. Files are written to a
 temporary directory that is deleted afterwards; nothing is written to the repository.
@@ -54,7 +54,6 @@ def synthetic_year(seed: int = SEED, year: int = YEAR) -> list[pl.DataFrame]:
             high = round(max(open_price, close_price) * (1 + abs(rng.gauss(0, 0.0003))), 2)
             low = round(min(open_price, close_price) * (1 - abs(rng.gauss(0, 0.0003))), 2)
             volume = round(rng.lognormvariate(2.5, 0.9), 5)
-            taker = round(volume * rng.uniform(0.3, 0.7), 5)
             candle = {
                 "open_time": open_ms,
                 "open": open_price,
@@ -64,9 +63,6 @@ def synthetic_year(seed: int = SEED, year: int = YEAR) -> list[pl.DataFrame]:
                 "volume": volume,
                 "close_time": open_ms + MINUTE_MS - 1,
                 "quote_volume": round(volume * close_price, 8),
-                "trades": int(volume * rng.uniform(20, 60)) + 1,
-                "taker_buy_base_volume": taker,
-                "taker_buy_quote_volume": round(taker * close_price, 8),
             }
             for name, value in candle.items():
                 rows[name].append(value)
@@ -90,7 +86,7 @@ def cached_days(
 ) -> list[pl.DataFrame]:
     market = validate_market(market)
     interval = validate_interval(interval, market)
-    symbol = validate_symbol(symbol)
+    symbol = validate_symbol(symbol, market)
     directory = cache.cache_root(cache_dir) / cache.SUBTREE / market / symbol / interval
     if not directory.is_dir():
         return []

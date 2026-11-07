@@ -1,4 +1,4 @@
-"""HTTP transport: the urllib fetch, retries with backoff, and the REST weight pause."""
+"""HTTP transport: the urllib fetch, retries with backoff, and the rate-limit pause."""
 
 from __future__ import annotations
 
@@ -17,8 +17,10 @@ MAX_BODY_BYTES = 64 * 1024 * 1024
 RETRY_DELAYS = (1.0, 2.0, 4.0)
 MAX_JITTER = 0.5
 MAX_RETRY_AFTER = 60.0
-WEIGHT_HEADER = "X-MBX-USED-WEIGHT-1M"
-WEIGHT_THRESHOLD = 0.8
+REMAINING_HEADER = "gw-ratelimit-remaining"
+RESET_HEADER = "gw-ratelimit-reset"
+RATE_LIMIT_RESERVE = 100
+MAX_RATE_LIMIT_WAIT = 60.0
 UNKNOWN_WEIGHT_WAIT = 1.0
 TRANSIENT_ERRORS = (OSError, http.client.HTTPException)
 
@@ -42,11 +44,7 @@ Fetch = Callable[[str], HttpResponse]
 
 
 class DownloadError(RuntimeError):
-    """A download that cannot go on: retries exhausted, a ban, a too-long Retry-After."""
-
-
-class BinanceBanError(DownloadError):
-    """HTTP 418: Binance has banned this IP address for a while."""
+    """A download that cannot go on: retries exhausted or a too-long Retry-After."""
 
 
 def sleep(seconds: float) -> None:
@@ -105,7 +103,7 @@ def _read(response: http.client.HTTPResponse | urllib.error.HTTPError) -> bytes:
 
 
 def with_retries(fetch: Fetch) -> Fetch:
-    """Wrap a Fetch: retry connection errors, 429 and 5xx; raise on 418; return the rest."""
+    """Wrap a Fetch: retry connection errors, 429 and 5xx; return every other answer."""
 
     def fetch_with_retries(url: str) -> HttpResponse:
         failure = ""
@@ -116,15 +114,12 @@ def with_retries(fetch: Fetch) -> Fetch:
             except TRANSIENT_ERRORS as error:
                 failure = f"{type(error).__name__}: {error}"
             else:
-                if response.status == 418:
-                    raise BinanceBanError(
-                        f"Binance answered HTTP 418 for {url}: this IP address is banned for "
-                        "a while; wait before running again"
-                    )
                 if response.status != 429 and response.status < 500:
                     return response
                 failure = f"HTTP {response.status}"
                 retry_after = _retry_after(response)
+                if retry_after is None and response.status == 429:
+                    retry_after = _reset_wait(response)
             if attempt == len(RETRY_DELAYS):
                 break
             if retry_after is not None and retry_after > MAX_RETRY_AFTER:
@@ -154,22 +149,30 @@ def _retry_after(response: HttpResponse) -> float | None:
         return None
 
 
-class WeightPacer:
-    """Pauses REST calls on the used-weight header of the previous response."""
+def _reset_wait(response: HttpResponse) -> float | None:
+    """The `gw-ratelimit-reset` milliseconds as seconds, bounded to 0..MAX_RATE_LIMIT_WAIT."""
+    reset = _int_or_none(response.header(RESET_HEADER))
+    if reset is None:
+        return None
+    return min(max(reset, 0) / 1000, MAX_RATE_LIMIT_WAIT)
 
-    def __init__(self, weight_limit: int) -> None:
-        self.weight_limit = weight_limit
+
+class RateLimitPacer:
+    """Pauses calls on the rate-limit headers of the previous response (one pool, both hosts)."""
+
+    def __init__(self) -> None:
         self.last: HttpResponse | None = None
 
     def wait(self) -> None:
-        """Call before each REST request."""
+        """Call before each request."""
         if self.last is None:
             return
-        weight = _int_or_none(self.last.header(WEIGHT_HEADER))
-        if weight is None:
+        remaining = _int_or_none(self.last.header(REMAINING_HEADER))
+        reset_wait = _reset_wait(self.last)
+        if remaining is None or reset_wait is None:
             sleep(UNKNOWN_WEIGHT_WAIT)
-        elif weight >= WEIGHT_THRESHOLD * self.weight_limit:
-            sleep(60.0 - wall_clock() % 60.0)
+        elif remaining < RATE_LIMIT_RESERVE:
+            sleep(reset_wait)
 
     def record(self, response: HttpResponse) -> None:
         self.last = response
