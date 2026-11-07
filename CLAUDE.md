@@ -1,10 +1,11 @@
 # CLAUDE.md
 
 A trial Python project for the SDLC framework plugin: a crypto backtester whose features arrive
-as intents (`/sdlc-intent`), one change at a time. Today the package (`app/`) holds one feature,
-`app/data/`: KuCoin spot and USDT-margined perpetual klines from KuCoin's public REST API
-as polars frames, cached per day as Parquet outside the repository; its CLI is
-`python -m app.data download | cache-info | cache-clear`.
+as intents (`/sdlc-intent`), one change at a time. Today the package (`app/`) holds two features:
+`app/data/`, KuCoin spot and USDT-margined perpetual klines from KuCoin's public REST API
+as polars frames, cached per day as Parquet outside the repository, with the CLI
+`python -m app.data download | cache-info | cache-clear`; and `app/backtest/`, a long/flat
+backtest of one symbol on a klines frame.
 
 ## Commands
 
@@ -31,6 +32,9 @@ as polars frames, cached per day as Parquet outside the repository; its CLI is
   schema, cache, loader, and the CLI in `__main__.py`); its public API is
   `app/data/__init__.py`. The cache directory is `--cache-dir`, else the environment variable
   `CRYPTO_BACKTESTER_CACHE_DIR`, else the platform default.
+- `app/backtest/` is the backtest engine, one module per job (inputs, engine, summary); its
+  public API is `app/backtest/__init__.py` (`run_backtest`). It does no I/O; its tests,
+  `tests/test_backtest.py`, use frames built by hand and no stub or fixture files.
 - `scripts/measure_storage.py` measured the cache layout for change 0001; it is not part of
   the package.
 - `tests/` holds the pytest suite; the data tests run offline against `tests/kucoin_stub.py`
