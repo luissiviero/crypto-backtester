@@ -18,8 +18,8 @@
   trade_count, win_rate, time_in_market)` and `summarize(equity: list[float],
   held: list[int], returns: list[float]) -> Summary`.
 - `pyproject.toml` — `[tool.setuptools] packages = ["app", "app.data", "app.backtest"]`
-  (spec Design, Packaging; an open flagged concern: if the gate decides against it, this
-  line is dropped from the plan).
+  (spec Design, Packaging; decided by panel #1: keep the explicit entry, proven by a wheel
+  listing; the owner may overturn it at the design gate, and then this line is dropped).
 - `tests/test_backtest.py` — new: every test named in Proof, on frames built by hand with a
   `_frame(opens, closes, times=None)` helper in the file. Times default to integers
   `0..n-1`; the gap test uses `datetime(…, tzinfo=timezone.utc)` values cast to
@@ -71,7 +71,10 @@ the build PR if they want `sdlc/review` green on the first pass, per the intent)
    last-row decision, open at end).
 4. `app/backtest/__init__.py` and the API test (`from app.backtest import …`; `__all__`).
 5. `pyproject.toml` packages line.
-6. Run build, test and lint. Paste the output.
+6. Run build, test and lint. Paste the output. The build verifier also builds a wheel
+   (`python -m pip wheel . --no-deps -w <tmp>`, as change 0002's verifier did) and lists
+   its contents. `app/backtest/__init__.py`, `inputs.py`, `engine.py` and `summary.py`
+   must be in it (panel #1).
 
 ## Risks
 - **Breaks nothing existing.** No module imports `app.backtest`, and `app/data/` is only
@@ -96,8 +99,10 @@ the build PR if they want `sdlc/review` green on the first pass, per the intent)
   `.to_list()`, which the `type(v) is int` check refuses. A Float Series of `0.0/1.0` is
   refused too. This is strict on purpose (spec R14 and the closed concern), and the error
   message tells the caller to cast to an integer type.
-- **Packaging concern open.** If the design gate decides against the `pyproject.toml` edit,
-  drop step 5 and the file from this list. The tests pass either way (editable install).
+- **Packaging (panel #1).** No test catches a missing or misspelt `"app.backtest"` entry,
+  because the editable install imports through the `app` directory. The wheel listing of
+  step 6 is the check. If the owner overturns the decision at the design gate, drop step 5,
+  the file and the wheel proof.
 - **CLAUDE.md drift.** Until the owner lands the CLAUDE.md lines above, the deploy review
   may raise an outdated-CLAUDE.md Important finding, as on change 0003. The run cannot edit
   that file.
@@ -126,8 +131,11 @@ the build PR if they want `sdlc/review` green on the first pass, per the intent)
 - **Importing `app.data.schema.SCHEMA` to validate column dtypes.** Not taken: the tests'
   hand-built frames use integer times, and the engine needs only three columns. Coupling to
   the full schema would refuse valid inputs.
-- **Leaving `pyproject.toml` unchanged** as the intent states. Not taken pending the gate;
-  see the open concern.
+- **Leaving `pyproject.toml` unchanged** as the intent states. Not taken: a regular
+  install would ship no engine (panel #1).
+- **`[tool.setuptools.packages.find] include = ["app*"]`** instead of a third hand-kept
+  entry. Not taken: it is a wider change to package discovery, so it is the owner's choice
+  (panel #1).
 
 Interrogation answers:
 1. What could break: nothing that exists calls the new package. The consumers are the
@@ -168,6 +176,9 @@ Interrogation answers:
   `0.07568647568108`, max drawdown `0.1026973009`, 2 trades, win rate `0.5`, time in market
   `3/7`, equity `[1.0, 1.0989, 1.1988, 1.1976012, 1.1976012, 1.1299367322,
   1.07568647568108]`.
+- Wheel listing (panel #1): the build verifier's report shows `app/backtest/__init__.py`,
+  `app/backtest/inputs.py`, `app/backtest/engine.py` and `app/backtest/summary.py` inside
+  the wheel built from the branch.
 - `python -m compileall -q .` prints nothing. `python -m pytest` reports every test passed
   (the existing tests plus the new ones). `python -m ruff check .` prints
   `All checks passed!`.
