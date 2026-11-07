@@ -1,0 +1,1365 @@
+{
+  "captured_at": "2026-11-05T16:08:42Z",
+  "findings": {
+    "futures_from_to_accepted_in": {
+      "milliseconds": true,
+      "seconds": false
+    },
+    "page_size_seen": {
+      "spot": 1500,
+      "futures": 200
+    },
+    "contract_fields": {
+      "multiplier": 0.001,
+      "firstOpenDate": 1585555200000,
+      "baseCurrency": "XBT",
+      "quoteCurrency": "USDT",
+      "status": "Open"
+    },
+    "contract_status": 200,
+    "spot_intervals": {
+      "1min": true,
+      "3min": true,
+      "5min": true,
+      "15min": true,
+      "30min": true,
+      "1hour": true,
+      "2hour": true,
+      "4hour": true,
+      "6hour": true,
+      "8hour": true,
+      "12hour": true,
+      "1day": true
+    },
+    "futures_interval_minutes": {
+      "1": true,
+      "3": true,
+      "5": true,
+      "15": true,
+      "30": true,
+      "60": true,
+      "120": true,
+      "240": true,
+      "360": false,
+      "480": true,
+      "720": true,
+      "1440": true
+    },
+    "oldest_day": {
+      "spot_1min": "2017-10-04",
+      "spot_1hour": "2017-10-04",
+      "futures_1min": "2024-12-01",
+      "futures_1hour": "2024-08-05"
+    },
+    "bulk_page_status": 200,
+    "bulk_page_links": [
+      "https://assets.staticimg.com/trade-markets-web-kudos/0.3.50/ssr/_next/static/chunks/pages/markets/historydata-a9bc61b9b86b9ce3.js",
+      "https://assets.staticimg.com/trade-markets-web-kudos/0.3.50/ssr/_next/static/media/kline-download-background.b8c7db9804ac97fa83d173ea499fadeb.svg",
+      "https://www.kucoin.com/markets/historydata"
+    ],
+    "spot_ok": true,
+    "futures_ok": true
+  },
+  "requests": {
+    "spot-BTC-USDT-1hour": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=1hour&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 2167,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1997",
+        "gw-ratelimit-reset": "29999"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 24,
+      "expected_rows": 24,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790895600",
+        "84748.8",
+        "84893.5",
+        "84901.2",
+        "84650.4",
+        "44.91189874",
+        "3808651.378451201"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 24,
+        "fit_ohlc": 0,
+        "fit_oclh": 24
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T23:00:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false,
+      "body_file": "spot-BTC-USDT-1hour.json"
+    },
+    "spot-BTC-USDT-1min": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=1min&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 122772,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1994",
+        "gw-ratelimit-reset": "29202"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 1440,
+      "expected_rows": 1440,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790899140",
+        "84886.5",
+        "84893.5",
+        "84901.2",
+        "84886.4",
+        "0.31536915",
+        "26774.785315156"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 1440,
+        "fit_ohlc": 2,
+        "fit_oclh": 1440
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T23:59:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false,
+      "body_file": "spot-BTC-USDT-1min.json"
+    },
+    "spot-BTC-USDT-1min-3days": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=1min&startAt=1790812800&endAt=1791072000",
+      "status": 200,
+      "bytes": 126697,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1991",
+        "gw-ratelimit-reset": "28356"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 1500,
+      "expected_rows": 4320,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1791071940",
+        "84778.2",
+        "84750.3",
+        "84778.2",
+        "84745.8",
+        "5.24005441",
+        "444137.298235716"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 1500,
+        "fit_ohlc": 15,
+        "fit_oclh": 1500
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-03T23:59:00Z",
+      "last_row_time": "2026-10-02T23:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false,
+      "body_file": "spot-BTC-USDT-1min-3days.json"
+    },
+    "futures-XBTUSDTM-60-from-to-in-ms": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=60&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 1738,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1988",
+        "gw-ratelimit-reset": "27455"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 25,
+      "expected_rows": 24,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83612.8,
+        83382.8,
+        83480.0,
+        41880,
+        3495623.9341
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 25,
+        "fit_ohlc": 25,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-02T00:00:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": true,
+      "body_file": "futures-XBTUSDTM-60-from-to-in-ms.json"
+    },
+    "futures-XBTUSDTM-60-from-to-in-seconds": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=60&from=1790812800&to=1790899200",
+      "status": 400,
+      "bytes": 63,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1985",
+        "gw-ratelimit-reset": "26670"
+      },
+      "json": true,
+      "code": "300000",
+      "msg": "Parameter 'from' must be milliseconds",
+      "body_file": "futures-XBTUSDTM-60-from-to-in-seconds.json"
+    },
+    "futures-XBTUSDTM-1-one-day": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=1&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 12570,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1982",
+        "gw-ratelimit-reset": "25791"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 200,
+      "expected_rows": 1440,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83612.8,
+        83551.4,
+        83551.4,
+        1597,
+        133507.1824
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 200,
+        "fit_ohlc": 200,
+        "fit_oclh": 6
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-01T03:21:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false,
+      "body_file": "futures-XBTUSDTM-1-one-day.json"
+    },
+    "futures-XBTUSDTM-1-3days": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=1&from=1790812800000&to=1791072000000",
+      "status": 200,
+      "bytes": 12570,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1979",
+        "gw-ratelimit-reset": "24963"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 200,
+      "expected_rows": 4320,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83612.8,
+        83551.4,
+        83551.4,
+        1597,
+        133507.1824
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 200,
+        "fit_ohlc": 200,
+        "fit_oclh": 6
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-01T03:21:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false,
+      "body_file": "futures-XBTUSDTM-1-3days.json"
+    },
+    "futures-contract-XBTUSDTM": {
+      "url": "https://api-futures.kucoin.com/api/v1/contracts/XBTUSDTM",
+      "status": 200,
+      "bytes": 2076,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1976",
+        "gw-ratelimit-reset": "24181"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 5,
+      "row_keys": null,
+      "body_file": "futures-contract-XBTUSDTM.json"
+    },
+    "spot-unknown-symbol": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=ZZ-ZZ&type=1hour&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 51,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1973",
+        "gw-ratelimit-reset": "23415"
+      },
+      "json": true,
+      "code": "400100",
+      "msg": "Unsupported trading pair.",
+      "body_file": "spot-unknown-symbol.json"
+    },
+    "futures-unknown-symbol": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=ZZZZUSDTM&granularity=60&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 27,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1970",
+        "gw-ratelimit-reset": "22657"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 0,
+      "body_file": "futures-unknown-symbol.json"
+    },
+    "probe-spot-1min": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=1min&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 122772,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1967",
+        "gw-ratelimit-reset": "21850"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 1440,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790899140",
+        "84886.5",
+        "84893.5",
+        "84901.2",
+        "84886.4",
+        "0.31536915",
+        "26774.785315156"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 1440,
+        "fit_ohlc": 2,
+        "fit_oclh": 1440
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T23:59:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-3min": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=3min&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 41313,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1964",
+        "gw-ratelimit-reset": "20888"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 480,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790899020",
+        "84850.5",
+        "84893.5",
+        "84901.2",
+        "84850.5",
+        "2.03821611",
+        "173016.377904464"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 480,
+        "fit_ohlc": 0,
+        "fit_oclh": 480
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T23:57:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-5min": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=5min&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 24927,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1961",
+        "gw-ratelimit-reset": "20105"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 288,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790898900",
+        "84842.6",
+        "84893.5",
+        "84901.2",
+        "84842.6",
+        "2.21631766",
+        "188127.847359432"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 288,
+        "fit_ohlc": 0,
+        "fit_oclh": 288
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T23:55:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-15min": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=15min&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 8428,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1958",
+        "gw-ratelimit-reset": "19288"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 96,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790898300",
+        "84854.5",
+        "84893.5",
+        "84901.2",
+        "84793.7",
+        "16.39833585",
+        "1391281.470539152"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 96,
+        "fit_ohlc": 0,
+        "fit_oclh": 96
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T23:45:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-30min": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=30min&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 4258,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1955",
+        "gw-ratelimit-reset": "18484"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 48,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790897400",
+        "84751.9",
+        "84893.5",
+        "84901.2",
+        "84712.3",
+        "31.11190043",
+        "2639430.433278209"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 48,
+        "fit_ohlc": 0,
+        "fit_oclh": 48
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T23:30:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-1hour": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=1hour&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 2167,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1952",
+        "gw-ratelimit-reset": "17635"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 24,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790895600",
+        "84748.8",
+        "84893.5",
+        "84901.2",
+        "84650.4",
+        "44.91189874",
+        "3808651.378451201"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 24,
+        "fit_ohlc": 0,
+        "fit_oclh": 24
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T23:00:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-2hour": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=2hour&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 1106,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1949",
+        "gw-ratelimit-reset": "16835"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 12,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790892000",
+        "84546",
+        "84893.5",
+        "84901.2",
+        "84545.9",
+        "79.20549532",
+        "6713422.75711394"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 12,
+        "fit_ohlc": 0,
+        "fit_oclh": 12
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T22:00:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-4hour": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=4hour&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 581,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1946",
+        "gw-ratelimit-reset": "16063"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 6,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790884800",
+        "84673.1",
+        "84893.5",
+        "84901.2",
+        "84505.8",
+        "169.16674565",
+        "14330828.430282493"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 6,
+        "fit_ohlc": 0,
+        "fit_oclh": 6
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T20:00:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-6hour": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=6hour&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 403,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1943",
+        "gw-ratelimit-reset": "15248"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 4,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790877600",
+        "84896",
+        "84893.5",
+        "85254.9",
+        "84505.8",
+        "351.93794024",
+        "29829932.13342831"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 4,
+        "fit_ohlc": 0,
+        "fit_oclh": 4
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T18:00:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-8hour": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=8hour&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 312,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1940",
+        "gw-ratelimit-reset": "14405"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 3,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790870400",
+        "84156.6",
+        "84893.5",
+        "85254.9",
+        "84061.5",
+        "547.3113377797336406",
+        "46350071.02648178155438312"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 3,
+        "fit_ohlc": 0,
+        "fit_oclh": 3
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T16:00:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-12hour": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=12hour&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 226,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1937",
+        "gw-ratelimit-reset": "13650"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 2,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790856000",
+        "83911.5",
+        "84893.5",
+        "85254.9",
+        "83458.5",
+        "1271.4006036997336406",
+        "107100126.40302704755438312"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 2,
+        "fit_ohlc": 0,
+        "fit_oclh": 2
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T12:00:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "order_in_time": "newest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-spot-1day": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=1day&startAt=1790812800&endAt=1790899200",
+      "status": 200,
+      "bytes": 135,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1934",
+        "gw-ratelimit-reset": "12851"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 1,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1790812800",
+        "83609.9",
+        "84893.5",
+        "85254.9",
+        "83189.6",
+        "2140.1021769697336406",
+        "179828478.64897124955438312"
+      ],
+      "price_order": {
+        "verdict": "open, close, high, low",
+        "rows_checked": 1,
+        "fit_ohlc": 0,
+        "fit_oclh": 1
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-01T00:00:00Z",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-futures-1": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=1&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 12570,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1931",
+        "gw-ratelimit-reset": "11964"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 200,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83612.8,
+        83551.4,
+        83551.4,
+        1597,
+        133507.1824
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 200,
+        "fit_ohlc": 200,
+        "fit_oclh": 6
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-01T03:21:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-futures-3": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=3&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 12937,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1928",
+        "gw-ratelimit-reset": "11129"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 200,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83612.8,
+        83502.2,
+        83502.2,
+        2652,
+        221618.7503
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 200,
+        "fit_ohlc": 200,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-01T09:57:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-futures-5": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=5&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 13080,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1925",
+        "gw-ratelimit-reset": "10269"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 200,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83612.8,
+        83501.8,
+        83501.8,
+        3318,
+        277235.2163
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 200,
+        "fit_ohlc": 200,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-01T16:35:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": false
+    },
+    "probe-futures-15": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=15&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 6453,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1922",
+        "gw-ratelimit-reset": "9387"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 97,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83612.8,
+        83419.6,
+        83505.9,
+        12186,
+        1017547.5535
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 97,
+        "fit_ohlc": 97,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-02T00:00:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": true
+    },
+    "probe-futures-30": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=30&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 3318,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1919",
+        "gw-ratelimit-reset": "8587"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 49,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83612.8,
+        83382.8,
+        83444.5,
+        25677,
+        2143159.5941
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 49,
+        "fit_ohlc": 49,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-02T00:00:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": true
+    },
+    "probe-futures-60": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=60&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 1738,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1916",
+        "gw-ratelimit-reset": "7740"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 25,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83612.8,
+        83382.8,
+        83480.0,
+        41880,
+        3495623.9341
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 25,
+        "fit_ohlc": 25,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-02T00:00:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": true
+    },
+    "probe-futures-120": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=120&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 928,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1913",
+        "gw-ratelimit-reset": "6836"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 13,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83656.2,
+        83382.8,
+        83471.9,
+        82874,
+        6920250.9317
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 13,
+        "fit_ohlc": 13,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-02T00:00:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": true
+    },
+    "probe-futures-240": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=240&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 523,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1910",
+        "gw-ratelimit-reset": "6023"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 7,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        83747.8,
+        83374.6,
+        83718.3,
+        161368,
+        13476388.7435
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 7,
+        "fit_ohlc": 7,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-02T00:00:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": true
+    },
+    "probe-futures-360": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=360&from=1790812800000&to=1790899200000",
+      "status": 400,
+      "bytes": 49,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1907",
+        "gw-ratelimit-reset": "5252"
+      },
+      "json": true,
+      "code": "300000",
+      "msg": "Unsupported granularity"
+    },
+    "probe-futures-480": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=480&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 314,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1904",
+        "gw-ratelimit-reset": "4473"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 4,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        84372.7,
+        83273.5,
+        83378.4,
+        488773,
+        40919654.3392
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 4,
+        "fit_ohlc": 4,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-02T00:00:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": true
+    },
+    "probe-futures-720": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=720&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 244,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1901",
+        "gw-ratelimit-reset": "3670"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 3,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        84372.7,
+        83135.0,
+        83882.0,
+        1104933,
+        92493882.0747
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 3,
+        "fit_ohlc": 3,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-02T00:00:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": true
+    },
+    "probe-futures-1440": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=1440&from=1790812800000&to=1790899200000",
+      "status": 200,
+      "bytes": 172,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1898",
+        "gw-ratelimit-reset": "2835"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 2,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1790812800000,
+        83577.8,
+        85223.2,
+        83135.0,
+        84856.5,
+        2613109,
+        219683451.5668
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 2,
+        "fit_ohlc": 2,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2026-10-01T00:00:00Z",
+      "last_row_time": "2026-10-02T00:00:00Z",
+      "order_in_time": "oldest first",
+      "rows_outside_window": 0,
+      "row_at_window_end": true
+    },
+    "unified-spot": {
+      "url": "https://api.kucoin.com/api/ua/v1/market/kline?tradeType=SPOT&symbol=BTC-USDT&type=1hour&startAt=1790812800&endAt=1790899200",
+      "status": 400,
+      "bytes": 37,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1895",
+        "gw-ratelimit-reset": "2046"
+      },
+      "json": true,
+      "code": "400000",
+      "msg": "Bad Request",
+      "body_file": "unified-spot.json"
+    },
+    "unified-futures": {
+      "url": "https://api.kucoin.com/api/ua/v1/market/kline?tradeType=FUTURES&symbol=XBTUSDTM&type=1hour&startAt=1790812800&endAt=1790899200",
+      "status": 400,
+      "bytes": 46,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1892",
+        "gw-ratelimit-reset": "1236"
+      },
+      "json": true,
+      "code": "300000",
+      "msg": "Unsupported interval",
+      "body_file": "unified-futures.json"
+    },
+    "probe-oldest-spot": {
+      "url": "https://api.kucoin.com/api/v1/market/candles?symbol=BTC-USDT&type=1hour&startAt=1507075200&endAt=1507161600",
+      "status": 200,
+      "bytes": 156,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1925",
+        "gw-ratelimit-reset": "10389"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 2,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        "1507107600",
+        "4307",
+        "4307",
+        "4307",
+        "4307",
+        "0.02835964",
+        "122.14496948"
+      ],
+      "price_order": {
+        "verdict": "unclear",
+        "rows_checked": 2,
+        "fit_ohlc": 2,
+        "fit_oclh": 2
+      },
+      "time_unit": "seconds",
+      "first_row_time": "2017-10-04T09:00:00Z",
+      "last_row_time": "2017-10-04T04:00:00Z",
+      "order_in_time": "newest first"
+    },
+    "probe-oldest-futures": {
+      "url": "https://api-futures.kucoin.com/api/v1/kline/query?symbol=XBTUSDTM&granularity=60&from=1722816000000&to=1722902400000",
+      "status": 200,
+      "bytes": 1777,
+      "headers": {
+        "content-type": "application/json",
+        "gw-ratelimit-limit": "2000",
+        "gw-ratelimit-remaining": "1958",
+        "gw-ratelimit-reset": "19431"
+      },
+      "json": true,
+      "code": "200000",
+      "rows": 23,
+      "row_fields": [
+        7
+      ],
+      "sample_row": [
+        1722823200000,
+        54388.5,
+        54697.3,
+        53561.2,
+        54679.6,
+        1266543,
+        68557025.93903385
+      ],
+      "price_order": {
+        "verdict": "open, high, low, close",
+        "rows_checked": 23,
+        "fit_ohlc": 23,
+        "fit_oclh": 0
+      },
+      "time_unit": "milliseconds",
+      "first_row_time": "2024-08-05T02:00:00Z",
+      "last_row_time": "2024-08-06T00:00:00Z",
+      "order_in_time": "oldest first"
+    },
+    "bulk-page": {
+      "url": "https://www.kucoin.com/markets/historydata",
+      "status": 200,
+      "bytes": 124594,
+      "headers": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "json": false,
+      "body_file": "bulk-page.txt"
+    }
+  }
+}
