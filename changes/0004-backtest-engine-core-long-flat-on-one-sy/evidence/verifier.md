@@ -1,83 +1,84 @@
-The engine matches plan.md and spec.md on every case I ran, and the wheel built from a clean copy of HEAD contains all four `app/backtest/` modules. The verdict covers the code paths I called directly. The build, test and lint results for the final tree are not covered here: they come from the runner's run.
+The engine matches plan.md and spec.md on every case run in the test phase. This report covers the full suite as recorded by the runner's build-gate run, the Proof tests read one by one, and direct calls of `app.backtest`. The build, test and lint results for the final tree are the runner's, after this session (check run `sdlc/test`).
 
-## Commands run
+## Verifier report: change 0004, TEST phase
 
-This is a CI session (`SDLC_GATE_COMMANDS=runner`), so I did not run the targets myself.
+### Commands run
+**The targets were read, not run.** This is a CI session (`SDLC_GATE_COMMANDS=runner`).
 
-**Read, not run:** `evidence/gate-design.json`, the runner's run on commit `155b4a62f4b9acbc4488d6b79f47e1220589555e` of 2026-11-07T11:10:43Z. That is the tree the build phase started from, not the final one. The final tree's result is the runner's: it runs the three targets once after this session and shows the result in the check run `sdlc/test` and in this phase's own gate record. Nothing in this report stands in for that.
+I read `evidence/gate-build.json`, the runner's run on commit `1044038d8640fb41e4b244743b1a517077633a09` of `2026-11-07T13:49:38Z`. That is the tree this phase started from, not the final one. The final tree's result is the runner's, which runs the three targets once after this session and shows it in the check run `sdlc/test`. If a target is red there, the next fix round starts by itself, and nothing in this report stands in for it. `git diff --stat 1044038 HEAD -- . ':!changes'` is empty, so the source at HEAD `302d77d` is the same as the commit the runner tested.
 
-The record's `commands` entry: `ok: true`, `"reason": "build, test and lint exit 0"`, `ran_by: runner`, not deferred.
+`commands` check: `"ok": true`, `"reason": "build, test and lint exit 0"`, `"ran_by": "runner"`. It is not deferred. The `evidence` check is also not deferred: `"ok": true`, `"evidence present: verifier.md"`.
 - `python -m compileall -q .`: exit 0, output `""`
-- `python -m pytest`: exit 0, tail `============================= 105 passed in 0.34s ==============================`. These are the existing tests only; `tests/test_backtest.py` did not exist at that commit.
+- `python -m pytest`: exit 0. Tail:
+  ```
+  collected 152 items
+  tests/test_backtest.py ...............................................   [ 30%]
+  ...
+  ============================= 152 passed in 0.35s ==============================
+  ```
 - `python -m ruff check .`: exit 0, `All checks passed!`
 
-There are no `test.log`, `build.log` or `lint.log` files in `evidence/` yet.
+First line of each log:
+- `evidence/test.log`: `# python -m pytest — deferred to the runner — 2026-11-07T13:51:14Z`
+- `evidence/build.log`: `# python -m compileall -q . — deferred to the runner — 2026-11-07T13:51:14Z`
+- `evidence/lint.log`: `# python -m ruff check . — deferred to the runner — 2026-11-07T13:51:14Z`
 
-## Behavior exercised
+These deferred marks are not failures. This session wrote them, and the runner replaces them with the real output.
 
-All calls were `python -c` against HEAD a9f33f3.
+### Behavior exercised
+I called `app.backtest` directly with `python -c`. The test runner was not started.
 
-- **Worked example** (the test file's opens `[100,100,110,120,100,90,81]`, closes `[100,110,120,100,90,85,81]`, positions `[1,1,0,0,1,0,0]`, fee 0.001):
-  - Positions held `0,1,1,0,0,1,0`.
-  - Trades: `1 → 3` at `100.0 → 120.0`, return `0.197601`; `5 → 6` at `90.0 → 81.0`, return `-0.101799`; both `closed_at_end` false.
-  - `Summary(total_return=0.07568647568108022, max_drawdown=0.10269730089999984, trade_count=2, win_rate=0.5, time_in_market=0.42857142857142855)`
-  - `max abs equity diff 2.220446049250313e-16` against the spec's seven equity values, and summary diffs `2.22e-16 1.53e-16 0.0`. All within 1e-9.
-- **Gap case** (`Datetime("ms","UTC")`, hours 00, 01, 03, 04; decision at the 01:00 close):
-  - It filled at the 03:00 open (`entry_price 13.0`).
-  - Both trade time columns kept the input's dtype: `Datetime(time_unit='ms', time_zone='UTC')`.
-  - The position still open after the last row closed at the last close (`exit_price 15.0`) with `closed_at_end` true.
-- **End-of-frame close with the fee** (`[1,1,1]`, opens `[100,100,110]`, closes `[100,105,120]`):
-  - Final equity `1.1976012`, equal to the expected `0.999**2*120/100` (`1.1976012`).
-  - `final==1+tr True`, trade `closed_at_end: True`.
-- **Last-row decision** (`[0,0,1]`): positions `[0,0,0]`, equity `[1.0,1.0,1.0]`, 0 trades. The decision was not filled.
-- **Zero-trade run:**
-  - `trade_count=0, win_rate=0.0`, with an empty trades frame that keeps its schema: Int64 times on an integer frame, `Datetime(ms, UTC)` on a datetime frame.
-  - A one-row frame gives equity `[1.0]` and no trades.
-- **Refused inputs (R14):** every case raised `BacktestInputError`, a `ValueError` subclass, with the bad index or value and what is accepted. Literal messages include:
-  - `positions has 2 values but the frame has 3 rows: pass one position per row`
-  - `positions[1] is True: each position must be the integer 0 (flat) or 1 (long); cast a Boolean or Float series with .cast(pl.Int8)`
-  - The same refusal for `None`, `nan`, `2`, `-1`, `0.5`, `'1'`, a Boolean Series, a Float Series and an Int Series with a null.
-  - `frame is empty: pass at least one candle`
-  - `open_time[2] is 1, not after open_time[1] 1: open_time must be strictly increasing`
-  - `open_time[1] is null: every row needs an open_time`
-  - `fee nan is out of range: it must be at least 0 and below 1, for example 0.001`, and the same for `-0.01`, `1` and `1.5`
-  - `fee True is not a number: …` and `fee '0.001' is not a number: …`
-  - `frame is a list: …` and `frame is a LazyFrame: …`
-  - `frame lacks the column(s) close: it needs open_time, open, close`
-  - `open[1] is None`, `close[1] is inf`, `open[1] is nan`, `open[1] is 0.0` and `close[1] is -2.0`, each with `: every price must be a finite number above 0`
-  - Non-numeric prices (the latest commit): `open has dtype String: prices must be numbers`, `close has dtype Boolean: prices must be numbers`, and `open has dtype Date: prices must be numbers`
-- **Just outside the refusals, all accepted:**
-  - fee `0` (int) with Int64 prices: `total_return=0.19999999999999996`
-  - fee `0.999`: `total_return=-0.9999989`
-  - A Decimal(10,2) `open` column: same result as Float64, `0.1976012…`
-- **No I/O dependency:** importing `app.backtest` alone loads `[]` `app.data` modules, and `numpy loaded: False`.
-- **Neighbouring flows:**
-  - `app.data.__all__` imports unchanged: `['DownloadError', 'Fetch', 'Gap', 'HttpResponse', 'InvalidRequestError', 'KlineGapError', 'cache_info', 'clear_cache', 'load_klines']`.
-  - `python -m app.data --help` printed the usage with `download`, `cache-info` and `cache-clear`.
-  - `python -m app.data cache-info --cache-dir /tmp/claude-1001/v0004-cache` printed `No cached klines under /tmp/claude-1001/v0004-cache/kucoin.`
-- **Wheel (plan step 6, panel #1):**
-  - I made a `git archive` of HEAD, extracted it to `/tmp/claude-1001/v0004-src`, and ran `python -m pip wheel /tmp/claude-1001/v0004-src --no-deps -w /tmp/claude-1001/v0004-wheel`. It printed `Successfully built crypto-backtester` (`crypto_backtester-0.1.0-py3-none-any.whl`).
-  - `python -m zipfile -l` lists `app/backtest/__init__.py` (464), `app/backtest/engine.py` (3687), `app/backtest/inputs.py` (4009) and `app/backtest/summary.py` (1197), plus `app/__init__.py` and the eight `app/data/*.py` modules.
-- **Proof tests:** all 19 test names in plan.md's Proof exist in `tests/test_backtest.py`. I counted them; I did not run them.
+- **Worked example**
+  - Inputs: opens `[100,100,110,120,100,90,81]`, closes `[100,110,120,100,90,85,81]`, positions `[1,1,0,0,1,0,0]`, fee `0.001`.
+  - Equity came back as `[1.0, 1.0989, 1.1988, 1.1976012, 1.1976012, 1.1299367322, 1.0756864756810802]`, and positions held as `[0,1,1,0,0,1,0]`.
+  - Trades: (1, 100.0) → (3, 120.0), return 0.197601; (5, 90.0) → (6, 81.0), return -0.101799. Both have `closed_at_end` false.
+  - Summary: `Summary(total_return=0.07568647568108022, max_drawdown=0.10269730089999984, trade_count=2, win_rate=0.5, time_in_market=0.42857142857142855)`.
+  - Largest error against the spec numbers is `2.22e-16`, well inside 1e-9.
+- **Gap**
+  - Inputs: a `Datetime("ms","UTC")` frame at 00:00, 01:00, 03:00 and 04:00, positions `[0,1,0,0]`.
+  - The entry is at `2024-01-01 03:00:00 UTC` at the price 120.0 (the 03:00 open), and the exit is at 04:00 at 130.0. The time columns keep the dtype `datetime[ms, UTC]`.
+- **Data-layer neighbour**
+  - Input: a 3-row frame built with `app.data.schema.SCHEMA` (all 8 columns), positions `[1,1,1]`.
+  - The entry is at 01:00 at 106.0, and the exit at 02:00 at 120.0 with `closed_at_end` true. The final equity is 1.129812, which equals 0.999² × 120 / 106. The equity column is typed `i8` for position and `f64` for equity.
+- **Data CLI neighbour**: `python -m app.data --help` still prints its usage.
+- **One-row frame** with positions `[1]`: the last-row decision is not filled. Trade count is 0 and win rate is 0.0.
+- **Fee boundaries**
+  - Accepted: `0`, `-0.0`, `1e-12`, `0.999999`.
+  - Refused: `1` gives `fee 1 is out of range: it must be at least 0 and below 1, for example 0.001`. `inf` is refused the same way.
+- **Positions**
+  - Lengths 2 and 4 against a 3-row frame are refused: `positions has 2 values but the frame has 3 rows: pass one position per row`.
+  - `True`, `2` from a Series, `None` from an Int64 Series, `1.0`, `'1'` and `nan` are each refused with `positions[i] is …: each position must be the integer 0 (flat) or 1 (long); cast a Boolean or Float series with .cast(pl.Int8)`.
+- **Frames**
+  - A list is refused: `frame is a list: pass a polars DataFrame …`.
+  - Duplicate times are refused: `open_time[1] is 1, not after open_time[0] 1: open_time must be strictly increasing`.
+  - An empty frame is refused: `frame is empty: pass at least one candle`.
+  - A missing column is refused: `frame lacks the column(s) close: it needs open_time, open, close`.
+  - `issubclass(BacktestInputError, ValueError)` is `True`, and `DEFAULT_FEE` is `0.001`.
 
-**Blocked:** one call needed approval and was denied automatically: my `bash -c 'mkdir … && python -m app.data cache-info …'`. It broke the one-command-per-call rule. I reran it as separate commands without the `mkdir`, which worked.
+**Static checks**
+- **Proof tests:** all 19 tests named in the Proof section exist in `tests/test_backtest.py`.
+  - The worked-example tests compare with `pytest.approx(..., abs=1e-9)` at lines 151, 161 and 167–172.
+  - Position values are parametrised at line 37 over `[None, math.nan, 2, -1, 0.5, "1", True]`.
+  - Fees are parametrised at line 67 over `[-0.01, 1, 1.5, math.nan, True, "0.001", None]`, which is the plan's list plus two more.
+  - The zero-trade test asserts `trade_count == 0` and `win_rate == 0.0` together (lines 237–238).
+- **Scope of the diff:** `git diff origin/main -- app/data` is empty (0 lines). Outside the change folder, the diff from `origin/main` touches only the four new `app/backtest/*.py` files, `pyproject.toml` and the new `tests/test_backtest.py`. No existing test file changed.
+- **Version:** still `0.1.0` in both `app/__init__.py:3` and `pyproject.toml:3`.
+- **Packaging:** `pyproject.toml:9` reads `packages = ["app", "app.data", "app.backtest"]`. The wheel listing (panel #1) is in the build phase's verifier report; this phase built no wheel.
+- **No I/O:** the only imports in `app/backtest` are `__future__`, `math`, `collections.abc`, `dataclasses`, `polars` and its own modules. There is no `open(`, network module, `logging`, `numpy` or `app.data` import. The only `load_klines` mention is in message and docstring text.
+- **Test isolation:** `tests/test_backtest.py` contains no `app.data`, monkeypatch, fixture or kucoin reference.
 
-**Side effect:** pip stored a cached copy of the wheel in `/home/runner/work/crypto-backtester/crypto-backtester/.sdlc-cache/pip/wheels/…`. That directory is ignored by git: `git status` shows only the pre-existing `hook-log.jsonl` change and `CLAUDE.local.md`.
+### Not exercised
+- The build, test and lint targets on the final tree. The runner runs them after this session and reports them in `sdlc/test`.
+- The pytest suite itself. In CI I read the build gate's run instead of running it.
+- The wheel listing (panel #1) in this phase. Only the `packages` entry was read; the build phase's verifier built and listed the wheel.
+- Windows and macOS. I ran on Linux only.
+- Large frames and speed (for example 525,600 rows).
+- `open_time` dtypes other than Int64 and `Datetime("ms","UTC")`.
+- Price columns that are integer- or Float32-typed.
+- A Float `0.5` position given inside a polars Series, and a negative position given inside a Series.
 
-## Not exercised
+### Mismatches with plan.md / spec.md
+None.
 
-- **The targets on the final tree:** build, test and lint on a9f33f3 are the runner's (`sdlc/test`). The design record above predates every backtest file.
-- **The pytest suite**, including `tests/test_backtest.py`: not run here, because this is CI.
-- **Platforms:** only Linux with Python 3.14. Not Windows or macOS, and not the oldest supported Python (3.10).
-- **Speed** on about 525,600 rows (a year of 1-minute candles): not timed.
-- **A real `load_klines` frame** or a `KlineGapError.frame`: not run, because there is no network. Only hand-built frames.
-- **Other inputs:** other `open_time` dtypes (Date, Datetime with another unit or timezone, strings), a polars `Object` column, and position sequences such as numpy arrays or generators.
-- **No test for Boolean prices:** `tests/test_backtest.py:89` tests a String `open` but no Boolean or Date price column. I checked those by calling the function directly. The plan does not require such a test.
-
-## Mismatches with plan.md / spec.md
-
-None. The two build-time changes to the plan are written into `plan.md` (lines 6–7 and 17–19), and the code matches them: `__all__` has `DEFAULT_FEE` first, and there is no `TRADE_SCHEMA`.
-
-## Verdict
-
+### Verdict
 matches the plan

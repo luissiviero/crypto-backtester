@@ -1,7 +1,7 @@
 id: "0004"
 slug: backtest-engine-core-long-flat-on-one-sy
 title: "Backtest engine core: long/flat on one symbol"
-phase: build
+phase: test
 entry_route: idea
 change_type: feature
 gate:
@@ -26,5 +26,5 @@ released_at: null
 released_sha: null
 released_pr: null
 created_at: "2026-11-07T10:33:53Z"
-updated_at: "2026-11-07T13:50:14Z"
+updated_at: "2026-11-07T13:51:07Z"
 schema_version: 1
