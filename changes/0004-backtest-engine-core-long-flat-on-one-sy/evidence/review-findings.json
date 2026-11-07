@@ -1,0 +1,30 @@
+{
+  "at": "2026-11-07T14:10:00Z",
+  "findings": [
+    {
+      "file": "app/backtest/inputs.py",
+      "line": 92,
+      "pass": "bugs",
+      "rule": "security-baseline rule 2; spec R14, R15",
+      "severity": "nit",
+      "signature": "40442704e34e5ea7",
+      "summary": "A non-iterable `positions` (for example an int or None) raises a bare TypeError from `list(positions)` instead of BacktestInputError, so the input is not refused with a clear message as R14/R15 intend for bad inputs; doubt: R14 does not list a non-sequence explicitly."
+    },
+    {
+      "file": "app/backtest/inputs.py",
+      "line": 101,
+      "pass": "compliance",
+      "rule": "spec R15 (message says what is accepted)",
+      "severity": "nit",
+      "signature": "f8a598e0ccf48f43",
+      "summary": "A numpy integer array of 0/1 positions is refused (numpy.int64 is not `int`) with a message that suggests casting 'a Boolean or Float series with .cast(pl.Int8)', which does not apply to a numpy array and may mislead the caller."
+    }
+  ],
+  "head": "83cb2517e44fd73eb62b14a276f84352b40dd6ad",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 2,
+    "nits_omitted": 0
+  }
+}

@@ -120,6 +120,17 @@
     "last_seen": "2026-11-07T05:26:55Z",
     "summary": "cache_info validates --interval against the spot market even when --market futures is given, so `cache-info --market futures --interval 6h` is accepted and silently lists nothing instead of being refused like everywhere else; harmless today, and no spec line covers it."
   },
+  "40442704e34e5ea7": {
+    "changes": [
+      "0004"
+    ],
+    "count": 1,
+    "file": "app/backtest/inputs.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-11-07T13:56:11Z",
+    "summary": "A non-iterable `positions` (for example an int or None) raises a bare TypeError from `list(positions)` instead of BacktestInputError, so the input is not refused with a clear message as R14/R15 intend for bad inputs; doubt: R14 does not list a non-sequence explicitly."
+  },
   "4293ca6feec9d572": {
     "changes": [
       "0001"
@@ -372,5 +383,16 @@
     "last_change": "0003",
     "last_seen": "2026-11-07T05:29:24Z",
     "summary": "The diff makes CLAUDE.md outdated: lines 5-6 still describe Binance spot/USD-M klines from Binance Vision, line 30 lists the deleted `vision` module, and lines 36-37 name the deleted tests/binance_stub.py and tests/fixtures/binance/; plan.md names the replacement lines for the owner's follow-up PR, but until that lands the guardrail file misdescribes the package."
+  },
+  "f8a598e0ccf48f43": {
+    "changes": [
+      "0004"
+    ],
+    "count": 1,
+    "file": "app/backtest/inputs.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-11-07T13:56:11Z",
+    "summary": "A numpy integer array of 0/1 positions is refused (numpy.int64 is not `int`) with a message that suggests casting 'a Boolean or Float series with .cast(pl.Int8)', which does not apply to a numpy array and may mislead the caller."
   }
 }
