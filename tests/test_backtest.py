@@ -279,6 +279,24 @@ def test_futures_volume_ignored() -> None:
     assert result.trades.equals(plain.trades)
 
 
+def test_public_api() -> None:
+    import app.backtest as api
+
+    assert set(api.__all__) == {
+        "BacktestInputError",
+        "BacktestResult",
+        "DEFAULT_FEE",
+        "Summary",
+        "run_backtest",
+    }
+    assert api.run_backtest is run_backtest
+    assert api.BacktestResult is BacktestResult
+    assert api.Summary is Summary
+    assert api.DEFAULT_FEE == DEFAULT_FEE
+    assert issubclass(api.BacktestInputError, ValueError)
+    assert isinstance(api.run_backtest(_frame([100], [100]), [0]), api.BacktestResult)
+
+
 def test_run_backtest_refuses_before_calculating() -> None:
     with pytest.raises(BacktestInputError, match="fee"):
         run_backtest(_frame([100], [100]), [0], fee=1.0)

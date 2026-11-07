@@ -3,7 +3,8 @@
 ## Files that change
 - `app/backtest/__init__.py` — new: module docstring and the public API. It re-exports
   `run_backtest`, `DEFAULT_FEE`, `BacktestResult`, `Summary` and `BacktestInputError`, with
-  `__all__` sorted as in `app/data/__init__.py`.
+  `__all__` sorted as in `app/data/__init__.py` (build: the format hook's ruff fix puts the
+  constant `DEFAULT_FEE` first, isort-style; `app/data/` has no constant to show the rule).
 - `app/backtest/inputs.py` — new: `BacktestInputError(ValueError)`, `DEFAULT_FEE = 0.001`,
   `REQUIRED_COLUMNS = ("open_time", "open", "close")` and
   `validate(frame, positions, fee) -> Inputs`. `Inputs` is a frozen dataclass holding
