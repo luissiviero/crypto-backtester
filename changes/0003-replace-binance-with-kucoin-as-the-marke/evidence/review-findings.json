@@ -1,39 +1,39 @@
 {
-  "at": "2026-11-07T05:26:35Z",
+  "at": "2026-11-07T05:29:06Z",
   "findings": [
-    {
-      "file": "app/data/cache.py",
-      "line": 122,
-      "pass": "bugs",
-      "rule": "spec R12 (6h refused on futures)",
-      "severity": "nit",
-      "signature": "2a03adfe8cd0e80d",
-      "summary": "cache_info validates --interval against the spot market even when --market futures is given, so `cache-info --market futures --interval 6h` is accepted and silently lists nothing instead of being refused like everywhere else; harmless today, and no spec line covers it."
-    },
-    {
-      "file": "app/data/http.py",
-      "line": 24,
-      "pass": "compliance",
-      "rule": "coding-standards (naming follows the surrounding code)",
-      "severity": "nit",
-      "signature": "a332de12ab568c77",
-      "summary": "UNKNOWN_WEIGHT_WAIT keeps the Binance 'weight' name after WeightPacer became RateLimitPacer and the weight header was removed; a naming leftover only."
-    },
     {
       "file": "CLAUDE.md",
       "line": 5,
       "pass": "compliance",
-      "rule": "REVIEW.md: Flag when the change has made CLAUDE.md outdated",
+      "rule": "REVIEW.md Framework rules: Flag when the change has made CLAUDE.md outdated",
+      "severity": "important",
+      "signature": "e582b8be74664c77",
+      "summary": "The diff makes CLAUDE.md outdated: lines 5-6 still describe Binance spot/USD-M klines from Binance Vision, line 30 lists the deleted `vision` module, and lines 36-37 name the deleted tests/binance_stub.py and tests/fixtures/binance/; plan.md names the replacement lines for the owner's follow-up PR, but until that lands the guardrail file misdescribes the package."
+    },
+    {
+      "file": "app/data/cache.py",
+      "line": 122,
+      "pass": "bugs",
+      "rule": "",
       "severity": "nit",
-      "signature": "6fdee199cc578629",
-      "summary": "The change leaves CLAUDE.md outdated: lines 5-6 still describe Binance Vision, line 30 lists a vision module and lines 36-37 name tests/binance_stub.py and tests/fixtures/binance/, none of which exist after this diff. Reported as a nit with a doubt stated: plan.md (Files that change, 'For the owner') already names every one of these lines for the owner's own PR, as CLAUDE.md's 'Things Claude gets wrong' entry asks, and a run cannot edit the file."
+      "signature": "c2f548e6da771536",
+      "summary": "cache_info validates --interval against the spot market regardless of --market, so `cache-info --market futures --interval 6h` is accepted (and lists nothing) instead of being refused like the other futures-only checks."
+    },
+    {
+      "file": "app/data/rest.py",
+      "line": 161,
+      "pass": "bugs",
+      "rule": "",
+      "severity": "nit",
+      "signature": "d1665fbc43fcdd32",
+      "summary": "Doubtful, unverifiable offline: on the current day the futures loop asks one more window starting after the in-progress candle; if KuCoin answers a future `from` with the latest (older) row instead of an empty list, the 'rows but none that moves the window' rule turns it into UNEXPECTED_RESPONSE, so every load that includes today raises KlineGapError for today (plan Risks covers only a refusal, not this answer shape)."
     }
   ],
-  "head": "67759f0cb70089cc2dd67948c5111effd61b925b",
+  "head": "bcbab67a43ea948cf0b0443dec72f16f913fd28e",
   "schema_version": 1,
   "tally": {
-    "important": 0,
-    "nit": 3,
+    "important": 1,
+    "nit": 2,
     "nits_omitted": 0
   }
 }

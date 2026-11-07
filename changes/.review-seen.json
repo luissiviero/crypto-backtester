@@ -307,6 +307,17 @@
     "last_seen": "2026-11-05T18:14:16Z",
     "summary": "Adding tzdata and the [tool.setuptools] table leaves CLAUDE.md's Setup line and 'the one runtime dependency is polars>=1.0' outdated; plan.md names both edits (and sdlc.yaml commands.setup) for the owner as R12 requires, so this is graded a nit, with the doubt that the rule may want it tracked until the owner's guardrail PR lands after this merges."
   },
+  "c2f548e6da771536": {
+    "changes": [
+      "0003"
+    ],
+    "count": 1,
+    "file": "app/data/cache.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-11-07T05:29:24Z",
+    "summary": "cache_info validates --interval against the spot market regardless of --market, so `cache-info --market futures --interval 6h` is accepted (and lists nothing) instead of being refused like the other futures-only checks."
+  },
   "c3b73ce1597573be": {
     "changes": [
       "0002"
@@ -317,6 +328,17 @@
     "last_change": "0002",
     "last_seen": "2026-11-05T21:46:13Z",
     "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
+  },
+  "d1665fbc43fcdd32": {
+    "changes": [
+      "0003"
+    ],
+    "count": 1,
+    "file": "app/data/rest.py",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-11-07T05:29:24Z",
+    "summary": "Doubtful, unverifiable offline: on the current day the futures loop asks one more window starting after the in-progress candle; if KuCoin answers a future `from` with the latest (older) row instead of an empty list, the 'rows but none that moves the window' rule turns it into UNEXPECTED_RESPONSE, so every load that includes today raises KlineGapError for today (plan Risks covers only a refusal, not this answer shape)."
   },
   "d47002cb4e08c30a": {
     "changes": [
@@ -339,5 +361,16 @@
     "last_change": "0002",
     "last_seen": "2026-11-05T21:46:13Z",
     "summary": "The new Windows-only tzdata dependency and the [tool.setuptools] table make CLAUDE.md's Setup line and its 'the one runtime dependency is polars>=1.0' outdated; plan.md (lines 18-26) names each line for the owner's follow-up PR as required, so this is a nit for the owner's tracking, not an unacknowledged breach (doubt: if the gate expects the outdated text itself to count as Important, it applies here)."
+  },
+  "e582b8be74664c77": {
+    "changes": [
+      "0003"
+    ],
+    "count": 1,
+    "file": "CLAUDE.md",
+    "first_change": "0003",
+    "last_change": "0003",
+    "last_seen": "2026-11-07T05:29:24Z",
+    "summary": "The diff makes CLAUDE.md outdated: lines 5-6 still describe Binance spot/USD-M klines from Binance Vision, line 30 lists the deleted `vision` module, and lines 36-37 name the deleted tests/binance_stub.py and tests/fixtures/binance/; plan.md names the replacement lines for the owner's follow-up PR, but until that lands the guardrail file misdescribes the package."
   }
 }
