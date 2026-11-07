@@ -23,7 +23,13 @@
       "run": "review",
       "source": "claude-review.json",
       "usd": 1.0859564
+    },
+    {
+      "at": "2026-11-07T05:30:01Z",
+      "run": "deploy",
+      "source": "claude-deploy.json",
+      "usd": 1.4982648
     }
   ],
-  "total_usd": 25.694344
+  "total_usd": 27.192609
 }
