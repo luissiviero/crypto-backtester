@@ -40,7 +40,7 @@ before the build PR is reviewed), `CLAUDE.md`:
 1. `app/backtest/sweep.py` with its unit tests in `tests/test_backtest_sweep.py` (hand-built
    frames: integer `open_time`, `open` = `close`, as `tests/test_strategies.py` builds them).
    - `count_pairs([5, 10, 20], [30, 50, 100]) == (9, 0)`; `count_pairs([5, 50], [10, 50]) ==
-     (1, 3)`.
+     (2, 2)` (kept (5, 10) and (5, 50); skipped (50, 10) and (50, 50); panel #2).
    - `sweep` on a frame of constant closes (every SMA equal, no position, return exactly 0)
      returns rows ordered by fast, then slow; on a varying frame each row's summary equals
      `run_backtest(frame, sma_cross_positions(frame, f, s), fee=fee).summary` and the order
@@ -100,8 +100,12 @@ before the build PR is reviewed), `CLAUDE.md`:
 - **The clock.** `make_request` refuses an end after `loader.utc_now()`; the tests use the
   `clock` fixture (NOW 2026-10-03 12:00 UTC) and read the clock through `loader.utc_now()`,
   as `_run` does.
-- **Negative items and argparse** (spec Flagged concerns): `--fast -5,10` may reach argparse
-  as an option on some Python versions; the test uses `--fast=-5,10`.
+- **Negative items and argparse** (spec Flagged concerns, panel #1): a bare `-5` is a value
+  on every Python version (`run --slow -5` already gets its message), so `--fast -5` gets the
+  R4 message; a two-word comma list starting with a minus (`--fast -5,10`) is refused by
+  argparse itself on Python 3.10 to 3.13 and reaches the command on 3.14. The design keeps
+  argparse's refusal (no argv rewrite); the tests pin only what both paths share for that form
+  (exit 2, empty stdout, no stub call) and use `--fast=-5,10` for the R4 message.
 - **Header printed before the backtests.** An engine error after the run line would leave
   stdout non-empty; `load_klines` frames already pass the engine's checks (the `run` tests
   show it), so the only errors after the header are bugs.
@@ -164,7 +168,9 @@ Interrogation answers:
   `run_backtest`; it also checks that every table line has the header's length.
 - The refusal tests assert exit 2, one `error:` line on stderr, empty stdout, and (all but
   the every-pair-skipped one) `kucoin.calls == []`. Cases: bad symbol, interval and dates;
-  `--fast ""`, `--fast 5,,10`, `--fast x`, `--fast=-5,10`, `--slow 0`, `--fast 1.5`; `--fee
+  `--fast ""`, `--fast 5,,10`, `--fast x`, `--fast=-5,10`, two-word `--fast -5` (the R4 message), `--slow 0`,
+  `--fast 1.5`; two-word `--fast -5,10` (exit 2, empty stdout and no stub call only, since
+  argparse or the command refuses it depending on the Python version, panel #1); `--fee
   abc`, `--fee 1.5`; `--fast 50 --slow 10,20` (no pair); 21 fasts `1..21` by 21 slows
   `22..42` (441 pairs, over the cap); the default grid on the 24-candle day (every pair
   skipped by the candle count). A bad `--market` raises `SystemExit` with code 2.
