@@ -166,7 +166,7 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design
   count as a whole number, in one fixed two-column layout (R11).
 
 ## Flagged concerns
-- Where a bad `--fee` is caught: the intent says a fee "that `run_backtest` refuses
+- decided (by panel #1): The CLI's fee parser refuses a bad --fee before load_klines by returning inputs._check_fee(float(text)), so inputs.py stays unchanged and the engine's message is kept; test_run_refuses_bad_fee also asserts the stub's calls == [] for --fee 1.5 and --fee -0.1. — Where a bad `--fee` is caught: the intent says a fee "that `run_backtest` refuses
   (`BacktestInputError`)" is refused "before any backtest", and is silent on whether that is
   before or after loading the klines. The design converts the text to a number before loading
   (so `--fee abc` costs nothing) but leaves the range check to the engine, which runs after

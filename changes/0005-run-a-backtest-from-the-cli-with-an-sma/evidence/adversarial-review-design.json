@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "phase": "design",
+  "head": "c6e4a2e25c183506949c7bc855c233b033039169",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Spec is tight but carries two flagged concerns decided by default and left for the owner (fee range checked after loading; '<' vs '<=' candle-count rule).",
+    "Blast radius: two new modules, a new CLI entry point and a public API addition (sma_cross_positions in app.backtest.__all__); no risk-list item, no schema change.",
+    "The new code is not covered by existing tests: all 17 proof tests are still to be written in two new files."
+  ],
+  "attempted": [
+    "Intent: spec R1-R16 map onto each intent bullet (command shape, shared data-CLI checks, strategy rule, strict '>', warm-up of slow-1 rows, rows not wall time, no lookahead, eight-line output with buy and hold, refusals with exit 2, offline tests, no new dependency, version 0.1.0). The four open questions are answered with the recommended choices. The intent's '1hour' sketch versus the CLI's '1h' is reconciled explicitly (R8). No gap found.",
+    "Spec and plan: every requirement has a plan step and a named proof test. Both flagged concerns (fee range checked after load_klines; literal '<' candle rule) carry a decision, a reason and a one-line alternative for the owner. Files that change: two new modules, one edit to app/backtest/__init__.py, two new test files. No test file already on main is touched, as the feature constraint requires.",
+    "Claim checked: app/data/__main__.py:main(argv, fetch) catches InvalidRequestError and DownloadError -> 'error: ...' exit 2, OSError -> the '--cache-dir' hint; _download calls loader.utc_now() then make_request(..., now.date()). Matches the plan's mirror.",
+    "Claim checked: app/data/params.py make_request(symbol, interval, start, end, market, today) returns KlineRequest with normalised upper-case symbol, interval, market and date start/end; MARKETS = ('spot','futures'); INTERVAL_MS keys 1m..1d include '1h'. Matches R8 and the header fields.",
+    "Claim checked: app.data exports load_klines, KlineGapError, InvalidRequestError, DownloadError and Fetch. load_klines(symbol, interval, start, end, *, market, cache_dir, cache=True, fetch) accepts date objects and re-runs make_request internally, which is harmless. It raises KlineGapError for a missing day and lets DownloadError propagate from _rest_pass. Matches R10/R12.",
+    "Claim checked: loader.utc_now is a module attribute that tests/conftest.py's clock fixture monkeypatches. The plan says to call loader.utc_now() rather than a from-import copy. That is correct.",
+    "Claim checked: app/backtest/inputs.py validate checks the fee first (_check_fee: bool/non-number refused, then 0 <= fee < 1), so the engine refuses --fee 1.5, -0.1 and float('nan') before any calculation. _check_positions needs type(value) is int and accepts a pl.Series via .to_list(); an Int8 Series' to_list gives Python ints. BacktestInputError subclasses ValueError, not OSError, so the plan's handler separation holds.",
+    "Claim checked: engine.run_backtest with all-1 positions buys at row 1's open and closes at the last close with the fee. That matches the spec's buy-and-hold description. Summary fields (total_return, max_drawdown, trade_count, win_rate, time_in_market) exist, and win_rate is 0.0, never None, with zero trades, so _percent cannot hit None.",
+    "Claim checked: app/backtest/__init__.py __all__ is sorted as described and tests/test_backtest.py imports from submodules. Adding one export breaks no caller.",
+    "Claim checked: tests/kucoin_stub.py has SPOT_1H, NOW = 2026-10-03 12:00 UTC, KuCoin.refuse, and the sleeps fixture in conftest.py. Proof dates up to 2026-10-02 are valid. I could not count the fixture's rows (single-line JSON). If it holds more than 29 candles, the '--slow 30' too-few-candles case needs a different number at build.",
+    "Hand example verified: closes [1,2,3,2,1,1,3], fast 2 / slow 3 -> positions [0,0,1,1,0,0,1]. The tie case [2,2,2,2] gives exact 2.0 means -> all 0. The lookahead case keeps rows 0-3. The floating-point tie risk is noted, with an exact-integer fallback.",
+    "Edge: an empty or tiny frame is caught by the height < slow check before the strategy runs (slow >= 2, since fast >= 1 and fast < slow), so run_backtest never sees a frame shorter than 2 rows. Edge: --fast '1.5' -> int() ValueError -> BacktestInputError, as planned.",
+    "Proof (design phase): there are no toolchain logs to compare at design. The proof list names 17 tests that cover each acceptance bullet and each refusal of R12.",
+    "Blast radius: the diff touches only changes/0005-*/ (intent, spec, plan, status, evidence). There are no guardrail files and no risk-list hits, and the CLAUDE.md lines are handed to the owner, not edited. The one network path is load_klines' existing call to KuCoin's public API.",
+    "Policies: security-baseline rule 2 (symbol and interval reach URL and cache path only through make_request), rule 6 (no eval, exec, pickle or shell) and the risk list (no auth, migration, money movement or config) are addressed. ux-and-brand rules 3, 4 and 6 are covered by R11-R13. coding-standards: one module per job, typed public functions, new test files per area.",
+    "Tests: the summary test computes its expected values with the same functions (load_klines, sma_cross_positions, run_backtest), so it checks wiring and formatting, not arithmetic. The strategy arithmetic is pinned separately by the hand-computed tests, so a strategy bug cannot pass both. Not a reason. Build note: the CLI tests should pass --cache-dir tmp_path so they never read or write the developer's default cache. The plan says so only for the cache test.",
+    "Skip markers: not applicable at design (the ratchets check runs at build and test).",
+    "Drive: not applicable at design."
+  ]
+}

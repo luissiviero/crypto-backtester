@@ -1,0 +1,14 @@
+{
+  "agent_id": "ac501433ff3a3aff1",
+  "agent_type": "sdlc:adversarial-reviewer",
+  "at": "2026-11-07T18:39:08Z",
+  "member": "advocate",
+  "models": [
+    "claude-fable-5-1"
+  ],
+  "n": 2,
+  "phase": "design",
+  "reason": null,
+  "schema_version": 1,
+  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/7d08ce56-b898-4adb-b182-e47cb6564c64/subagents/agent-ac501433ff3a3aff1.jsonl"
+}

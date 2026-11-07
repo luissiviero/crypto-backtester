@@ -1,0 +1,637 @@
+ .../evidence/.gitkeep                              |   0
+ .../evidence/hook-log.jsonl                        |  10 +
+ .../evidence/run-design.json                       |   5 +
+ .../intent.md                                      | 137 ++++++++++++++
+ .../plan.md                                        | 199 ++++++++++++++++++++
+ .../spec.md                                        | 203 +++++++++++++++++++++
+ .../status.yaml                                    |  34 ++++
+ 7 files changed, 588 insertions(+)
+
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/.gitkeep b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/hook-log.jsonl b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/hook-log.jsonl
+new file mode 100644
+index 0000000..1a0a0ea
+--- /dev/null
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/hook-log.jsonl
+@@ -0,0 +1,10 @@
++{"at": "2026-11-07T18:31:58Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T18:32:20Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T18:34:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T18:34:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T18:34:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T18:34:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T18:35:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T18:35:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T18:35:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T18:35:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/run-design.json b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/run-design.json
+new file mode 100644
+index 0000000..5b263f4
+--- /dev/null
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/run-design.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "design",
++  "spend_usd": null,
++  "started_at": "2026-11-07T18:32:01Z"
++}
+\ No newline at end of file
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/intent.md b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/intent.md
+new file mode 100644
+index 0000000..a30c92c
+--- /dev/null
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/intent.md
+@@ -0,0 +1,137 @@
++# Intent: Run a backtest from the CLI with an SMA crossover
++Author: owner (product owner), drafted by Claude on 2026-11-07 from the owner's request for the next step. Change id: 0005. Entry route: idea.
++
++## Problem
++Since change 0004 the project can download KuCoin klines (`app/data/`) and backtest one symbol
++long/flat (`app/backtest/`), but only from Python code, and only with positions the caller
++builds by hand. The owner cannot yet try a trading idea on real data without writing a script.
++The smallest step that makes the tool usable end to end is one command that loads the candles,
++turns them into positions with one built-in strategy, runs the backtest and prints the result.
++It is kept small on purpose, so that this change and the ones that build on it stay cheap to run.
++
++## Proposed outcome
++A command `python -m app.backtest run` backtests one built-in strategy, a simple moving-average
++(SMA) crossover, on one symbol's cached KuCoin klines and prints the summary.
++
++**The command**
++```
++python -m app.backtest run SYMBOL INTERVAL START END [--market spot|futures]
++    [--fast 20] [--slow 50] [--fee 0.001] [--cache-dir DIR]
++```
++- `SYMBOL`, `INTERVAL`, `START`, `END`, `--market` and `--cache-dir` mean what they mean for
++  `python -m app.data download`: the same names, values, defaults and checks.
++- It loads the frame with `app.data.load_klines`, which uses the cache and fills missing days
++  from KuCoin as it does today.
++- `--fast` and `--slow` are the two SMA lengths, in rows; `--fee` is passed to `run_backtest`
++  (default `DEFAULT_FEE`, 0.1%).
++
++**The strategy**, a public function next to the engine (the design names it and its module):
++- It takes a klines frame and the two lengths and returns one position per row, `0` or `1`,
++  which `run_backtest` accepts as is.
++- A row's position is `1` when the fast SMA of `close` is above the slow SMA at that row's
++  close, else `0`.
++- It is `0` while the slow SMA is not yet defined (the first `slow − 1` rows), so the strategy
++  never trades on a part-filled average.
++- The averages count rows, not wall time: a missing quiet candle (change 0003) is skipped, not
++  filled. The output says so in one line.
++- It only reads the current row and earlier ones; the engine already fills at the next row's
++  open, so the pair has no lookahead.
++
++**The output**, plain text on stdout:
++- one line naming the run: symbol, interval, market, date range, number of candles, strategy
++  and its lengths, fee;
++- the summary of `run_backtest`: total return, max drawdown, trade count, win rate and time in
++  market, the fractions shown as percentages;
++- a buy-and-hold line for comparison (see Open questions).
++
++**Inputs it must refuse**, each with `error: ...` on stderr and exit code 2, before any
++backtest:
++- what `python -m app.data download` refuses (bad symbol, interval, market or dates), with the
++  same messages;
++- `--fast` or `--slow` not a whole number of at least 1, or `--fast` not below `--slow`;
++- a date range with fewer candles than `--slow`, so the strategy could never take a position;
++- a missing day (`KlineGapError`) or a download error, with the reason `load_klines` gives;
++- a `--fee` that `run_backtest` refuses (`BacktestInputError`).
++- Exit code 0 on success, as `python -m app.data` does.
++
++How to check it is done:
++- Tests run offline, without the network: the strategy on small frames built by hand; the
++  command through its `main(argv, fetch=...)` with the existing stub (`tests/kucoin_stub.py`)
++  or a pre-filled cache directory, as `tests/test_data_cli.py` does.
++- They show that:
++  - the strategy gives the hand-computed positions on a small frame, including the warm-up
++    rows at `0`;
++  - a row where the fast SMA equals the slow SMA is `0` (above, not at or above);
++  - the strategy's positions never use a later row: changing the closes after row `k` leaves
++    rows `0` to `k` unchanged;
++  - the command prints the summary `run_backtest` returns for those positions, on a fixed
++    frame, and exits 0;
++  - each refused input above prints its error and exits 2.
++- Build, test and lint stay green.
++
++## Affected users and systems
++- The owner, who will run backtests from the terminal on klines they download.
++- `app/backtest/`: a new CLI module (`__main__.py`) and a new strategy module; the strategy
++  function joins the public API in `app/backtest/__init__.py`. The engine (`inputs.py`,
++  `engine.py`, `summary.py`) is used, not changed.
++- `app/data/`: called through `load_klines`, not changed. Its CLI's argument checks may be
++  shared; the design says whether that needs a small refactor in `app/data/`, and if so, that
++  `python -m app.data` behaves exactly as before.
++- New test files only, for example `tests/test_strategies.py` and `tests/test_backtest_cli.py`;
++  no test file already on `main` is edited. `tests/kucoin_stub.py` and the fixture files are
++  read, not changed.
++- KuCoin's public REST API, only when a day is not cached yet, through `load_klines` as today.
++- No new dependency. `pyproject.toml` and `.github/workflows/ci.yml` need no change.
++
++## Constraints
++- Feature-type change. Its tests are new and live in new files, so the change edits no test
++  file already on `main` (a change that edits one gets an Important framework finding).
++- No new dependency: pure polars and the standard library (`argparse`), no numpy of its own.
++- No network in the tests: every test fetch goes through the stub or a pre-filled cache.
++- No lookahead: the strategy uses only prices at or before the decision row's close.
++- The engine's behaviour and public API from change 0004 do not change.
++- `python -m app.data` keeps its commands, options, output and exit codes.
++- Results are exact for the hand-computed tests (tolerance about 1e-9).
++- Python >= 3.10, type hints on public functions, ruff clean at line length 100.
++- The package version stays 0.1.0 unless the design says otherwise.
++- **Guardrail lines for the owner.** A run cannot edit `CLAUDE.md`, so `plan.md` names the lines
++  for the owner, who may land them before the build PR (on change 0003 an outdated `CLAUDE.md`
++  kept `sdlc/review` red):
++  - the opening paragraph names one CLI, `python -m app.data ...`; it needs
++    `python -m app.backtest run` too;
++  - the Architecture bullet for `app/backtest/` says "It does no I/O" and lists only inputs,
++    engine and summary; it needs the strategy module and the CLI, and that only the CLI does
++    I/O, through `load_klines`;
++  - the `tests/` bullet may need the new test files.
++- Out of scope: more than one strategy, other indicators, a strategy plug-in mechanism,
++  parameter search, shorts, leverage, several symbols, a portfolio, plots, saving results to a
++  file, a trade list on screen, slippage, futures funding, live or paper trading.
++
++## Open questions
++- **A buy-and-hold line?** Recommended: yes.
++  One extra line with the total return of holding from the first fill to the end, computed by
++  `run_backtest` with all positions at `1` and the same fee. It is one more call, and without
++  it the strategy's number has nothing to compare to.
++- **Default SMA lengths?** Recommended: `--fast 20 --slow 50`.
++  A common pair; both are rows of the chosen interval. Any pair the owner prefers works.
++- **Fetch missing days, or use the cache only?** Recommended: fetch, as `load_klines` does.
++  The command then works on a fresh range in one step. The alternative, refusing a range that
++  is not cached, would need a new cache-only mode in `app/data/`.
++- **How are percentages shown?** Recommended: two decimals, for example `7.57%`, and the trade
++  count as a whole number. The design may pick another layout, kept the same for every line.
++
++## Examples/References
++- A sketch of the output (numbers made up; the design fixes the exact layout):
++  ```
++  BTC-USDT 1hour spot, 2026-01-01 .. 2026-06-30: 4344 candles; sma-cross fast 20 slow 50; fee 0.10%
++  SMAs count candles, not hours: a quiet hour without a candle is skipped.
++  total return    12.34%
++  max drawdown    18.20%
++  trades              41
++  win rate        36.59%
++  time in market  48.07%
++  buy and hold     9.80%
++  ```
++- The engine it calls: `app/backtest/` and `changes/0004-backtest-engine-core-long-flat-on-one-sy/`.
++- The CLI it mirrors: `app/data/__main__.py` (`python -m app.data download`) and its tests,
++  `tests/test_data_cli.py`.
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md
+new file mode 100644
+index 0000000..bfd7340
+--- /dev/null
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md
+@@ -0,0 +1,199 @@
++# Plan: Run a backtest from the CLI with an SMA crossover (from intent.md 2026-11-07, spec.md 2026-11-07)
++
++## Files that change
++- `app/backtest/strategy.py` — new: `STRATEGY_NAME = "sma-cross"`,
++  `validate_lengths(fast: int, slow: int) -> None` and
++  `sma_cross_positions(frame: pl.DataFrame, fast: int, slow: int) -> pl.Series` (spec R1–R6,
++  Design "Strategy module").
++- `app/backtest/__main__.py` — new: the CLI `python -m app.backtest run ...`,
++  `main(argv: Sequence[str] | None = None, fetch: Fetch | None = None) -> int`, a `_parser()`,
++  the `_run(args, fetch) -> int` command, the output constants (`SMA_NOTE`, the labels) and
++  small helpers (`_length`, `_fee`, `_percent`); ends with
++  `if __name__ == "__main__": sys.exit(main())` as `app/data/__main__.py` does.
++- `app/backtest/__init__.py` — re-export `sma_cross_positions`, add it to `__all__` (sorted
++  as now), and update the docstring: the engine and strategy do no I/O; the CLI
++  (`python -m app.backtest run`) loads klines through `app.data.load_klines`.
++- `tests/test_strategies.py` — new: the strategy tests of Proof, on frames built by hand in
++  the file (a `_frame(closes)` helper with integer `open_time`, `open` = `close`).
++- `tests/test_backtest_cli.py` — new: the CLI tests of Proof, through `main(argv,
++  fetch=kucoin)` with `tests/kucoin_stub.py` and the `clock` fixture of `tests/conftest.py`
++  (`pytestmark = pytest.mark.usefixtures("clock")`, as `tests/test_data_cli.py` does).
++- `changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md` — this file, whenever the
++  build departs from it.
++
++Unchanged: `app/data/` (every module), `app/backtest/inputs.py`, `engine.py`, `summary.py`,
++`app/__init__.py` (version `0.1.0`), `pyproject.toml` (its `packages` list already holds
++`"app.backtest"`, so the new modules ship), every test file already on `main`
++(`tests/test_*.py`, `tests/conftest.py`, `tests/kucoin_stub.py`, `tests/fixtures/`), and
++`.github/workflows/ci.yml`. The Setup and Test commands stay as they are: no new dependency
++and the same `python -m pytest`.
++
++For the owner, not the run (guardrail file; the owner may land these in a PR of their own
++before the build PR, so the deploy review does not flag an outdated `CLAUDE.md`), `CLAUDE.md`:
++- Opening paragraph, "with the CLI `python -m app.data download | cache-info | cache-clear`;
++  and `app/backtest/`, a long/flat backtest of one symbol on a klines frame." Suggested end:
++  "…; and `app/backtest/`, a long/flat backtest of one symbol on a klines frame, with an SMA
++  crossover strategy and the CLI `python -m app.backtest run`."
++- Architecture, the `app/backtest/` bullet. Suggested text: "`app/backtest/` is the backtest
++  engine, one module per job (inputs, engine, summary, strategy, and the CLI in
++  `__main__.py`); its public API is `app/backtest/__init__.py` (`run_backtest`,
++  `sma_cross_positions`). Only the CLI does I/O, through `app.data.load_klines`; the engine
++  and strategy tests, `tests/test_backtest.py` and `tests/test_strategies.py`, use frames
++  built by hand, and the CLI tests, `tests/test_backtest_cli.py`, run offline against
++  `tests/kucoin_stub.py`."
++- The `tests/` bullet: "the data tests run offline against `tests/kucoin_stub.py` …" may add
++  "and the backtest CLI tests". Optional.
++
++## Order of work
++1. `app/backtest/strategy.py` and `tests/test_strategies.py`.
++   - `validate_lengths`: for each of `fast`, `slow`, refuse `type(x) is not int` (refuses
++     `bool`, `float`, `str`) or `x < 1` with `BacktestInputError(f"{name} {x!r} is not a
++     whole number of at least 1")`; then refuse `fast >= slow` with
++     `f"fast {fast} is not below slow {slow}: the fast SMA must be the shorter one"`.
++   - `sma_cross_positions`: `validate_lengths(fast, slow)`; refuse a non-DataFrame and a
++     frame with no `close` column or a non-numeric one (messages in the style of
++     `app/backtest/inputs.py`); then
++     `close = frame["close"].cast(pl.Float64)`,
++     `above = close.rolling_mean(window_size=fast) > close.rolling_mean(window_size=slow)`,
++     return `above.fill_null(False).cast(pl.Int8).alias("position")`. The default
++     `min_samples` of `rolling_mean` is the window size, so both means are null until full
++     (R3). Do not pass `min_periods` (renamed in polars 1.21; CI pins polars 2.1.0).
++   - Hand-computed example for the tests (fast 2, slow 3, integer closes so every sum is
++     exact): closes `[1, 2, 3, 2, 1, 1, 3]` give fast SMA `[-, 1.5, 2.5, 2.5, 1.5, 1, 2]`,
++     slow SMA `[-, -, 2, 7/3, 2, 4/3, 5/3]` and positions `[0, 0, 1, 1, 0, 0, 1]`. Tie case:
++     closes `[2, 2, 2, 2]` with fast 2, slow 3: both means are exactly `2.0` from row 2, so
++     the positions are `[0, 0, 0, 0]`. Lookahead case: the example's closes with rows 4 to 6
++     replaced by `[9, 9, 9]` keep rows 0 to 3 at `[0, 0, 1, 1]`.
++   - Commit with its tests.
++2. `app/backtest/__init__.py`: export `sma_cross_positions`; docstring; the public-API test
++   in `tests/test_strategies.py`. Commit.
++3. `app/backtest/__main__.py` and `tests/test_backtest_cli.py`.
++   - Parser: `prog="python -m app.backtest"`, description "Backtest a built-in strategy on
++     cached KuCoin klines."; `add_subparsers(required=True, metavar="COMMAND")`; `run` with
++     `symbol`, `interval`, `start`, `end` (metavars and help as `download`),
++     `--market choices=MARKETS default="spot"`, `--fast default="20"`, `--slow
++     default="50"`, `--fee default=str(DEFAULT_FEE)`, `--cache-dir`; an epilog with the SMA
++     note.
++   - `_run(args, fetch)`: `now = loader.utc_now()`; `request = make_request(args.symbol,
++     args.interval, args.start, args.end, args.market, now.date())`; `fast, slow =
++     _length(args.fast, "fast"), _length(args.slow, "slow")` (int() of the text; a
++     `ValueError` becomes `BacktestInputError(f"{name} {text!r} is not a whole number of at
++     least 1")`), `validate_lengths(fast, slow)`; `fee = _fee(args.fee)` (float() of the
++     text, else `BacktestInputError("fee ... is not a number: pass a proportional fee, for
++     example 0.001")`); `frame = load_klines(request.symbol, request.interval,
++     request.start, request.end, market=request.market, cache_dir=args.cache_dir,
++     fetch=fetch)`; refuse `frame.height < slow` with the message of spec Design;
++     `result = run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee)`;
++     `hold = run_backtest(frame, [1] * frame.height, fee=fee)`; print the eight lines of
++     spec R11; return 0.
++   - `main`: as `app/data/__main__.py:main`, catching `(InvalidRequestError, KlineGapError,
++     DownloadError, BacktestInputError)` → `error: {error}` on stderr, return 2; `OSError` →
++     `error: {error}; check the cache directory (--cache-dir)`, return 2. None of the four
++     classes is an `OSError`, so the two handlers do not overlap.
++   - `_percent(x) = f"{x:.2%}"`; value lines `f"{label:<14}{value:>8}"`; trade count
++     `str(summary.trade_count)`.
++   - Commit with its tests.
++4. Run build, test and lint; paste the output.
++
++## Risks
++- **Breaks nothing existing.** No module imports `app.backtest.strategy` or
++  `app.backtest.__main__`. The CLI imports `app.data.params` (`MARKETS`, `make_request`),
++  `app.data.loader` (`utc_now`) and the public `app.data` (`load_klines`, `KlineGapError`,
++  `InvalidRequestError`, `DownloadError`, `Fetch`) as they are; `urllib_fetch` is not
++  needed, since `load_klines` uses it when `fetch` is `None`. The only
++  edited existing file is `app/backtest/__init__.py` (one import, one `__all__` entry, the
++  docstring); `tests/test_backtest.py` imports from the submodules, not from it.
++- **Riskiest step: the strategy's warm-up and comparison (step 1).** An off-by-one in the
++  window (or `min_samples` lower than the length) would trade on a part-filled average and
++  still look plausible. Mitigations: the hand-computed list pins every row, including the
++  first `slow − 1`; the lookahead test changes the closes after row `k` and compares rows
++  `0..k`.
++- **Floating-point ties.** Polars' rolling mean keeps a running float sum; on non-integer
++  closes, two mathematically equal means can differ in the last bit and turn a tie into `1`.
++  The tie test uses integer closes, whose sums are exact, so it pins the `>` rule; real
++  data's ties are measure-zero and either answer is acceptable there. If the build sees the
++  tie test fail on exact integers, compare `rolling_sum(fast) * slow > rolling_sum(slow) *
++  fast` instead (still exact on integers) and note it here.
++- **The clock in CLI tests.** `make_request` refuses an end date after `loader.utc_now()`;
++  the tests must use the `clock` fixture (NOW = 2026-10-03 12:00 UTC) and dates up to
++  2026-10-02. `_run` must read the clock through `loader.utc_now()` (the module attribute,
++  so the fixture's monkeypatch applies), not a `from ... import utc_now` copy.
++- **Bad `--market` exits via argparse** (`SystemExit(2)`, usage plus `error: argument
++  --market: invalid choice`), as `download` does; its test uses
++  `pytest.raises(SystemExit)` and checks the code is 2 and stderr names the choice.
++- **Fee checked after loading** (spec, flagged concern 1): a bad `--fee` range downloads the
++  range first. Changing that needs a CLI range check before `load_klines`; one line in step
++  3 and its test.
++- **Candle-count rule** (spec, flagged concern 2): `<` as the intent says; if the owner asks
++  for `<=`, one comparison and its test change.
++- **CLAUDE.md drift.** Until the owner lands the lines above, the deploy review may raise an
++  outdated-CLAUDE.md finding (as on change 0003). The run cannot edit that file.
++- **No new dependency** (coding-standards rule 5; security-baseline rule 6): polars and the
++  standard library only, no numpy import.
++
++## Options not taken
++- **A shared argument helper in `app/data/`** (a function that adds `SYMBOL INTERVAL START
++  END --market --cache-dir` to a parser). Not taken: six `add_argument` lines are cheaper
++  than a refactor of a module the intent wants unchanged, and the checks themselves are
++  already shared through `make_request`.
++- **Letting `load_klines` do the request checks** (no `make_request` call in the CLI). Not
++  taken: the header needs the normalised symbol and parsed dates, and checking the request
++  first refuses a bad symbol before the length checks, the order `download` users expect.
++- **argparse `type=int` / `type=float` for `--fast`, `--slow`, `--fee`.** Not taken: argparse
++  exits with a usage dump through `SystemExit` instead of one `error:` line and `main`
++  returning 2, and `0` or `-5` would still need a second check.
++- **A range check of `--fee` in the CLI before loading.** Not taken for now: it would copy
++  the engine's `0 <= fee < 1` rule while `inputs.py` stays unchanged (spec, flagged
++  concern 1).
++- **A strategy class or registry.** Not taken: the intent puts a plug-in mechanism out of
++  scope; one function is the smallest API.
++- **Positions as a Python list.** Not taken: a polars `Int8` Series matches the frame type
++  and `run_backtest` accepts it as is.
++- **Bumping the version.** Not taken: the intent keeps `0.1.0` and gives no reason to bump.
++
++Interrogation answers:
++1. What could break: nothing existing calls the new modules. Touched shapes: the
++   `load_klines` frame (read only), `run_backtest`'s inputs (positions as an `Int8` Series),
++   and `app/backtest/__init__.py`'s `__all__` (one name added).
++2. Riskiest step: the strategy window and comparison (step 1); mitigated in Risks.
++3. Other options: listed above.
++4. An engineer who never saw this conversation can implement it from spec R11 (exact
++   lines), spec Design (order of checks) and step 3's call sequence. Nothing is missing.
++5. Every Proof test is still to be written, in the two new files. The existing tests exist
++   and must keep passing.
++
++## Proof
++- test: test_positions_match_hand_computed_example
++- test: test_warm_up_rows_are_flat
++- test: test_equal_smas_give_flat
++- test: test_positions_ignore_later_closes
++- test: test_positions_accepted_by_run_backtest
++- test: test_refuses_bad_lengths
++- test: test_refuses_frame_without_close
++- test: test_public_api_exports_strategy
++- test: test_run_prints_summary_and_buy_and_hold
++- test: test_run_uses_cache_without_fetching
++- test: test_run_refuses_bad_request
++- test: test_run_refuses_bad_market
++- test: test_run_refuses_bad_lengths
++- test: test_run_refuses_bad_fee
++- test: test_run_refuses_too_few_candles
++- test: test_run_refuses_missing_day
++- test: test_run_reports_download_error
++- `test_run_prints_summary_and_buy_and_hold` runs `run BTC-USDT 1h 2026-10-01 2026-10-01
++  --fast 3 --slow 5` against the stub with `SPOT_1H` (24 candles), computes the expected
++  numbers in the test with `load_klines`, `sma_cross_positions` and `run_backtest` on the
++  same stub, and compares the eight stdout lines exactly, exit 0.
++- `test_run_uses_cache_without_fetching` runs it once to fill a `tmp_path` cache, then again
++  with a stub that holds no rows, and gets the same output.
++- The refusal tests are parametrised: bad symbol, interval, dates (future end, start after
++  end, not ISO); `--fast 0`, `--fast x`, `--fast 1.5`, `--fast 50 --slow 20`, `--fast 20
++  --slow 20`; `--fee abc`, `--fee 1.5`, `--fee -0.1`; too few candles (`--slow 30` on the
++  24-candle day); a missing day (2026-09-30 .. 2026-10-01 with only the 10-01 fixture); a
++  download error (a stub `refuse` answering 503 until retries are exhausted, with the
++  `sleeps` fixture so nothing waits). Each asserts stderr starts with `error: ` and exit 2
++  (bad market: `SystemExit` with code 2).
++- Target (spec Acceptance): hand-computed positions exact; summary values equal to
++  `run_backtest`'s within 1e-9 via the exact printed text.
++- `python -m compileall -q .` prints nothing. `python -m pytest` reports every test passed.
++  `python -m ruff check .` prints `All checks passed!`.
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/spec.md b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/spec.md
+new file mode 100644
+index 0000000..8b440b9
+--- /dev/null
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/spec.md
+@@ -0,0 +1,203 @@
++# Spec: Run a backtest from the CLI with an SMA crossover
++Change id: 0005. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.51); overrides: none; policy sources: none
++
++## Requirements
++- R1. A public strategy function `sma_cross_positions(frame, fast, slow)` in a new module
++  `app/backtest/strategy.py`, exported from `app/backtest/__init__.py` (`__all__`). It returns
++  one position per row of `frame`, the integer `0` or `1`, in a form `run_backtest` accepts as
++  is.
++- R2. A row's position is `1` when the fast SMA of `close` is strictly above the slow SMA at
++  that row, else `0`. A row where the two are equal is `0`.
++- R3. The position is `0` on the first `slow − 1` rows, where the slow SMA is not defined. No
++  average is ever computed over fewer rows than its length.
++- R4. The averages count rows, not wall time: a missing candle (an interval without trades,
++  change 0003) is skipped, never filled.
++- R5. No lookahead: a row's position depends only on the closes of that row and earlier rows.
++  Changing the closes after row `k` leaves the positions of rows `0` to `k` unchanged. The
++  engine fills each decision at the next row's open (change 0004), so the pair trades on no
++  future price.
++- R6. `sma_cross_positions` refuses, with `BacktestInputError`, a `fast` or `slow` that is not
++  an `int` of at least 1 (a `bool` is refused), a `fast` not below `slow`, and a `frame` that
++  is not a polars DataFrame or has no numeric `close` column (security-baseline rule 2).
++- R7. A command `python -m app.backtest run SYMBOL INTERVAL START END [--market spot|futures]
++  [--fast 20] [--slow 50] [--fee 0.001] [--cache-dir DIR]`, in a new module
++  `app/backtest/__main__.py` with `main(argv=None, fetch=None) -> int`, like
++  `app/data/__main__.py`.
++- R8. `SYMBOL`, `INTERVAL`, `START`, `END`, `--market` (default `spot`) and `--cache-dir` take
++  the same values, defaults and checks as `python -m app.data download`, with the same
++  messages. `INTERVAL` is one of `1m … 1d` as in `app/data/params.py: INTERVAL_MS` (the
++  intent's sketch writes `1hour`, KuCoin's spot name; the command takes `1h`, as `download`
++  does).
++- R9. Defaults: `--fast 20`, `--slow 50`, `--fee` = `DEFAULT_FEE` (`0.001`).
++- R10. The command loads the frame with `app.data.load_klines` (cache first, then KuCoin for
++  the days not cached), computes the positions with `sma_cross_positions`, runs
++  `run_backtest` with them and the fee, and runs `run_backtest` a second time with every
++  position at `1` and the same fee for the buy-and-hold line.
++- R11. On success it prints to stdout exactly these eight lines and exits 0:
++  1. `<SYMBOL> <INTERVAL> <market>, <START> .. <END>: <n> candles; sma-cross fast <f> slow <s>; fee <fee %>`
++  2. `SMAs count candles, not wall time: an interval without a candle is skipped, not filled.`
++  3. `total return` and the strategy's total return;
++  4. `max drawdown`;
++  5. `trades`, the trade count as a whole number;
++  6. `win rate`;
++  7. `time in market`;
++  8. `buy and hold` and the buy-and-hold total return.
++  Each of lines 3 to 8 is the label left-aligned in 14 characters and the value right-aligned
++  in 8 (`f"{label:<14}{value:>8}"`), wider only when a value needs it. Fractions are
++  percentages with two decimals (`7.57%`, `-3.10%`), the fee too (`0.10%`). The symbol is
++  upper case and the dates are `YYYY-MM-DD`.
++- R12. Refused inputs, each before any backtest, print one `error: <reason>` line on stderr and
++  exit 2:
++  - what `download` refuses (symbol, interval, market, dates), with its messages;
++  - `--fast` or `--slow` not a whole number of at least 1, or `--fast` not below `--slow`;
++  - a `--fee` that is not a number;
++  - a frame with fewer candles than `--slow`;
++  - a missing day (`KlineGapError`) or a download error (`DownloadError`), with the reason
++    `load_klines` gives; a cache directory error (`OSError`) with the same hint as `download`;
++  - a `--fee` that `run_backtest` refuses (`BacktestInputError`), with the engine's message.
++- R13. Messages say what is wrong and what is accepted, and never show a stack trace
++  (ux-and-brand rule 4).
++- R14. Unchanged: the engine (`inputs.py`, `engine.py`, `summary.py`) and its public API; all
++  of `app/data/` and `python -m app.data` (commands, options, output, exit codes); every test
++  file already on `main`, `tests/kucoin_stub.py` and the fixtures; `pyproject.toml` (its
++  package list already holds `app.backtest`, which ships the two new modules);
++  `.github/workflows/ci.yml`; the package version `0.1.0`.
++- R15. No new dependency: polars and the standard library (`argparse`), no numpy import.
++- R16. Tests are offline and new, in new files: the strategy on frames built by hand; the
++  command through `main(argv, fetch=...)` with `tests/kucoin_stub.py` or a pre-filled cache
++  directory and the fixed clock of `tests/conftest.py`. Hand-computed results match within
++  about 1e-9.
++- Policies:
++  - coding-standards applies: CLAUDE.md conventions (Python >= 3.10, type hints on public
++    functions, ruff at 100, one test module per area, one module per job; rule 1); the CLI
++    mirrors `app/data/__main__.py` (argparse sub-command, `main(argv, fetch)`, `error: ...`
++    and exit 2, copy as module constants; rule 2); every behaviour has a test (rule 4); no
++    new dependency (rule 5); small functions, no dead code (rule 7).
++  - security-baseline applies to input handling (rule 2): every argument is checked before
++    it is used (R6, R8, R12); the symbol and interval reach a URL or a cache path only
++    through `app/data/params.py`'s existing checks. Rule 6: no `eval`, `exec`, `pickle` or
++    shell. Rule 7: the only network call is `load_klines`'s existing one to KuCoin's public
++    API; the tests make none. Rules 1, 3, 4 and 5 do not apply: no endpoint, no secret, no
++    personal data, no stored state of its own.
++  - Risk list (security-baseline rule 8): none of `auth`, `data migrations`, `money movement`
++    or `production config` applies. The command simulates a strategy on historical public
++    prices in memory: it places no order, moves no funds, holds no credential, adds no
++    stored schema and changes no configuration.
++  - ux-and-brand applies to the CLI output, a text interface a person reads: rule 3 (the
++    success output and every error state are specified, R11 and R12), rule 4 (R13), rule 6
++    (the note and labels are module constants, as `DOWNLOAD_NOTES` is). Rules 2, 5 and 7 do
++    not apply: no colours, fonts, controls or screenshots in plain stdout text. Rule 1: the
++    layout follows the intent's sketch and `app/data/__main__.py`'s style.
++  - data-conventions does not apply: no new stored field, schema, migration, event or
++    personal data. The command reads and fills the existing kline cache through
++    `load_klines`; the market data is public (rule 1).
++  - definition-of-done applies: build, test and lint green with their output pasted, the
++    verifier report and each phase's gate.
++
++## Design
++- **Strategy module** (`app/backtest/strategy.py`), pure, no I/O:
++  - `sma_cross_positions(frame: pl.DataFrame, fast: int, slow: int) -> pl.Series` returns an
++    `Int8` Series named `position`, one value per row. Its `.to_list()` gives Python `int`s,
++    which the engine's `type(value) is int` check accepts.
++  - The averages are polars rolling means of `close` over `fast` and `slow` rows, which are
++    null until the window is full (R3). The position is `fast_sma > slow_sma`, with a
++    null comparison read as `0`. A rolling window over rows is what R4 asks: a missing
++    candle is simply not a row.
++  - `validate_lengths(fast, slow) -> None` holds the length checks of R6, raising
++    `BacktestInputError`; both `sma_cross_positions` and the CLI call it. It is a module
++    function, not part of `app/backtest/__init__.py`, as `make_request` is for `app/data/`.
++  - The strategy name shown on screen is a module constant, `sma-cross`.
++- **CLI module** (`app/backtest/__main__.py`), the only part of `app/backtest/` that does
++  I/O:
++  - argparse with one sub-command `run` (`prog="python -m app.backtest"`), positional
++    `SYMBOL INTERVAL START END` and `--market` with `choices=MARKETS`, default `spot`,
++    exactly as `download` declares them, so a bad market gets argparse's own message and exit
++    2, as on `download`. `--fast`, `--slow` and `--fee` are read as text and converted by
++    the command, so a bad value gives one `error:` line and `main` returns 2 instead of an
++    argparse usage dump. `--cache-dir` is passed through as `download` passes it.
++  - Order of checks: (1) `make_request(symbol, interval, start, end, market, today)` from
++    `app/data/params.py`, with `today` from `loader.utc_now()` as `_download` does: the same
++    function, so the same messages, and it gives the normalised symbol and parsed dates for
++    the header; (2) `--fast` and `--slow` to `int`, then `validate_lengths`; (3) `--fee` to
++    `float`; (4) `load_klines(...)` with the request's values, `market`, `cache_dir` and
++    `fetch`; (5) frame height against `--slow`; (6) `sma_cross_positions`, then
++    `run_backtest(frame, positions, fee=fee)`, where the engine's fee check (fee first in its
++    `validate`) refuses a bad fee before any calculation; (7) `run_backtest(frame,
++    [1] * frame.height, fee=fee)` for buy and hold.
++  - `main` catches `InvalidRequestError`, `KlineGapError`, `DownloadError` and
++    `BacktestInputError` and prints `error: {error}` to stderr with exit 2; an `OSError`
++    gets `download`'s cache-directory hint. The length, fee-text and candle-count refusals
++    raise `BacktestInputError` from the command, so they go through the same handler.
++  - Message shapes (final wording at the build, each naming the value and what is
++    accepted): `fast '0' is not a whole number of at least 1`, `fast 50 is not below slow
++    20: the fast SMA must be the shorter one`, `fee 'abc' is not a number: pass a
++    proportional fee, for example 0.001`, `the range has 30 candles, fewer than slow 50:
++    the strategy could never take a position; widen the dates or lower --slow`.
++- **app/data/ needs no refactor.** The command calls `make_request`, `MARKETS`,
++  `loader.utc_now` and `load_klines` as they are; `python -m app.data` is untouched.
++- **Buy and hold** is "long from the first fill to the end": all positions `1`, so the engine
++  buys at row 1's open and closes at the last close, both with the fee. It is one more
++  `run_backtest` call, no new engine code.
++- **Output, worked shape** (numbers made up):
++  ```
++  BTC-USDT 1h spot, 2026-01-01 .. 2026-06-30: 4344 candles; sma-cross fast 20 slow 50; fee 0.10%
++  SMAs count candles, not wall time: an interval without a candle is skipped, not filled.
++  total return    12.34%
++  max drawdown    18.20%
++  trades              41
++  win rate        36.59%
++  time in market  48.07%
++  buy and hold     9.80%
++  ```
++- **Docs inside the package**: the `app/backtest/__init__.py` docstring says the engine and
++  strategy do no I/O and the CLI loads klines through `load_klines`.
++
++## Open questions from intent
++- "A buy-and-hold line? Recommended: yes." Answered: yes, per the intent's recommendation,
++  which the owner accepted by opening the intent PR (fast lane): one line `buy and hold`, from
++  a second `run_backtest` call with every position `1` and the same fee (R10, R11).
++- "Default SMA lengths? Recommended: `--fast 20 --slow 50`." Answered: `20` and `50`, per the
++  recommendation (R9). Neither the codebase nor a policy names other defaults.
++- "Fetch missing days, or use the cache only? Recommended: fetch, as `load_klines` does."
++  Answered: fetch, by calling `load_klines` with its default `cache=True`
++  (`app/data/loader.py: load_klines`); no cache-only mode is added to `app/data/`.
++- "How are percentages shown? Recommended: two decimals, for example `7.57%`, and the trade
++  count as a whole number." Answered: two decimals for every fraction and the fee, the trade
++  count as a whole number, in one fixed two-column layout (R11).
++
++## Flagged concerns
++- Where a bad `--fee` is caught: the intent says a fee "that `run_backtest` refuses
++  (`BacktestInputError`)" is refused "before any backtest", and is silent on whether that is
++  before or after loading the klines. The design converts the text to a number before loading
++  (so `--fee abc` costs nothing) but leaves the range check to the engine, which runs after
++  `load_klines`: `--fee 1.5` on an uncached range downloads and caches the days first, then
++  exits 2 with the engine's message. The alternative is a range check in the CLI before
++  loading, which copies the engine's rule (`0 <= fee < 1`) into a second place, since the
++  intent keeps `inputs.py` unchanged.
++- The candle-count check follows the intent's literal rule, "fewer candles than `--slow`":
++  a range of exactly `--slow` candles is accepted, although its only possible long signal is
++  on the last row, which the engine never fills (change 0004, R8), so such a run always
++  prints 0 trades. The intent's stated reason ("so the strategy could never take a position")
++  would refuse it too (a height of `--slow` or less). The design keeps the literal rule; the
++  owner may ask for `<=` instead.
++
++## Acceptance
++- New test files only (for example `tests/test_strategies.py` and `tests/test_backtest_cli.py`);
++  no test file already on `main` changes. They run offline and show:
++  - the strategy's positions on a small hand-built frame match the hand-computed list,
++    warm-up rows `0` included;
++  - a row where the fast SMA equals the slow SMA is `0`;
++  - changing the closes after row `k` leaves rows `0` to `k` unchanged;
++  - the returned Series is accepted by `run_backtest` as is;
++  - each refused `fast`/`slow` of R6 raises `BacktestInputError`;
++  - `python -m app.backtest run` on a fixed frame from the stub (or a pre-filled cache) prints
++    the eight lines of R11 with the summary `run_backtest` returns for
++    `sma_cross_positions` on that frame and the buy-and-hold return, and exits 0;
++  - each refused input of R12 prints its `error:` line on stderr and exits 2 (a bad
++    `--market` through argparse's exit 2, as on `download`);
++  - `sma_cross_positions` is in `app.backtest.__all__`.
++- Results match hand calculations within about 1e-9.
++- `python -m compileall -q .` prints nothing and exits 0; `python -m pytest` passes every
++  test, the existing ones included; `python -m ruff check .` prints `All checks passed!`.
++- `app/data/`, the engine modules, `pyproject.toml` and the version `0.1.0` are unchanged.
++- Mock: none, screens follow the UX conventions
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/status.yaml b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/status.yaml
+new file mode 100644
+index 0000000..77c5e3f
+--- /dev/null
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/status.yaml
+@@ -0,0 +1,34 @@
++id: "0005"
++slug: run-a-backtest-from-the-cli-with-an-sma
++title: Run a backtest from the CLI with an SMA crossover
++phase: design
++entry_route: idea
++change_type: feature
++gate:
++  phase: null
++  result: null
++  reason: null
++  at: null
++parked_reason: null
++iterations: 0
++panel_calls: 0
++external_ref: null
++risk_accepted: []
++tests_locked: false
++risk_accepted_by: []
++iterations_reset_by: null
++iterations_reset_at: null
++tests_unlocked_by: null
++runbook_authorized_by: null
++abandoned_reason: null
++build_pr: null
++released_at: null
++released_sha: null
++released_pr: null
++fast_lane:
++  intent:
++    sha: "1a1b3be5cd24094c53a764efe6f0af6b9c09b08c"
++    pr: 23
++created_at: "2026-11-07T18:02:30Z"
++updated_at: "2026-11-07T18:35:59Z"
++schema_version: 1

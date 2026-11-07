@@ -1,0 +1,36 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "Where a bad `--fee` is caught: the intent says a fee \"that `run_backtest` refuses",
+      "key": "concern:a9bcb130ce32385a",
+      "kind": "concern",
+      "n": 1
+    },
+    {
+      "decided": false,
+      "item": "The candle-count check follows the intent's literal rule, \"fewer candles than `--slow`\":",
+      "key": "concern:e95192a0d5bf0f20",
+      "kind": "concern",
+      "n": 2
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [],
+  "pending": [
+    1,
+    2
+  ],
+  "phase": "design"
+}

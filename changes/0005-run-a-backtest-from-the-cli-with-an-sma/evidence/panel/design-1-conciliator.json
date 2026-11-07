@@ -1,0 +1,11 @@
+{
+  "reviewer": "keep the design: parse --fee before loading and leave the range check to run_backtest after load_klines, since that is not an Important finding",
+  "advocate": "refuse a bad --fee before load_klines by reusing inputs._check_fee, and make the bad-fee test assert the stub saw no call",
+  "decision": "The CLI's fee parser refuses a bad --fee before load_klines by returning inputs._check_fee(float(text)), so inputs.py stays unchanged and the engine's message is kept; test_run_refuses_bad_fee also asserts the stub's calls == [] for --fee 1.5 and --fee -0.1.",
+  "rationale": [
+    "The verdicts disagree, so the safer reading wins: nothing is downloaded or written to the cache until every argument is accepted, which matches download and security-baseline rule 2.",
+    "The reviewer's main objection, a second copy of 0 <= fee < 1, does not hold: _check_fee (inputs.py:41-50) returns the checked float and can be called directly, so the rule still lives in one place.",
+    "The intent still holds: the fee goes to run_backtest, inputs.py is not changed, BacktestInputError and its message stay the engine's, and the CLI exits 2 before any backtest.",
+    "Adding the calls == [] assertion fixes the order in a test, so the build cannot let it drift back without anyone noticing."
+  ]
+}

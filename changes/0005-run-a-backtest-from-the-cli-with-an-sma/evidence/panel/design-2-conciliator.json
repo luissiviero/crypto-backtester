@@ -1,0 +1,12 @@
+{
+  "reviewer": "keep the literal `frame.height < slow` rule and leave the boundary ambiguity open as a non-blocking note for the owner",
+  "advocate": "refuse `frame.height <= slow`, because at height == slow the strategy can never take a position, and pin both sides of the boundary in tests",
+  "decision": "Refuse when `frame.height <= slow` (exit 2, message \"the range has N candles, not more than slow S: the strategy could never take a position; widen the dates or lower --slow\"), and add proof tests pinning `--slow 24` on 24 candles to exit 2 and `--slow 23` on 24 candles to exit 0.",
+  "rationale": [
+    "Both verdicts agree on the fact: at height == slow the only possible long signal sits on the last row, which engine.py never fills, so the run always prints 0 trades.",
+    "intent.md line 52 gives the rule and its purpose in one clause (\"so the strategy could never take a position\"); only `<=` satisfies that purpose, and it still refuses every range the literal `<` refuses.",
+    "The safer reading is to refuse a run the owner's own words call unusable rather than exit 0 with an empty result that looks like a success (ux-and-brand: designed empty/error states).",
+    "The current proof (`--slow 30` on 24 candles) passes under either rule, so the two boundary tests are needed to make the choice deliberate rather than inherited.",
+    "Deferred review (decision 21) lets the owner switch back to the literal `<` at the gate if the number, not the reason, was meant; that would be a one-comparison change plus flipping the boundary test."
+  ]
+}
