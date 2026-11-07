@@ -64,6 +64,28 @@
         "The owner can still overturn this at the gate and take the advocate's risk-line instead."
       ],
       "reviewer": "Park (uphold): the design must keep \"closed days fetched before a stop stay cached\" and name a Proof test for it."
+    },
+    {
+      "advocate": "The contradiction is real, but resolve it the other way and apply it in the panel: drop the identifier `BinanceBanError` from the R6 note (describe it as \"the exchange-ban error, which KuCoin has no equivalent of\") and leave R8 and plan step 10 untouched; no owner park.",
+      "at": "2026-11-07T04:15:37Z",
+      "cost_usd": null,
+      "decision": "continue: amend R8 to read 'No CLI message, help text or docstring names Binance or Vision, except R6's deprecation note in the load_klines docstring and the app/data/__init__.py module docstring', and amend plan step 10 so its grep skips only those two docstrings' deprecation notes and cleans every other hit",
+      "head": "4e727e951aab1d3d6405d5e546ed372c69d5b306",
+      "item": "adversarial reviewer says park: Panel decision 1 was applied in a way that contradicts the rest of the spec and plan, so the build cannot meet all of them. R6 (spec.md lines 26-29) and plan step 6 and step 7 require the load_klines docstring and the app/data/__init__.py module docstring to carry a deprecation note that names `BinanceBanError`. R8 (spec.md line 32) still says 'No CLI message, help text or docstring names Binance or Vision', and plan step 10 still says to 'grep app/ and scripts/ for `binance`, `vision`, `um\"` (case-insensitive) and clean what remains', and that grep matches the note. A build that follows the plan in order writes the note in steps 6-7 and then removes it in step 10, which undoes the panel's decision. A build that keeps the note breaks R8, and the build-phase review will flag that against the spec. The fix is a one-line text change at design time: make R8 except the R6 deprecation note (the intent's own wording is narrower, 'CLI messages stop naming Binance or Vision', intent.md line 27), and give step 10's grep the same exception. Today's code has no such note to rely on (app/data/__init__.py line 1 and loader.py line 78), so nothing settles it outside the spec.",
+      "item_n": 1,
+      "key": "park:dc21cf5a02a0232b",
+      "kind": "park",
+      "n": 4,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree the clash is real and is a wording fix the run can apply now, so no park; they differ only on which side gives way.",
+        "intent.md line 27 bans Binance only in CLI messages, so narrowing R8 follows the intent rather than retreating from it.",
+        "The advocate's fix would rewrite panel decision 1, which is already recorded (spec.md line 208); amending it falls outside this item, so the safer reading leaves decision 1 as recorded and changes only R8 and step 10.",
+        "Following the advocate's fallback condition, the exception covers only the two R6 docstrings: help text stays strict, and step 10 names the two places it may skip, so the grep stays a check with no judgment calls.",
+        "The owner can still overturn this at the next gate, including choosing to drop the identifier from the note."
+      ],
+      "reviewer": "Fix now at design time, without parking: change R8 and plan step 10 so both except R6's deprecation note."
     }
   ],
   "phase": "design",

@@ -1,11 +1,12 @@
 {
-  "reviewer": "keep the concern open for the owner, keep 0.1.0 as the intent says, and add a deprecation note for the removed names now",
-  "advocate": "close it as the owner's decision citing intent.md (version stays 0.1.0, fields removed) and add the deprecation note the intent does not forbid",
-  "decision": "Keep version 0.1.0 as intent.md directs, and add a deprecation note naming the removed columns (trades, taker_buy_*), BinanceBanError, the um market and the 1s interval, with the reason (KuCoin does not publish them), to the load_klines docstring and the app/data/__init__.py module docstring; the version half of rule 4 stays the owner's call, to confirm at the merge gate.",
+  "reviewer": "the R6/R8/step-10 contradiction is real; fix it at design time without parking by making R8 and step 10's grep except R6's deprecation note",
+  "advocate": "the contradiction is real and needs no park, but fix it the other way: drop the `BinanceBanError` identifier from the R6 note and leave R8 and step 10 strict",
+  "decision": "continue: amend R8 to read 'No CLI message, help text or docstring names Binance or Vision, except R6's deprecation note in the load_klines docstring and the app/data/__init__.py module docstring', and amend plan step 10 so its grep skips only those two docstrings' deprecation notes and cleans every other hit",
   "rationale": [
-    "Both verdicts agree: intent.md (the owner's words, lines 26-46) settles the version half, so 0.1.0 stays, and nothing in the intent forbids the note, so the note is added.",
-    "They disagree only on whether the run may close the concern; the safer reading is the reviewer's, because closing it would be the run deciding a policy breach for itself (REVIEW.md: policy breaches are Important).",
-    "Rule 4 gives no pre-1.0 or single-caller exemption, so the design must not close on that argument; it records the intent as the source and leaves the version breach for the owner to accept.",
-    "The note costs one sentence of copy, changes no code path, and shrinks the remaining breach to the version alone, which is the owner's decision under the intent."
+    "Both verdicts agree the clash is real and is a wording fix the run can apply now, so no park; they differ only on which side gives way.",
+    "intent.md line 27 bans Binance only in CLI messages, so narrowing R8 follows the intent rather than retreating from it.",
+    "The advocate's fix would rewrite panel decision 1, which is already recorded (spec.md line 208); amending it falls outside this item, so the safer reading leaves decision 1 as recorded and changes only R8 and step 10.",
+    "Following the advocate's fallback condition, the exception covers only the two R6 docstrings: help text stays strict, and step 10 names the two places it may skip, so the grep stays a check with no judgment calls.",
+    "The owner can still overturn this at the next gate, including choosing to drop the identifier from the note."
   ]
 }

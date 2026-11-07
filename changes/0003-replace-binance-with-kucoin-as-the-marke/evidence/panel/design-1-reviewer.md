@@ -1,9 +1,21 @@
 ## Verdict
-Keep the concern open for the owner to decide at merge, keep 0.1.0 as the intent says, and add a written deprecation note for the removed names now, since the intent does not forbid one.
+Fix now at design time, without parking: change R8 and plan step 10 so both except R6's deprecation note.
 
 ## Why
-- data-conventions rule 4 (plugin SKILL.md; no `policies/data-conventions.md` and no `.claude/skills` override, so the generic text is the rule in force): "Events and APIs: additive changes only; a removed or renamed field is a new version with a deprecation note." `app/data/__init__.py` is the package's public API (CLAUDE.md, Architecture), and the frame columns are part of its contract, so removing `trades`, `taker_buy_*`, `BinanceBanError`, `um` and `1s` is the kind of change the rule covers.
-- The intent, which the owner wrote and merged, removes exactly these names and says "The version stays 0.1.0" (spec R9). That rules out "a new version". Under decision 40 the policy file outranks a run's own reading, but a run cannot change either the policy or the intent. So the conflict is real, and only the owner can settle it.
-- REVIEW.md: "Reserve Important for findings that would ... breach a policy." Closing the concern inside the run would mean the run decides a policy breach on its own behalf, so it stays open (`[ ]`). The owner's merge then accepts it, or the owner changes the intent or the policy in a PR of their own.
-- The rule asks for two things: a new version and a deprecation note. The intent only blocks the first. A deprecation note that lists the removed columns, `BinanceBanError`, `um` and `1s` (in the `load_klines` docstring, the CLI help or the module docstring) does not contradict the intent. Plan.md "Alternatives" rejects both halves together, but nothing settles the note. Adding it lowers the breach to the version alone.
-- Nothing in the codebase depends on the removed names outside `app/data/`, the tests and `scripts/measure_storage.py`, and all of those change in this diff (plan.md Files that change). That fits the spec's argument that the one caller is the owner. But "pre-1.0" is not an exception that rule 4 states, so that argument supports the owner accepting the concern, not the run closing it.
+- The contradiction is real. R6 (spec.md lines 26-29) and plan steps 6-7 (plan.md lines 145-148,
+  156-158) put `BinanceBanError` into the `load_klines` and `app/data/__init__.py` docstrings.
+  R8 (spec.md line 32) bans any docstring that names Binance. Step 10 (plan.md lines 175-176)
+  greps `binance`, case-insensitive, and says to "clean what remains", which would delete the note.
+- REVIEW.md's framework rule says "`plan.md` must reflect the diff". REVIEW.md's Compliance line
+  says the change must match spec.md and plan.md. A build that keeps the note breaks R8, and a
+  build that removes it breaks R6 and panel decision 1. Whichever the build picks, the build
+  review would raise an Important finding. So this must be fixed, not waved through.
+- The intent settles it, so the owner does not need to be asked. intent.md line 27 limits the
+  ban to "CLI messages stop naming Binance or Vision"; it says nothing about docstrings. Panel
+  #1 (spec.md line 208) already decided the note, and data-conventions rule 4 requires a
+  deprecation note for removed fields. Narrowing R8 to "except R6's deprecation note" follows
+  both the intent and the policy, and changes nothing the owner decides.
+- The Proof test `test_no_module_names_a_binance_host` (plan.md line 294) checks hosts only, so
+  the note does not trip it. The only edits needed are to R8's text and step 10's grep
+  instruction ("except the R6 deprecation note"). The codebase has no such note today
+  (app/data/__init__.py line 1), so the spec has to state the exception itself.
