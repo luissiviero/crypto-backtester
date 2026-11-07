@@ -1,0 +1,11 @@
+{
+  "reviewer": "keep win rate 0.0 as a plain float when there are no trades, documented on Summary.win_rate and pinned by the zero-trade test",
+  "advocate": "prefer None (float | None) when trade_count == 0, but accept 0.0 if the Summary docstring states it and the test asserts trade_count == 0 and win_rate == 0.0 together",
+  "decision": "Keep win_rate a plain float that is 0.0 when trade_count == 0; the Summary docstring states \"0.0 when there are no trades; see trade_count\", and the zero-trade test asserts trade_count == 0 and win_rate == 0.0 together.",
+  "rationale": [
+    "No policy rule or intent line settles it: the intent defines win rate only as a share of trades, so this is a design choice.",
+    "Both verdicts accept 0.0 under the same conditions (docstring plus a joint trade_count/win_rate assertion), so this decides with their common ground.",
+    "trade_count is on Summary, so no information is lost; None would widen the type and push a None check onto every caller.",
+    "The advocate's worry about a silent engine bug is met by the joint assertion, which ties the zero win rate to zero trades in the test."
+  ]
+}

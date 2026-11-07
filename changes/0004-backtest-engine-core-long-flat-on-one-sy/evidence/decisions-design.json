@@ -21,6 +21,27 @@
         "Leaving the edit out ships an engine that cannot be imported, and no gate would catch it. Making the edit risks only a typo, which step 6's setup run catches."
       ],
       "reviewer": "Keep the design: add `\"app.backtest\"` to `[tool.setuptools] packages` and close the concern as decided."
+    },
+    {
+      "advocate": "Return `None` (field `float | None`) when `trade_count == 0`, not `0.0`; accept `0.0` only if `Summary.win_rate`'s docstring says so and the test pins it together with `trade_count == 0`.",
+      "at": "2026-11-07T11:08:52Z",
+      "cost_usd": null,
+      "decision": "Keep win_rate a plain float that is 0.0 when trade_count == 0; the Summary docstring states \"0.0 when there are no trades; see trade_count\", and the zero-trade test asserts trade_count == 0 and win_rate == 0.0 together.",
+      "head": "bb9fc6155901ab31cf16888a7702d238b7952a27",
+      "item": "Win rate with no trades: the intent defines win rate as a share of trades and is silent",
+      "item_n": 2,
+      "key": "concern:04bd3d7ee0322608",
+      "kind": "concern",
+      "n": 2,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "No policy rule or intent line settles it: the intent defines win rate only as a share of trades, so this is a design choice.",
+        "Both verdicts accept 0.0 under the same conditions (docstring plus a joint trade_count/win_rate assertion), so this decides with their common ground.",
+        "trade_count is on Summary, so no information is lost; None would widen the type and push a None check onto every caller.",
+        "The advocate's worry about a silent engine bug is met by the joint assertion, which ties the zero win rate to zero trades in the test."
+      ],
+      "reviewer": "Accept the design as written: win rate is `0.0` when there are no trades, kept as a plain `float`, documented on `Summary.win_rate`, with `trade_count == 0` as the way to tell \"no trades\" apart from \"no winners\", and pinned by the zero-trade test already in Acceptance."
     }
   ],
   "phase": "design",

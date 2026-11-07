@@ -169,7 +169,7 @@ Change id: 0004. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design
   still import it through the `app` directory. The design adds `"app.backtest"` to the list,
   a one-line edit to a non-guardrail file. The alternative is to leave `pyproject.toml`
   unchanged, as the intent says, and accept that a wheel install does not ship the engine.
-- Win rate with no trades: the intent defines win rate as a share of trades and is silent
+- decided (by panel #2): Keep win_rate a plain float that is 0.0 when trade_count == 0; the Summary docstring states "0.0 when there are no trades; see trade_count", and the zero-trade test asserts trade_count == 0 and win_rate == 0.0 together. — Win rate with no trades: the intent defines win rate as a share of trades and is silent
   when there are none. The design returns `0.0`, not `None` or NaN, so `Summary.win_rate`
   stays a plain `float`, and "no trades" is read from `trade_count == 0`.
 - [x] Inputs refused beyond the intent's list (a frame that is not a DataFrame or lacks
