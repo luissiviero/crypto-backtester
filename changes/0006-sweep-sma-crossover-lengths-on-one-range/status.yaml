@@ -25,6 +25,10 @@ build_pr: null
 released_at: null
 released_sha: null
 released_pr: null
+fast_lane:
+  intent:
+    sha: "32db462ad4d611dc3237780f0afcfc37f553c279"
+    pr: 27
 created_at: "2026-11-07T22:16:39Z"
 updated_at: "2026-11-07T22:16:39Z"
 schema_version: 1
