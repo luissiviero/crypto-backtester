@@ -65,6 +65,17 @@
     "last_seen": "2026-10-28T17:18:27Z",
     "summary": "When a REST range is refused partway (for example HTTP 451 on the second page), any day that already got some candles is reported as 'missing candles in REST response' and the HTTP status is lost. Every empty day in the range gets the refusal reason, even one whose page answered with no candles."
   },
+  "138006de07bbf375": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "tests/test_backtest.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:33:57Z",
+    "summary": "The diff edits a test file already on main (one name added to test_public_api's exact __all__ set), against spec R14 and the intent's constraint that no existing test file is edited; this is a feature change, so the fix-type framework rule does not apply. R1/Acceptance require the export, so the conflict is real, and plan.md records the departure in the same commit (91dff56). Graded a nit because the edit weakens nothing, but the owner should confirm the choice."
+  },
   "146386ced56a3ff0": {
     "changes": [
       "0004"

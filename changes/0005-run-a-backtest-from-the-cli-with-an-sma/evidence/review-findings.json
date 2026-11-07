@@ -1,0 +1,21 @@
+{
+  "at": "2026-11-07T20:45:00Z",
+  "findings": [
+    {
+      "file": "tests/test_backtest.py",
+      "line": 299,
+      "pass": "compliance",
+      "rule": "spec.md R14 (every test file already on main unchanged); intent.md Constraints",
+      "severity": "nit",
+      "signature": "138006de07bbf375",
+      "summary": "The diff edits a test file already on main (one name added to test_public_api's exact __all__ set), against spec R14 and the intent's constraint that no existing test file is edited; this is a feature change, so the fix-type framework rule does not apply. R1/Acceptance require the export, so the conflict is real, and plan.md records the departure in the same commit (91dff56). Graded a nit because the edit weakens nothing, but the owner should confirm the choice."
+    }
+  ],
+  "head": "e32914620cadbd6afaef046762c2bab07469d107",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 1,
+    "nits_omitted": 0
+  }
+}
