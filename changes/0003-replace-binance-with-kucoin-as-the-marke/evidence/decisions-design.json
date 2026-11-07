@@ -42,6 +42,28 @@
         "This touches no limit, guardrail or risk-list item. It only makes the existing retry path honour the header the intent names."
       ],
       "reviewer": "Close the concern as accepted: the reserve of 100 with the 60 s cap is a design choice within the intent, and no rule asks for more; it is not an Important finding."
+    },
+    {
+      "advocate": "Not a park: the design drops no REST behaviour that exists today and the intent never asks for resumability; record it as a plan risk / spec flagged concern for the owner, not a redesign before build.",
+      "at": "2026-11-07T04:07:57Z",
+      "cost_usd": null,
+      "decision": "continue, after the run amends spec.md and plan.md so that _rest_pass catches DownloadError per range, settles and caches the complete closed days the covered span vouches for, then re-raises, and adds test_days_fetched_before_a_download_error_stay_cached (error on a later page, spot and futures) to Proof",
+      "head": "436f0bcf12afe608ba534f58c27bfb4ba4f1f9c1",
+      "item": "adversarial reviewer says park: Design silently drops an existing behaviour that this change keeps: today sync_days promises (docstring, app/data/loader.py:93-97) and tests (tests/test_data.py:452 test_days_fetched_before_a_ban_stay_cached) that a run stopped part way keeps the closed days it already downloaded in the cache. The plan (step 4: fetch_range returns one RestRange per range; step 6: _rest_pass builds DayOutcomes only after fetch_range returns) means a DownloadError raised by with_retries in the middle of a range (5xx or 429 after three retries, Retry-After over 60 s, connection errors, all of which stay under R4) leaves fetch_range with no result, so every page already fetched for that range is thrown away and nothing gets cached. Once Vision is gone, all data arrives through REST paging (about 22 pages for 3 days of futures 1m, about 2,600 for a year), so this matters more than it does today. DownloadError and the retries stay, so this is not Binance-only behaviour, and the ratchet line in Proof does not cover it (it names 'ban cancelling the pool', not 'days fetched before a stop stay cached'). No Proof test replaces it. Fix in the design: settle and cache each day as soon as the covered span vouches for it (spot covers backwards from end, futures forwards from start), or catch DownloadError per range, settle the covered complete days, then re-raise. Add a Proof test, e.g. test_days_fetched_before_a_download_error_stay_cached, with the error on a later page.",
+      "item_n": 3,
+      "key": "park:acfa63991fdd5a74",
+      "kind": "park",
+      "n": 3,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree on the facts: today's fetch_range/_rest_pass lose a range's pages on a DownloadError; only the Vision pass gave the per-day write, and the design makes REST the only path.",
+        "They disagree on whether that is a kept behaviour: sync_days promises it today for 'retries exhausted', which R4 keeps, and intent line 113 keeps cache and retry behaviours with equivalent tests.",
+        "The safer reading keeps the behaviour that exists at the loader level today rather than letting it drop silently under a ratchet line that names only the 418 ban.",
+        "The fix is small and concrete (catch, settle covered days, re-raise) and the run can write it into the design itself, so parking for the owner is not needed.",
+        "The owner can still overturn this at the gate and take the advocate's risk-line instead."
+      ],
+      "reviewer": "Park (uphold): the design must keep \"closed days fetched before a stop stay cached\" and name a Proof test for it."
     }
   ],
   "phase": "design",
