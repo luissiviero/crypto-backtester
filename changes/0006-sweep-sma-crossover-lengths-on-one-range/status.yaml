@@ -8,7 +8,7 @@ gate:
   phase: build
   result: passed
   reason: null
-  at: "2026-11-07T23:03:05Z"
+  at: "2026-11-07T23:03:31Z"
 parked_reason: null
 iterations: 0
 panel_calls: 2
@@ -21,7 +21,7 @@ iterations_reset_at: null
 tests_unlocked_by: null
 runbook_authorized_by: null
 abandoned_reason: null
-build_pr: null
+build_pr: 30
 released_at: null
 released_sha: null
 released_pr: null
@@ -30,5 +30,5 @@ fast_lane:
     sha: "32db462ad4d611dc3237780f0afcfc37f553c279"
     pr: 27
 created_at: "2026-11-07T22:16:39Z"
-updated_at: "2026-11-07T23:03:05Z"
+updated_at: "2026-11-07T23:03:31Z"
 schema_version: 1
