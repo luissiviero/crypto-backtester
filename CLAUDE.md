@@ -2,8 +2,8 @@
 
 A trial Python project for the SDLC framework plugin: a crypto backtester whose features arrive
 as intents (`/sdlc-intent`), one change at a time. Today the package (`app/`) holds one feature,
-`app/data/`: Binance spot and USD-M futures klines from Binance Vision (the REST API fills
-missing days) as polars frames, cached per day as Parquet outside the repository; its CLI is
+`app/data/`: KuCoin spot and USDT-margined perpetual klines from KuCoin's public REST API
+as polars frames, cached per day as Parquet outside the repository; its CLI is
 `python -m app.data download | cache-info | cache-clear`.
 
 ## Commands
@@ -27,14 +27,14 @@ missing days) as polars frames, cached per day as Parquet outside the repository
 ## Architecture
 
 - `app/` is the package; new modules go here.
-- `app/data/` is the market-data layer, one module per job (params, http, vision, rest,
+- `app/data/` is the market-data layer, one module per job (params, http, rest,
   schema, cache, loader, and the CLI in `__main__.py`); its public API is
   `app/data/__init__.py`. The cache directory is `--cache-dir`, else the environment variable
   `CRYPTO_BACKTESTER_CACHE_DIR`, else the platform default.
 - `scripts/measure_storage.py` measured the cache layout for change 0001; it is not part of
   the package.
-- `tests/` holds the pytest suite; the data tests run offline against `tests/binance_stub.py`
-  and the files in `tests/fixtures/binance/`.
+- `tests/` holds the pytest suite; the data tests run offline against `tests/kucoin_stub.py`
+  and the files in `tests/fixtures/kucoin/`.
 - `.github/workflows/ci.yml` is the project's own CI (lint then test on push to `main` and on
   pull requests); it is the one workflow the SDLC maintain metric counts.
 - `changes/<id>-<slug>/` holds each change's intent, spec, plan and status.
