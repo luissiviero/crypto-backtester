@@ -86,6 +86,14 @@ def test_refuses_fee_out_of_range(fee: object) -> None:
         (_frame([100, 0], [100, 100]), r"open\[1\] is 0.0"),
         (_frame([100, -5], [100, 100]), r"open\[1\] is -5.0"),
         (
+            pl.DataFrame({"open_time": [0, 1], "open": ["10", "11"], "close": [1.0, 1.0]}),
+            "prices must be numbers",
+        ),
+        (
+            pl.DataFrame({"open_time": [0, 1], "open": [1.0, 1.0], "close": [True, True]}),
+            "prices must be numbers",
+        ),
+        (
             pl.DataFrame({"open_time": [0, 1], "open": ["a", "b"], "close": [1.0, 1.0]}),
             "prices must be numbers",
         ),

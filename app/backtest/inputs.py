@@ -83,12 +83,9 @@ def _check_open_time(open_time: pl.Series) -> None:
 
 
 def _check_prices(column: pl.Series) -> list[float]:
-    try:
-        prices = column.cast(pl.Float64).to_list()
-    except pl.exceptions.PolarsError:
-        raise BacktestInputError(
-            f"{column.name} has dtype {column.dtype}: prices must be numbers"
-        ) from None
+    if not column.dtype.is_numeric():
+        raise BacktestInputError(f"{column.name} has dtype {column.dtype}: prices must be numbers")
+    prices = column.cast(pl.Float64).to_list()
     for row, value in enumerate(prices):
         if value is None or not math.isfinite(value) or value <= 0:
             raise BacktestInputError(
