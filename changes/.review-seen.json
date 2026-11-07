@@ -1,4 +1,15 @@
 {
+  "02e7a7b997e5ca39": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "app/backtest/__main__.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:39:29Z",
+    "summary": "The CLI imports the private helper app.backtest.inputs._check_fee from another module; it is deliberate (spec panel #1, plan.md Risks) and keeps one copy of the fee rule, but it ties the CLI to a private name."
+  },
   "0363df2258ea9572": {
     "changes": [
       "0001"
@@ -64,6 +75,17 @@
     "last_change": "0001",
     "last_seen": "2026-10-28T17:18:27Z",
     "summary": "When a REST range is refused partway (for example HTTP 451 on the second page), any day that already got some candles is reported as 'missing candles in REST response' and the HTTP status is lost. Every empty day in the range gets the refusal reason, even one whose page answered with no candles."
+  },
+  "138006de07bbf375": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "tests/test_backtest.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:33:57Z",
+    "summary": "The diff edits a test file already on main (one name added to test_public_api's exact __all__ set), against spec R14 and the intent's constraint that no existing test file is edited; this is a feature change, so the fix-type framework rule does not apply. R1/Acceptance require the export, so the conflict is real, and plan.md records the departure in the same commit (91dff56). Graded a nit because the edit weakens nothing, but the owner should confirm the choice."
   },
   "146386ced56a3ff0": {
     "changes": [
@@ -175,6 +197,17 @@
     "last_seen": "2026-11-05T20:50:36Z",
     "summary": "The module-level `for _handler in (...)` loop leaves `_handler` bound in the module namespace after import; harmless, but `del _handler` or a small builder function would keep the module surface clean."
   },
+  "4dcf4bc537b8084c": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "app/backtest/__main__.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:39:29Z",
+    "summary": "_length uses int(text), which also accepts '1_0', ' +3 ' or non-ASCII digits; validate_lengths still range-checks the result, so this is cosmetic, and it is doubtful that anyone needs stricter parsing."
+  },
   "54384763684aac02": {
     "changes": [
       "0001"
@@ -263,6 +296,39 @@
     "last_seen": "2026-11-05T18:21:41Z",
     "summary": "The spec acceptance 'python -m pip install -e . succeeds and git status stays clean (Linux)' is only partly proven: the build run's install failed on a read-only sandbox and the test run built a wheel instead, so the editable install is first fully exercised at the owner's Windows check."
   },
+  "7b0aeb6738fdc838": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "tests/test_backtest.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:35:46Z",
+    "summary": "The diff edits a test file already on main (adds \"sma_cross_positions\" to test_public_api's pinned __all__ set), which spec R14 and the Acceptance line 'no test file already on main changes' forbid; plan.md records the departure in the same commit and explains that R1 and R14 contradict, but spec.md was not amended, so the owner must choose between this edit and dropping the name from __all__ before merge."
+  },
+  "7f3bd735210bf683": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:39:29Z",
+    "summary": "The Proof list does not name test_run_reports_unusable_cache_dir, which the diff adds for R12's OSError path; this is harmless, but plan.md under-reports the tests delivered."
+  },
+  "84eb129a553fe31c": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "tests/test_backtest.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:39:29Z",
+    "summary": "The diff adds \"sma_cross_positions\" to test_public_api's pinned __all__ set in a test file already on main, which the wording of spec R14 and Acceptance ('no test file already on main changes') does not allow; R1 requires the export, the change is feature-type, plan.md records the departure in the same commit (91dff56), and panel decision 1 kept the edit, so what remains is a spec.md amendment for the owner."
+  },
   "855ab0b4d0c179a4": {
     "changes": [
       "0001"
@@ -296,6 +362,17 @@
     "last_seen": "2026-11-05T18:21:41Z",
     "summary": "The module-level loop leaves `_handler` bound in the module namespace after import; harmless, but a tuple passed to a small helper or `del _handler` would keep the module surface clean."
   },
+  "a26b32876183e705": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:35:46Z",
+    "summary": "The Proof list omits test_run_reports_unusable_cache_dir, a test the diff adds for the OSError path of R12; harmless, but plan.md does not fully reflect the tests delivered."
+  },
   "a332de12ab568c77": {
     "changes": [
       "0003"
@@ -307,6 +384,17 @@
     "last_seen": "2026-11-07T05:26:55Z",
     "summary": "UNKNOWN_WEIGHT_WAIT keeps the Binance 'weight' name after WeightPacer became RateLimitPacer and the weight header was removed; a naming leftover only."
   },
+  "a8198195cc38d266": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "tests/test_backtest_cli.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:39:29Z",
+    "summary": "expected_lines derives the expected numbers from the same load_klines, sma_cross_positions and run_backtest calls the CLI makes, so a defect they share would pass here; only the header and the line widths are pinned literally. The hand-computed strategy tests in tests/test_strategies.py limit the risk."
+  },
   "a9248cb5b1630bae": {
     "changes": [
       "0004"
@@ -317,6 +405,17 @@
     "last_change": "0004",
     "last_seen": "2026-11-07T13:58:27Z",
     "summary": "A non-iterable `positions` (None or an int) escapes as a bare TypeError from `list(positions)` ('NoneType' object is not iterable) instead of a BacktestInputError naming the input and what is accepted; doubt: R14 does not list a non-sequence explicitly."
+  },
+  "b63a53e55c7309ec": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "app/backtest/__main__.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:35:46Z",
+    "summary": "The CLI imports the private helper app.backtest.inputs._check_fee across modules; this is deliberate (panel #1, recorded in plan.md Risks) and keeps one copy of the fee rule, but it couples the CLI to a private name."
   },
   "bca56c45b2be62e2": {
     "changes": [
@@ -373,6 +472,17 @@
     "last_seen": "2026-11-05T21:46:13Z",
     "summary": "pre-existing test file modified in a fix-type change (REVIEW.md framework rule; build guide step 25)"
   },
+  "c897df1f6bd1d769": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "app/backtest/__main__.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:35:46Z",
+    "summary": "_length uses int(text), which also accepts forms like '1_0', ' +3 ' or full-width digits; the values are still range-checked by validate_lengths, so this is cosmetic, not a defect (stated with doubt that anyone relies on stricter parsing)."
+  },
   "d1665fbc43fcdd32": {
     "changes": [
       "0003"
@@ -394,6 +504,17 @@
     "last_change": "0002",
     "last_seen": "2026-11-05T18:16:43Z",
     "summary": "In a fix-type change the pre-existing file tests/test_data.py gains imports and four appended tests; no existing test is edited and the additions sit in the first, reproducing commit as the intent and plan require, so this is graded a nit, with the doubt that REVIEW.md's wording ('test files that existed before the fix') could be read literally as a breach."
+  },
+  "dc34405797310bee": {
+    "changes": [
+      "0005"
+    ],
+    "count": 1,
+    "file": "tests/test_backtest_cli.py",
+    "first_change": "0005",
+    "last_change": "0005",
+    "last_seen": "2026-11-07T20:35:46Z",
+    "summary": "expected_lines computes the expected summary numbers with the same load_klines, sma_cross_positions and run_backtest the CLI calls, so a defect shared by strategy and CLI would still pass this test; only the header and the 22-character line widths are pinned literally (the strategy itself is pinned by hand-computed tests in tests/test_strategies.py, which limits the risk)."
   },
   "e01563be17e90885": {
     "changes": [

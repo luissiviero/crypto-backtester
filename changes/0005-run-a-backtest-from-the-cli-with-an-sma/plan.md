@@ -18,13 +18,17 @@
 - `tests/test_backtest_cli.py` — new: the CLI tests of Proof, through `main(argv,
   fetch=kucoin)` with `tests/kucoin_stub.py` and the `clock` fixture of `tests/conftest.py`
   (`pytestmark = pytest.mark.usefixtures("clock")`, as `tests/test_data_cli.py` does).
+- `tests/test_backtest.py` — build departure (see Risks, "The public-API test on `main`"): one
+  line, `"sma_cross_positions"` added to the exact `__all__` set that `test_public_api`
+  pins; nothing else in the file changes.
 - `changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md` — this file, whenever the
   build departs from it.
 
 Unchanged: `app/data/` (every module), `app/backtest/inputs.py`, `engine.py`, `summary.py`,
 `app/__init__.py` (version `0.1.0`), `pyproject.toml` (its `packages` list already holds
-`"app.backtest"`, so the new modules ship), every test file already on `main`
-(`tests/test_*.py`, `tests/conftest.py`, `tests/kucoin_stub.py`, `tests/fixtures/`), and
+`"app.backtest"`, so the new modules ship), every other test file already on `main`
+(`tests/test_*.py` except `tests/test_backtest.py`, `tests/conftest.py`, `tests/kucoin_stub.py`,
+`tests/fixtures/`), and
 `.github/workflows/ci.yml`. The Setup and Test commands stay as they are: no new dependency
 and the same `python -m pytest`.
 
@@ -106,7 +110,19 @@ before the build PR, so the deploy review does not flag an outdated `CLAUDE.md`)
   `InvalidRequestError`, `DownloadError`, `Fetch`) as they are; `urllib_fetch` is not
   needed, since `load_klines` uses it when `fetch` is `None`. The only
   edited existing file is `app/backtest/__init__.py` (one import, one `__all__` entry, the
-  docstring); `tests/test_backtest.py` imports from the submodules, not from it.
+  docstring). `tests/test_backtest.py` imports from the submodules, but its `test_public_api`
+  also pins `app.backtest.__all__` exactly (see the next item).
+- **The public-API test on `main` (build departure).** `tests/test_backtest.py::test_public_api`
+  asserts `set(app.backtest.__all__)` equals the five names of change 0004, so spec R1 and
+  Acceptance ("`sma_cross_positions` is in `app.backtest.__all__`") cannot pass with that file
+  unchanged, as R14 and the intent's Constraints ask; the design missed it. The two
+  requirements contradict each other. The build keeps R1, the intent's outcome ("the strategy
+  function joins the public API"), and adds the one name to that test's expected set: the test
+  still pins the whole public API, now the one this change specifies, and nothing it checked
+  is weakened. The other choice, re-exporting `sma_cross_positions` without listing it in
+  `__all__`, leaves the file untouched but fails R1 and an Acceptance line. If the owner
+  prefers that, the edit to `tests/test_backtest.py` is reverted, the name leaves `__all__`
+  and `test_public_api_exports_strategy` checks the attribute only.
 - **Riskiest step: the strategy's warm-up and comparison (step 1).** An off-by-one in the
   window (or `min_samples` lower than the length) would trade on a part-filled average and
   still look plausible. Mitigations: the hand-computed list pins every row, including the

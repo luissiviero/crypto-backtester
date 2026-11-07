@@ -1,0 +1,14 @@
+{
+  "agent_id": "a3c0dc8b7ba432c29",
+  "agent_type": "sdlc:adversarial-reviewer",
+  "at": "2026-11-07T20:26:06Z",
+  "head": "86a123a84387fc7f59e0a2ba6fcd5eb83130c514",
+  "member": "reviewer",
+  "models": [
+    "claude-opus-5-5"
+  ],
+  "phase": "build",
+  "reason": null,
+  "schema_version": 1,
+  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/a922cf5d-5a21-4ad5-b3b7-3d14c33a7cfb/subagents/agent-a3c0dc8b7ba432c29.jsonl"
+}

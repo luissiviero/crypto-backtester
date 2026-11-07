@@ -1,0 +1,12 @@
+{
+  "reviewer": "keep the one-line test edit and downgrade the finding to a nit; a spec.md note that R14 gives way to R1 is recommended, not required",
+  "advocate": "keep the edit and downgrade to a nit; the choice between the edit and dropping the name is a false one, and what remains is a one-line spec amendment the owner can make at merge",
+  "decision": "settled: keep the one-line __all__ edit in tests/test_backtest.py (intent and R1 require the export, the pin stays exact, the change is a feature and not a fix, and plan.md records the departure); the R14/Acceptance wording is for the owner to amend in spec.md, which this run may not edit",
+  "rationale": [
+    "Both verdicts agree: keep the edit and treat the finding as a nit, not an Important finding.",
+    "The intent ('the strategy function joins the public API') and R1/Acceptance require sma_cross_positions in __all__, so R1 cannot pass while R14 holds as written.",
+    "The edit keeps test_public_api's exact set pin and only adds the new name. The test-file freeze in REVIEW.md applies only to fix-type changes, and status.yaml says change_type: feature.",
+    "plan.md records the departure and the reason in the same commit, which REVIEW.md's compliance rule requires.",
+    "The rest of the fix is a spec.md amendment ('except the __all__ entry in test_public_api'). spec.md is protected in this phase, so the owner applies it at the gate."
+  ]
+}

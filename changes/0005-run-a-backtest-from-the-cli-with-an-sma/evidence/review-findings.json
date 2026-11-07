@@ -1,0 +1,57 @@
+{
+  "at": "2026-11-07T20:39:04Z",
+  "findings": [
+    {
+      "file": "app/backtest/__main__.py",
+      "line": 10,
+      "pass": "compliance",
+      "rule": "coding-standards rule 2",
+      "severity": "nit",
+      "signature": "02e7a7b997e5ca39",
+      "summary": "The CLI imports the private helper app.backtest.inputs._check_fee from another module; it is deliberate (spec panel #1, plan.md Risks) and keeps one copy of the fee rule, but it ties the CLI to a private name."
+    },
+    {
+      "file": "app/backtest/__main__.py",
+      "line": 94,
+      "pass": "bugs",
+      "rule": "",
+      "severity": "nit",
+      "signature": "4dcf4bc537b8084c",
+      "summary": "_length uses int(text), which also accepts '1_0', ' +3 ' or non-ASCII digits; validate_lengths still range-checks the result, so this is cosmetic, and it is doubtful that anyone needs stricter parsing."
+    },
+    {
+      "file": "changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md",
+      "line": 191,
+      "pass": "compliance",
+      "rule": "REVIEW.md: plan.md must reflect the diff (proof)",
+      "severity": "nit",
+      "signature": "7f3bd735210bf683",
+      "summary": "The Proof list does not name test_run_reports_unusable_cache_dir, which the diff adds for R12's OSError path; this is harmless, but plan.md under-reports the tests delivered."
+    },
+    {
+      "file": "tests/test_backtest.py",
+      "line": 299,
+      "pass": "compliance",
+      "rule": "spec R14; spec Acceptance",
+      "severity": "nit",
+      "signature": "84eb129a553fe31c",
+      "summary": "The diff adds \"sma_cross_positions\" to test_public_api's pinned __all__ set in a test file already on main, which the wording of spec R14 and Acceptance ('no test file already on main changes') does not allow; R1 requires the export, the change is feature-type, plan.md records the departure in the same commit (91dff56), and panel decision 1 kept the edit, so what remains is a spec.md amendment for the owner."
+    },
+    {
+      "file": "tests/test_backtest_cli.py",
+      "line": 32,
+      "pass": "bugs",
+      "rule": "",
+      "severity": "nit",
+      "signature": "a8198195cc38d266",
+      "summary": "expected_lines derives the expected numbers from the same load_klines, sma_cross_positions and run_backtest calls the CLI makes, so a defect they share would pass here; only the header and the line widths are pinned literally. The hand-computed strategy tests in tests/test_strategies.py limit the risk."
+    }
+  ],
+  "head": "cb3027aedb10604ce964a535a0c84a187ef0abc3",
+  "schema_version": 1,
+  "tally": {
+    "important": 0,
+    "nit": 5,
+    "nits_omitted": 0
+  }
+}

@@ -1,0 +1,793 @@
+ app/backtest/__init__.py                           |   6 +-
+ app/backtest/__main__.py                           | 117 +++++++++++++
+ app/backtest/strategy.py                           |  39 +++++
+ .../evidence/hook-log.jsonl                        |  85 ++++++++++
+ .../evidence/run-build.json                        |   6 +
+ .../evidence/verifier.md                           | 105 ++++++++++++
+ .../plan.md                                        |  22 ++-
+ .../status.yaml                                    |   4 +-
+ tests/test_backtest.py                             |   1 +
+ tests/test_backtest_cli.py                         | 184 +++++++++++++++++++++
+ tests/test_strategies.py                           |  97 +++++++++++
+ 11 files changed, 660 insertions(+), 6 deletions(-)
+
+diff --git a/app/backtest/__init__.py b/app/backtest/__init__.py
+index 617d629..464dc6a 100644
+--- a/app/backtest/__init__.py
++++ b/app/backtest/__init__.py
+@@ -1,10 +1,13 @@
+ """The backtest engine: a long/flat backtest of one symbol on a klines frame.
+ 
+-It does no I/O: pass it a frame such as `app.data.load_klines` returns and one position per row.
++The engine and the strategy do no I/O: pass them a frame such as `app.data.load_klines` returns
++and, for the engine, one position per row. The CLI (`python -m app.backtest run`) loads klines
++through `app.data.load_klines`.
+ """
+ 
+ from app.backtest.engine import BacktestResult, run_backtest
+ from app.backtest.inputs import DEFAULT_FEE, BacktestInputError
++from app.backtest.strategy import sma_cross_positions
+ from app.backtest.summary import Summary
+ 
+ __all__ = [
+@@ -13,4 +16,5 @@ __all__ = [
+     "BacktestResult",
+     "Summary",
+     "run_backtest",
++    "sma_cross_positions",
+ ]
+diff --git a/app/backtest/__main__.py b/app/backtest/__main__.py
+new file mode 100644
+index 0000000..c611fd2
+--- /dev/null
++++ b/app/backtest/__main__.py
+@@ -0,0 +1,117 @@
++"""CLI: `python -m app.backtest run`, the SMA crossover on one symbol's KuCoin klines."""
++
++from __future__ import annotations
++
++import argparse
++import sys
++from collections.abc import Sequence
++
++from app.backtest.engine import run_backtest
++from app.backtest.inputs import DEFAULT_FEE, BacktestInputError, _check_fee
++from app.backtest.strategy import STRATEGY_NAME, sma_cross_positions, validate_lengths
++from app.data import DownloadError, Fetch, KlineGapError, load_klines, loader
++from app.data.params import MARKETS, InvalidRequestError, make_request
++
++SMA_NOTE = "SMAs count candles, not wall time: an interval without a candle is skipped, not filled."
++RUN_HELP = "backtest the SMA crossover on a date range, loading missing days from KuCoin"
++
++
++def main(argv: Sequence[str] | None = None, fetch: Fetch | None = None) -> int:
++    args = _parser().parse_args(argv)
++    try:
++        return args.command(args, fetch)
++    except (InvalidRequestError, KlineGapError, DownloadError, BacktestInputError) as error:
++        print(f"error: {error}", file=sys.stderr)
++        return 2
++    except OSError as error:
++        print(f"error: {error}; check the cache directory (--cache-dir)", file=sys.stderr)
++        return 2
++
++
++def _parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(
++        prog="python -m app.backtest",
++        description="Backtest a built-in strategy on cached KuCoin klines.",
++    )
++    commands = parser.add_subparsers(required=True, metavar="COMMAND")
++
++    run = commands.add_parser("run", help=RUN_HELP, epilog=SMA_NOTE)
++    run.add_argument("symbol", metavar="SYMBOL")
++    run.add_argument("interval", metavar="INTERVAL")
++    run.add_argument("start", metavar="START", help="first day, YYYY-MM-DD (UTC)")
++    run.add_argument("end", metavar="END", help="last day, YYYY-MM-DD (UTC), inclusive")
++    run.add_argument("--market", choices=MARKETS, default="spot")
++    run.add_argument("--fast", default="20", help="fast SMA length in candles (default 20)")
++    run.add_argument("--slow", default="50", help="slow SMA length in candles (default 50)")
++    run.add_argument(
++        "--fee", default=str(DEFAULT_FEE), help=f"proportional fee per fill (default {DEFAULT_FEE})"
++    )
++    run.add_argument("--cache-dir")
++    run.set_defaults(command=_run)
++    return parser
++
++
++def _run(args: argparse.Namespace, fetch: Fetch | None) -> int:
++    today = loader.utc_now().date()
++    request = make_request(args.symbol, args.interval, args.start, args.end, args.market, today)
++    fast, slow = _length(args.fast, "fast"), _length(args.slow, "slow")
++    validate_lengths(fast, slow)
++    fee = _fee(args.fee)
++    frame = load_klines(
++        request.symbol,
++        request.interval,
++        request.start,
++        request.end,
++        market=request.market,
++        cache_dir=args.cache_dir,
++        fetch=fetch,
++    )
++    if frame.height <= slow:
++        raise BacktestInputError(
++            f"the range has {frame.height} candles, not more than slow {slow}: the strategy "
++            "could never take a position; widen the dates or lower --slow"
++        )
++    result = run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee)
++    hold = run_backtest(frame, [1] * frame.height, fee=fee)
++    print(
++        f"{request.symbol} {request.interval} {request.market}, "
++        f"{request.start} .. {request.end}: {frame.height} candles; "
++        f"{STRATEGY_NAME} fast {fast} slow {slow}; fee {_percent(fee)}"
++    )
++    print(SMA_NOTE)
++    summary = result.summary
++    for label, value in (
++        ("total return", _percent(summary.total_return)),
++        ("max drawdown", _percent(summary.max_drawdown)),
++        ("trades", str(summary.trade_count)),
++        ("win rate", _percent(summary.win_rate)),
++        ("time in market", _percent(summary.time_in_market)),
++        ("buy and hold", _percent(hold.summary.total_return)),
++    ):
++        print(f"{label:<14}{value:>8}")
++    return 0
++
++
++def _length(text: str, name: str) -> int:
++    try:
++        return int(text)
++    except ValueError:
++        raise BacktestInputError(f"{name} {text!r} is not a whole number of at least 1") from None
++
++
++def _fee(text: str) -> float:
++    try:
++        value = float(text)
++    except ValueError:
++        raise BacktestInputError(
++            f"fee {text!r} is not a number: pass a proportional fee, for example 0.001"
++        ) from None
++    return _check_fee(value)
++
++
++def _percent(fraction: float) -> str:
++    return f"{fraction:.2%}"
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/app/backtest/strategy.py b/app/backtest/strategy.py
+new file mode 100644
+index 0000000..0575842
+--- /dev/null
++++ b/app/backtest/strategy.py
+@@ -0,0 +1,39 @@
++"""The built-in strategy: a simple moving-average crossover of `close`, long/flat, no lookahead."""
++
++from __future__ import annotations
++
++import polars as pl
++
++from app.backtest.inputs import BacktestInputError
++
++STRATEGY_NAME = "sma-cross"
++
++
++def validate_lengths(fast: int, slow: int) -> None:
++    for name, length in (("fast", fast), ("slow", slow)):
++        if type(length) is not int or length < 1:
++            raise BacktestInputError(f"{name} {length!r} is not a whole number of at least 1")
++    if fast >= slow:
++        raise BacktestInputError(
++            f"fast {fast} is not below slow {slow}: the fast SMA must be the shorter one"
++        )
++
++
++def sma_cross_positions(frame: pl.DataFrame, fast: int, slow: int) -> pl.Series:
++    """One position per row: 1 when the fast SMA of `close` is above the slow SMA, else 0.
++
++    The averages count rows, not wall time, and are undefined (position 0) until their window
++    is full. A row's position reads only that row's close and earlier ones.
++    """
++    validate_lengths(fast, slow)
++    if not isinstance(frame, pl.DataFrame):
++        raise BacktestInputError(
++            f"frame is a {type(frame).__name__}: pass a polars DataFrame such as load_klines returns"
++        )
++    if "close" not in frame.columns:
++        raise BacktestInputError("frame lacks the column close: the strategy reads close")
++    if not frame["close"].dtype.is_numeric():
++        raise BacktestInputError(f"close has dtype {frame['close'].dtype}: prices must be numbers")
++    close = frame["close"].cast(pl.Float64)
++    above = close.rolling_mean(window_size=fast) > close.rolling_mean(window_size=slow)
++    return above.fill_null(False).cast(pl.Int8).alias("position")
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/hook-log.jsonl b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/hook-log.jsonl
+index d536fc2..e9e38df 100644
+--- a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/hook-log.jsonl
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/hook-log.jsonl
+@@ -44,3 +44,88 @@
+ {"at": "2026-11-07T18:42:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-11-07T18:42:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-11-07T18:42:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:17:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T20:17:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T20:17:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T20:18:20Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/strategy.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:20Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/strategy.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:20Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/strategy.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:20Z", "commands": [{"command": "ruff check --fix --quiet strategy.py", "exit_code": 0}, {"command": "ruff format strategy.py", "exit_code": 0}, {"command": "ruff check --output-format concise strategy.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/strategy.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:33Z", "commands": [{"command": "ruff check --fix --quiet test_strategies.py", "exit_code": 0}, {"command": "ruff format test_strategies.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_strategies.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:47Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:47Z", "commands": [{"command": "ruff check --fix --quiet __init__.py", "exit_code": 0}, {"command": "ruff format __init__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __init__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:18:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:48Z", "commands": [{"command": "ruff check --fix --quiet test_strategies.py", "exit_code": 0}, {"command": "ruff format test_strategies.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_strategies.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:51Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T20:18:57Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:57Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:57Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:57Z", "commands": [{"command": "ruff check --fix --quiet test_strategies.py", "exit_code": 0}, {"command": "ruff format test_strategies.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_strategies.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:18:59Z", "commands": [{"command": "ruff check --fix --quiet test_strategies.py", "exit_code": 0}, {"command": "ruff format test_strategies.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_strategies.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:02Z", "commands": [{"command": "ruff check --fix --quiet test_strategies.py", "exit_code": 1}, {"command": "ruff format test_strategies.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_strategies.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "ruff reports remaining problems in test_strategies.py after auto-fix; fix them before moving on:\ntests/test_strategies.py:100:37: F821 Undefined name `app`\ntests/test_strategies.py:101:12: F821 Undefined name `app`\nFound 2 errors.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-07T20:19:03Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:03Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:03Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:03Z", "commands": [{"command": "ruff check --fix --quiet test_strategies.py", "exit_code": 0}, {"command": "ruff format test_strategies.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_strategies.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:26Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:26Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:26Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:27Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:19:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:20:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:20:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:20:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:20:00Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:20:26Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:20:26Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:20:26Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:20:26Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_cli.py", "exit_code": 1}, {"command": "ruff format test_backtest_cli.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_cli.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "ruff reports remaining problems in test_backtest_cli.py after auto-fix; fix them before moving on:\ntests/test_backtest_cli.py:37:9: ISC004 Unparenthesized implicit string concatenation in collection\nFound 1 error.\nNo fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).", "tool": "Write", "verdict": "block"}
++{"at": "2026-11-07T20:20:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:20:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:20:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:20:32Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_cli.py", "exit_code": 0}, {"command": "ruff format test_backtest_cli.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_cli.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:20:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:20:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:20:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:20:40Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_cli.py", "exit_code": 0}, {"command": "ruff format test_backtest_cli.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_cli.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_cli.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:38Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:42Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:44Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:44Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:44Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:21:44Z", "commands": [{"command": "ruff check --fix --quiet test_strategies.py", "exit_code": 0}, {"command": "ruff format test_strategies.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_strategies.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_strategies.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T20:22:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T20:22:13Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T20:23:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T20:23:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T20:23:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T20:24:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:24:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:24:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T20:24:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/run-build.json b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/run-build.json
+new file mode 100644
+index 0000000..ee375d8
+--- /dev/null
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/run-build.json
+@@ -0,0 +1,6 @@
++{
++  "phase": "build",
++  "run": "build",
++  "spend_usd": null,
++  "started_at": "2026-11-07T20:17:57Z"
++}
+\ No newline at end of file
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/verifier.md b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/verifier.md
+new file mode 100644
+index 0000000..22de60c
+--- /dev/null
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/verifier.md
+@@ -0,0 +1,105 @@
++**Verdict: matches the plan.** The new `run` command and the strategy behave as plan.md and spec.md describe on every input I tried. Two limits on that: the build, test and lint targets have not been run on this branch, and I did not run the test suite.
++
++## Commands run
++
++This is a CI session (`SDLC_GATE_COMMANDS=runner`), so I read the three targets from the design gate's record instead of running them. `gate-build.json` doesn't exist yet. That record is the runner's run on commit `79311818e9cec7f9fffeffe9fc6a3273c90caa0c` of 2026-11-07T18:42:50Z: the tree this phase started from, not the final one. The final tree's result is the runner's, which runs the three targets after this session and shows them in the check run `sdlc/test`. Nothing here stands in for it.
++
++The `commands` check reads `"ok": true` with `"ran_by": "runner"`. No check in that record carries `deferred: true`, and there are no `test.log`, `build.log` or `lint.log` files yet.
++
++| Target (read, not run) | Exit | Output |
++|---|---|---|
++| `python -m compileall -q .` | 0 | empty |
++| `python -m pytest` | 0 | `collected 152 items` … `============================= 152 passed in 0.54s ==============================` |
++| `python -m ruff check .` | 0 | `All checks passed!` |
++
++Those 152 tests predate the build, so none of the new tests are in them.
++
++You suggested running `pytest -q`, `ruff check` and compiling `app tests scripts` for information. I ran none of them: my instructions forbid starting the test runner in a CI session, even with `-k`, and say to read the gate record instead of running the targets.
++
++## Behavior exercised
++
++Everything was offline. I called `app.backtest.__main__.main(argv, fetch=KuCoin())` from `tests/kucoin_stub.py`, with `loader.utc_now` set to `kucoin_stub.NOW`, the stub's sleeps turned off, and every `--cache-dir` under `$TMPDIR`.
++
++**Success output (R11).** `run btc-usdt 1h 2026-10-01 2026-10-01 --fast 3 --slow 5` exits 0 after 1 fetch and prints exactly eight lines. The lowercase symbol comes out upper case, and the six value lines are each 22 characters (14 + 8):
++```
++BTC-USDT 1h spot, 2026-10-01 .. 2026-10-01: 24 candles; sma-cross fast 3 slow 5; fee 0.10%
++SMAs count candles, not wall time: an interval without a candle is skipped, not filled.
++total return    -0.73%
++max drawdown     1.25%
++trades               3
++win rate        33.33%
++time in market  50.00%
++buy and hold     1.45%
++```
++- **Numbers check:** calling `run_backtest` directly on the same frame gives `-0.007348…, 0.012495…, 3, 0.3333…, 0.5`, and buy and hold gives `0.014482…`. These match the printed lines.
++- **Cache reuse:** running again on the same cache with an empty stub exits 0 with `calls 0` and the same output.
++- **Futures:** `--market futures` on `xbtusdtm` exits 0 with the header `XBTUSDTM 1h futures, ...`.
++
++**Refusals (R12).** Each prints one `error:` line on stderr and exits 2:
++- **Lengths** (no fetch):
++  - `--fast 0` gives `fast 0 is not a whole number of at least 1`
++  - `--fast x` gives `fast 'x' ...`
++  - `--fast 1.5` gives `fast '1.5' ...`
++  - `--fast 50 --slow 20` and `20/20` give `fast 50 is not below slow 20: the fast SMA must be the shorter one`
++- **Fees** (no fetch):
++  - `--fee abc` gives `fee 'abc' is not a number: pass a proportional fee, for example 0.001`
++  - `--fee 1.5`, `-0.1` and `nan` give `fee 1.5 is out of range: it must be at least 0 and below 1, for example 0.001`
++- **Request checks** (no fetch, same messages as `download`):
++  - `BTC/USDT` gives `invalid spot symbol 'BTC/USDT': ...`
++  - `1hour` gives `unknown interval '1hour': use one of 1m, ... 1d`
++  - an end date in the future gives `end 2026-10-05 is in the future (today is 2026-10-03 UTC)`
++  - start after end gives `start 2026-10-02 is after end 2026-10-01`
++  - `01/10/2026` gives `invalid start date '01/10/2026': use YYYY-MM-DD, ...`
++- **Too few candles:**
++  - `--slow 24` on the 24-candle day gives `error: the range has 24 candles, not more than slow 24: ...` and exit 2
++  - `--slow 23` exits 0
++  - `--slow 30` exits 2
++- **Bad market:** `--market margin` raises `SystemExit(2)` with argparse's `argument --market: invalid choice: 'margin' (choose from spot, futures)`.
++- **Missing day** (2026-09-30 .. 2026-10-01): `error: 24 candle(s) missing in 1 gap(s); ...`, exit 2.
++- **Download error** (503 from the stub): `error: https://api.kucoin.com/... HTTP 503 after 3 retries; check the network and run again`, exit 2.
++
++**Help screens.**
++- `python -m app.backtest --help` lists `run`.
++- `run --help` shows the same positionals, help text and `--market` choices as `download`, plus `--fast`, `--slow`, `--fee` and the SMA note as the epilog.
++- `python -m app.backtest` with no sub-command exits 2 with `the following arguments are required: COMMAND`.
++
++**Strategy, called directly.**
++- The hand example `[1,2,3,2,1,1,3]` with fast 2, slow 3 gives `[0, 0, 1, 1, 0, 0, 1]`.
++- The tie case gives `[0, 0, 0, 0]`.
++- Changing the closes after row 3 leaves `[0, 0, 1, 1]`.
++- Integer `close` works, and an empty frame gives `[]`.
++- It returns an `Int8` Series named `position`.
++- It refuses `True`, `2.0`, `0`, `fast >= slow`, a list, a frame with no `close`, and a String `close`, each with `BacktestInputError`.
++- `app.backtest.__all__` now holds `sma_cross_positions`.
++
++**Neighbouring flows.**
++- `app.data.__main__.main(["download", ...])` exits 0 with `1 fetched, 0 skipped, 0 not found`, and a bad symbol still exits 2 with the same message.
++- `run_backtest` on a hand-built 4-row frame returns `0.21`, 1 trade, `0.75` time in market, and still refuses a position of `2` with its old message.
++
++**Scope checks.**
++- `git diff main...HEAD` is empty for `app/data`, the three engine modules, `app/__init__.py`, `pyproject.toml`, `.github`, `conftest.py`, the stub and the fixtures.
++- `tests/test_backtest.py` gained only the one `__all__` line that plan.md Risks records.
++- `app/backtest/` has no numpy, eval, exec, pickle or subprocess.
++- All 18 Proof test names exist in the new test files, plus one extra, `test_run_reports_unusable_cache_dir`.
++
++Two of my commands were blocked by permission rules and I re-ran them in an allowed form: a script containing `{"`, and a command chained with `; echo`.
++
++## Not exercised
++- **The targets on the final tree:** build, test and lint have not run on this branch's head. The runner's `sdlc/test` check decides that, including whether the 19 new tests pass.
++- **The cache-directory error path:** I didn't trigger the `OSError` handler.
++- **Real network:** nothing ran against the real KuCoin API (the default `fetch=None` path).
++- **Other platforms and inputs:** I ran on Linux with Python 3.x only, not Windows. I didn't try multi-day ranges beyond 09-30..10-01, intervals other than `1h`, non-integer ties, or very large ranges.
++- **Fees just under 1:** `--fee 0.999999` is accepted (it is under 1) and the header shows `fee 100.00%`. That is what two decimals give, not a mismatch.
++
++## Mismatches with plan.md / spec.md
++None.
++
++## Verdict
++matches the plan
++
++Files involved:
++- /home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py
++- /home/runner/work/crypto-backtester/crypto-backtester/app/backtest/strategy.py
++- /home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py
++- /home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py
++- /home/runner/work/crypto-backtester/crypto-backtester/changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/gate-design.json
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md
+index 04bb4a6..f37a8c1 100644
+--- a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md
+@@ -18,13 +18,17 @@
+ - `tests/test_backtest_cli.py` — new: the CLI tests of Proof, through `main(argv,
+   fetch=kucoin)` with `tests/kucoin_stub.py` and the `clock` fixture of `tests/conftest.py`
+   (`pytestmark = pytest.mark.usefixtures("clock")`, as `tests/test_data_cli.py` does).
++- `tests/test_backtest.py` — build departure (see Risks, "The public-API test on `main`"): one
++  line, `"sma_cross_positions"` added to the exact `__all__` set that `test_public_api`
++  pins; nothing else in the file changes.
+ - `changes/0005-run-a-backtest-from-the-cli-with-an-sma/plan.md` — this file, whenever the
+   build departs from it.
+ 
+ Unchanged: `app/data/` (every module), `app/backtest/inputs.py`, `engine.py`, `summary.py`,
+ `app/__init__.py` (version `0.1.0`), `pyproject.toml` (its `packages` list already holds
+-`"app.backtest"`, so the new modules ship), every test file already on `main`
+-(`tests/test_*.py`, `tests/conftest.py`, `tests/kucoin_stub.py`, `tests/fixtures/`), and
++`"app.backtest"`, so the new modules ship), every other test file already on `main`
++(`tests/test_*.py` except `tests/test_backtest.py`, `tests/conftest.py`, `tests/kucoin_stub.py`,
++`tests/fixtures/`), and
+ `.github/workflows/ci.yml`. The Setup and Test commands stay as they are: no new dependency
+ and the same `python -m pytest`.
+ 
+@@ -106,7 +110,19 @@ before the build PR, so the deploy review does not flag an outdated `CLAUDE.md`)
+   `InvalidRequestError`, `DownloadError`, `Fetch`) as they are; `urllib_fetch` is not
+   needed, since `load_klines` uses it when `fetch` is `None`. The only
+   edited existing file is `app/backtest/__init__.py` (one import, one `__all__` entry, the
+-  docstring); `tests/test_backtest.py` imports from the submodules, not from it.
++  docstring). `tests/test_backtest.py` imports from the submodules, but its `test_public_api`
++  also pins `app.backtest.__all__` exactly (see the next item).
++- **The public-API test on `main` (build departure).** `tests/test_backtest.py::test_public_api`
++  asserts `set(app.backtest.__all__)` equals the five names of change 0004, so spec R1 and
++  Acceptance ("`sma_cross_positions` is in `app.backtest.__all__`") cannot pass with that file
++  unchanged, as R14 and the intent's Constraints ask; the design missed it. The two
++  requirements contradict each other. The build keeps R1, the intent's outcome ("the strategy
++  function joins the public API"), and adds the one name to that test's expected set: the test
++  still pins the whole public API, now the one this change specifies, and nothing it checked
++  is weakened. The other choice, re-exporting `sma_cross_positions` without listing it in
++  `__all__`, leaves the file untouched but fails R1 and an Acceptance line. If the owner
++  prefers that, the edit to `tests/test_backtest.py` is reverted, the name leaves `__all__`
++  and `test_public_api_exports_strategy` checks the attribute only.
+ - **Riskiest step: the strategy's warm-up and comparison (step 1).** An off-by-one in the
+   window (or `min_samples` lower than the length) would trade on a part-filled average and
+   still look plausible. Mitigations: the hand-computed list pins every row, including the
+diff --git a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/status.yaml b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/status.yaml
+index 9f61c30..23f31a3 100644
+--- a/changes/0005-run-a-backtest-from-the-cli-with-an-sma/status.yaml
++++ b/changes/0005-run-a-backtest-from-the-cli-with-an-sma/status.yaml
+@@ -1,7 +1,7 @@
+ id: "0005"
+ slug: run-a-backtest-from-the-cli-with-an-sma
+ title: Run a backtest from the CLI with an SMA crossover
+-phase: design
++phase: build
+ entry_route: idea
+ change_type: feature
+ gate:
+@@ -30,5 +30,5 @@ fast_lane:
+     sha: "1a1b3be5cd24094c53a764efe6f0af6b9c09b08c"
+     pr: 23
+ created_at: "2026-11-07T18:02:30Z"
+-updated_at: "2026-11-07T18:43:16Z"
++updated_at: "2026-11-07T20:17:58Z"
+ schema_version: 1
+diff --git a/tests/test_backtest.py b/tests/test_backtest.py
+index 3a9d6e5..b37cb38 100644
+--- a/tests/test_backtest.py
++++ b/tests/test_backtest.py
+@@ -296,6 +296,7 @@ def test_public_api() -> None:
+         "DEFAULT_FEE",
+         "Summary",
+         "run_backtest",
++        "sma_cross_positions",
+     }
+     assert api.run_backtest is run_backtest
+     assert api.BacktestResult is BacktestResult
+diff --git a/tests/test_backtest_cli.py b/tests/test_backtest_cli.py
+new file mode 100644
+index 0000000..6ddb829
+--- /dev/null
++++ b/tests/test_backtest_cli.py
+@@ -0,0 +1,184 @@
++"""Offline tests for `python -m app.backtest run`, driven through main(argv, fetch=stub)."""
++
++from __future__ import annotations
++
++from pathlib import Path
++
++import pytest
++from kucoin_stub import SPOT_1H, KuCoin
++
++from app.backtest.__main__ import SMA_NOTE, main
++from app.backtest.engine import run_backtest
++from app.backtest.strategy import sma_cross_positions
++from app.data import load_klines
++from app.data.http import HttpResponse
++
++pytestmark = pytest.mark.usefixtures("clock")
++
++DAY = "2026-10-01"
++
++
++def spot_day() -> KuCoin:
++    kucoin = KuCoin()
++    kucoin.add_spot(SPOT_1H)
++    return kucoin
++
++
++def run(kucoin: KuCoin, root: Path, *extra: str, days: tuple[str, str] = (DAY, DAY)) -> int:
++    argv = ["run", "btc-usdt", "1h", *days, "--cache-dir", str(root), *extra]
++    return main(argv, fetch=kucoin)
++
++
++def expected_lines(fast: int, slow: int, fee: float) -> list[str]:
++    frame = load_klines("BTC-USDT", "1h", DAY, DAY, cache=False, fetch=spot_day())
++    summary = run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee).summary
++    hold = run_backtest(frame, [1] * frame.height, fee=fee).summary
++    return [
++        (
++            f"BTC-USDT 1h spot, {DAY} .. {DAY}: {frame.height} candles; "
++            f"sma-cross fast {fast} slow {slow}; fee {fee:.2%}"
++        ),
++        SMA_NOTE,
++        f"{'total return':<14}{summary.total_return:>8.2%}",
++        f"{'max drawdown':<14}{summary.max_drawdown:>8.2%}",
++        f"{'trades':<14}{summary.trade_count:>8}",
++        f"{'win rate':<14}{summary.win_rate:>8.2%}",
++        f"{'time in market':<14}{summary.time_in_market:>8.2%}",
++        f"{'buy and hold':<14}{hold.total_return:>8.2%}",
++    ]
++
++
++def assert_refused(capsys: pytest.CaptureFixture[str], message: str) -> None:
++    captured = capsys.readouterr()
++    assert captured.out == ""
++    assert captured.err.startswith(f"error: {message}")
++    assert len(captured.err.splitlines()) == 1
++
++
++def test_run_prints_summary_and_buy_and_hold(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    assert run(spot_day(), tmp_path, "--fast", "3", "--slow", "5") == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert lines == expected_lines(3, 5, 0.001)
++    assert lines[0] == (
++        "BTC-USDT 1h spot, 2026-10-01 .. 2026-10-01: 24 candles; sma-cross fast 3 slow 5; fee 0.10%"
++    )
++    assert all(len(line) == 22 for line in lines[2:])
++
++
++def test_run_uses_cache_without_fetching(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    assert run(spot_day(), tmp_path, "--fast", "3", "--slow", "5", "--fee", "0") == 0
++    first = capsys.readouterr().out
++    empty = KuCoin()
++    assert run(empty, tmp_path, "--fast", "3", "--slow", "5", "--fee", "0") == 0
++    assert capsys.readouterr().out == first
++    assert empty.calls == []
++    assert first.splitlines() == expected_lines(3, 5, 0.0)
++
++
++@pytest.mark.parametrize(
++    ("argv", "message"),
++    [
++        (["BTC/USDT", "1h", DAY, DAY], "invalid spot symbol"),
++        (["BTC-USDT", "7m", DAY, DAY], "unknown interval"),
++        (["BTC-USDT", "1h", "2026-10-04", "2026-10-04"], "end 2026-10-04 is in the future"),
++        (["BTC-USDT", "1h", "2026-10-02", DAY], "start 2026-10-02 is after end 2026-10-01"),
++        (["BTC-USDT", "1h", "2026-30-09", DAY], "invalid start date"),
++    ],
++)
++def test_run_refuses_bad_request(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str], message: str
++) -> None:
++    kucoin = spot_day()
++    assert main(["run", *argv, "--cache-dir", str(tmp_path)], fetch=kucoin) == 2
++    assert_refused(capsys, message)
++    assert kucoin.calls == []
++
++
++def test_run_refuses_bad_market(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    with pytest.raises(SystemExit) as exited:
++        run(spot_day(), tmp_path, "--market", "margin")
++    assert exited.value.code == 2
++    assert "argument --market: invalid choice: 'margin'" in capsys.readouterr().err
++
++
++@pytest.mark.parametrize(
++    ("extra", "message"),
++    [
++        (["--fast", "0"], "fast 0 is not a whole number of at least 1"),
++        (["--fast", "x"], "fast 'x' is not a whole number of at least 1"),
++        (["--fast", "1.5"], "fast '1.5' is not a whole number of at least 1"),
++        (["--slow", "-5"], "slow -5 is not a whole number of at least 1"),
++        (["--fast", "50", "--slow", "20"], "fast 50 is not below slow 20: the fast SMA must be"),
++        (["--fast", "20", "--slow", "20"], "fast 20 is not below slow 20: the fast SMA must be"),
++    ],
++)
++def test_run_refuses_bad_lengths(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str], extra: list[str], message: str
++) -> None:
++    kucoin = spot_day()
++    assert run(kucoin, tmp_path, *extra) == 2
++    assert_refused(capsys, message)
++    assert kucoin.calls == []
++
++
++@pytest.mark.parametrize(
++    ("fee", "message"),
++    [
++        ("abc", "fee 'abc' is not a number: pass a proportional fee, for example 0.001"),
++        ("1.5", "fee 1.5 is out of range: it must be at least 0 and below 1"),
++        ("-0.1", "fee -0.1 is out of range: it must be at least 0 and below 1"),
++        ("nan", "fee nan is out of range"),
++    ],
++)
++def test_run_refuses_bad_fee(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str], fee: str, message: str
++) -> None:
++    kucoin = spot_day()
++    assert run(kucoin, tmp_path, "--fast", "3", "--slow", "5", "--fee", fee) == 2
++    assert_refused(capsys, message)
++    assert kucoin.calls == []
++
++
++def test_run_refuses_too_few_candles(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    assert run(spot_day(), tmp_path, "--fast", "3", "--slow", "30") == 2
++    assert_refused(
++        capsys,
++        "the range has 24 candles, not more than slow 30: the strategy could never take a "
++        "position; widen the dates or lower --slow",
++    )
++
++
++def test_run_candle_count_boundary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    assert run(spot_day(), tmp_path, "--fast", "3", "--slow", "24") == 2
++    assert_refused(capsys, "the range has 24 candles, not more than slow 24")
++    assert run(spot_day(), tmp_path, "--fast", "3", "--slow", "23") == 0
++    assert capsys.readouterr().out.splitlines() == expected_lines(3, 23, 0.001)
++
++
++def test_run_refuses_missing_day(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    code = run(spot_day(), tmp_path, "--fast", "3", "--slow", "5", days=("2026-09-30", DAY))
++    assert code == 2
++    assert_refused(capsys, "24 candle(s) missing in 1 gap(s); the first from 2026-09-30 00:00:00")
++
++
++def test_run_reports_download_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    kucoin = spot_day()
++    kucoin.refuse("api.kucoin.com", HttpResponse(503))
++    assert run(kucoin, tmp_path, "--fast", "3", "--slow", "5") == 2
++    captured = capsys.readouterr()
++    assert captured.out == ""
++    assert captured.err.startswith("error: ") and len(captured.err.splitlines()) == 1
++    assert "HTTP 503 after 3 retries" in captured.err
++
++
++def test_run_reports_unusable_cache_dir(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    not_a_directory = tmp_path / "file"
++    not_a_directory.write_text("")
++    assert run(spot_day(), not_a_directory, "--fast", "3", "--slow", "5") == 2
++    err = capsys.readouterr().err
++    assert len(err.splitlines()) == 1
++    assert err.startswith("error: ") and "check the cache directory (--cache-dir)" in err
+diff --git a/tests/test_strategies.py b/tests/test_strategies.py
+new file mode 100644
+index 0000000..a502039
+--- /dev/null
++++ b/tests/test_strategies.py
+@@ -0,0 +1,97 @@
++"""Offline tests for the SMA crossover strategy, on frames built by hand."""
++
++from __future__ import annotations
++
++from collections.abc import Sequence
++
++import polars as pl
++import pytest
++
++import app.backtest
++from app.backtest.engine import run_backtest
++from app.backtest.inputs import BacktestInputError
++from app.backtest.strategy import sma_cross_positions
++
++EXAMPLE = [1, 2, 3, 2, 1, 1, 3]
++# fast 2: [-, 1.5, 2.5, 2.5, 1.5, 1, 2]; slow 3: [-, -, 2, 7/3, 2, 4/3, 5/3]
++EXAMPLE_POSITIONS = [0, 0, 1, 1, 0, 0, 1]
++
++
++def _frame(closes: Sequence[float]) -> pl.DataFrame:
++    prices = pl.Series(closes, dtype=pl.Float64)
++    return pl.DataFrame({"open_time": list(range(len(closes))), "open": prices, "close": prices})
++
++
++def test_positions_match_hand_computed_example() -> None:
++    positions = sma_cross_positions(_frame(EXAMPLE), 2, 3)
++    assert positions.name == "position"
++    assert positions.dtype == pl.Int8
++    assert positions.to_list() == EXAMPLE_POSITIONS
++
++
++def test_warm_up_rows_are_flat() -> None:
++    # Rising closes: the fast SMA is above the slow one wherever both exist.
++    positions = sma_cross_positions(_frame([1, 2, 3, 4, 5, 6]), 2, 4).to_list()
++    assert positions == [0, 0, 0, 1, 1, 1]
++
++
++def test_equal_smas_give_flat() -> None:
++    assert sma_cross_positions(_frame([2, 2, 2, 2]), 2, 3).to_list() == [0, 0, 0, 0]
++
++
++def test_positions_ignore_later_closes() -> None:
++    changed = [*EXAMPLE[:4], 9, 9, 9]
++    positions = sma_cross_positions(_frame(changed), 2, 3).to_list()
++    assert positions[:4] == EXAMPLE_POSITIONS[:4] == [0, 0, 1, 1]
++    for k in range(len(EXAMPLE)):
++        later = [*EXAMPLE[: k + 1], *([50] * (len(EXAMPLE) - k - 1))]
++        kept = sma_cross_positions(_frame(later), 2, 3).to_list()[: k + 1]
++        assert kept == EXAMPLE_POSITIONS[: k + 1]
++
++
++def test_positions_accepted_by_run_backtest() -> None:
++    frame = _frame(EXAMPLE)
++    result = run_backtest(frame, sma_cross_positions(frame, 2, 3), fee=0.0)
++    assert result.equity["position"].to_list() == [0, 0, 0, 1, 1, 0, 0]
++    # Long from row 3's open (2) to row 5's open (1).
++    assert result.summary.trade_count == 1
++    assert abs(result.summary.total_return - (-0.5)) < 1e-9
++
++
++@pytest.mark.parametrize(
++    ("fast", "slow", "message"),
++    [
++        (0, 3, "fast 0 is not a whole number of at least 1"),
++        (-1, 3, "fast -1 is not a whole number of at least 1"),
++        (1.0, 3, "fast 1.0 is not a whole number of at least 1"),
++        ("2", 3, "fast '2' is not a whole number of at least 1"),
++        (True, 3, "fast True is not a whole number of at least 1"),
++        (2, 0, "slow 0 is not a whole number of at least 1"),
++        (2, None, "slow None is not a whole number of at least 1"),
++        (3, 2, "fast 3 is not below slow 2: the fast SMA must be the shorter one"),
++        (3, 3, "fast 3 is not below slow 3: the fast SMA must be the shorter one"),
++    ],
++)
++def test_refuses_bad_lengths(fast: object, slow: object, message: str) -> None:
++    with pytest.raises(BacktestInputError) as caught:
++        sma_cross_positions(_frame(EXAMPLE), fast, slow)  # type: ignore[arg-type]
++    assert str(caught.value) == message
++
++
++@pytest.mark.parametrize(
++    ("frame", "message"),
++    [
++        ({"close": [1.0, 2.0]}, "frame is a dict: pass a polars DataFrame"),
++        (pl.DataFrame({"open": [1.0, 2.0]}), "frame lacks the column close"),
++        (pl.DataFrame({"close": ["1", "2"]}), "close has dtype String: prices must be numbers"),
++    ],
++)
++def test_refuses_frame_without_close(frame: object, message: str) -> None:
++    with pytest.raises(BacktestInputError) as caught:
++        sma_cross_positions(frame, 2, 3)  # type: ignore[arg-type]
++    assert str(caught.value).startswith(message)
++
++
++def test_public_api_exports_strategy() -> None:
++    assert "sma_cross_positions" in app.backtest.__all__
++    assert app.backtest.sma_cross_positions is sma_cross_positions
