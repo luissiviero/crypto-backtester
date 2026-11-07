@@ -18,13 +18,8 @@ EXAMPLE_POSITIONS = [0, 0, 1, 1, 0, 0, 1]
 
 
 def _frame(closes: Sequence[float]) -> pl.DataFrame:
-    return pl.DataFrame(
-        {
-            "open_time": list(range(len(closes))),
-            "open": pl.Series(list(closes), dtype=pl.Float64),
-            "close": pl.Series(list(closes), dtype=pl.Float64),
-        }
-    )
+    prices = pl.Series(closes, dtype=pl.Float64)
+    return pl.DataFrame({"open_time": list(range(len(closes))), "open": prices, "close": prices})
 
 
 def test_positions_match_hand_computed_example() -> None:

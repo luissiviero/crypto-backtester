@@ -9,7 +9,6 @@ from collections.abc import Sequence
 from app.backtest.engine import run_backtest
 from app.backtest.inputs import DEFAULT_FEE, BacktestInputError, _check_fee
 from app.backtest.strategy import STRATEGY_NAME, sma_cross_positions, validate_lengths
-from app.backtest.summary import Summary
 from app.data import DownloadError, Fetch, KlineGapError, load_klines, loader
 from app.data.params import MARKETS, InvalidRequestError, make_request
 
@@ -53,10 +52,8 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _run(args: argparse.Namespace, fetch: Fetch | None) -> int:
-    now = loader.utc_now()
-    request = make_request(
-        args.symbol, args.interval, args.start, args.end, args.market, now.date()
-    )
+    today = loader.utc_now().date()
+    request = make_request(args.symbol, args.interval, args.start, args.end, args.market, today)
     fast, slow = _length(args.fast, "fast"), _length(args.slow, "slow")
     validate_lengths(fast, slow)
     fee = _fee(args.fee)
@@ -82,20 +79,17 @@ def _run(args: argparse.Namespace, fetch: Fetch | None) -> int:
         f"{STRATEGY_NAME} fast {fast} slow {slow}; fee {_percent(fee)}"
     )
     print(SMA_NOTE)
-    for label, value in _summary_lines(result.summary, hold.summary):
-        print(f"{label:<14}{value:>8}")
-    return 0
-
-
-def _summary_lines(summary: Summary, hold: Summary) -> list[tuple[str, str]]:
-    return [
+    summary = result.summary
+    for label, value in (
         ("total return", _percent(summary.total_return)),
         ("max drawdown", _percent(summary.max_drawdown)),
         ("trades", str(summary.trade_count)),
         ("win rate", _percent(summary.win_rate)),
         ("time in market", _percent(summary.time_in_market)),
-        ("buy and hold", _percent(hold.total_return)),
-    ]
+        ("buy and hold", _percent(hold.summary.total_return)),
+    ):
+        print(f"{label:<14}{value:>8}")
+    return 0
 
 
 def _length(text: str, name: str) -> int:
