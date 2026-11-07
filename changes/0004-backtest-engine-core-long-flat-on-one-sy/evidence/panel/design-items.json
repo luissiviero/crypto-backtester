@@ -1,0 +1,36 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "Packaging contradicts the intent: the intent says `pyproject.toml` needs no change, but its",
+      "key": "concern:cbc50fc5008760a7",
+      "kind": "concern",
+      "n": 1
+    },
+    {
+      "decided": false,
+      "item": "Win rate with no trades: the intent defines win rate as a share of trades and is silent",
+      "key": "concern:04bd3d7ee0322608",
+      "kind": "concern",
+      "n": 2
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [],
+  "pending": [
+    1,
+    2
+  ],
+  "phase": "design"
+}

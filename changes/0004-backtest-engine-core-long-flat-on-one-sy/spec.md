@@ -163,7 +163,7 @@ Change id: 0004. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design
   the final equity and the total return agree (R9, R10).
 
 ## Flagged concerns
-- Packaging contradicts the intent: the intent says `pyproject.toml` needs no change, but its
+- decided (by panel #1): Add "app.backtest" to `[tool.setuptools] packages`, have the build verifier build a wheel and list `app/backtest/*.py` in it as proof, and leave the intent's "needs no change" line for the owner to overturn at the design gate. — Packaging contradicts the intent: the intent says `pyproject.toml` needs no change, but its
   explicit `packages = ["app", "app.data"]` leaves `app.backtest` out of a regular
   (non-editable) install. The editable install of `commands.setup`, and so CI and the tests,
   still import it through the `app` directory. The design adds `"app.backtest"` to the list,

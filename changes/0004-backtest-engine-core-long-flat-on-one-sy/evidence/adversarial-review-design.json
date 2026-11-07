@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "phase": "design",
+  "head": "d9b4053c505b208ea7c2d3b5e47441b92a35b3e4",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Spec: acceptance is measurable (every worked-example number is pinned to 1e-9), but two flagged concerns are still open for the gate: the pyproject.toml packages line, which departs from the intent's 'pyproject.toml needs no change', and win rate 0.0 when there are no trades.",
+    "Blast radius: a new package of four modules plus a shared-file edit (pyproject.toml [tool.setuptools] packages), where a typo would break the editable install and every CI job. No risk-list item is touched.",
+    "Test coverage: the existing tests cover none of this. All the behaviour is new and is proven only by a new test file that does not exist yet."
+  ],
+  "attempted": [
+    "Intent: the design delivers the intent's long/flat engine on one frame: fill at the next row's open, gap-agnostic, fee per fill, equity/trades/summary, and the refusal list. The three open questions are answered with the recommended options. The fee number is carried forward for the owner, and the default is used meanwhile. Not a quick intent. Nothing found.",
+    "Spec and plan: R1-R19 map to plan steps 1-6 and to the Proof tests. Every intent acceptance bullet (buy-and-hold, two-trade example, decision candle, gap, refusals) has a named test. The extra refusals beyond the intent are a closed concern with its decision. The pyproject and win-rate concerns are flagged openly with an alternative, which is acceptable at design.",
+    "Worked example recomputed by hand: equity 1.0, 0.00999*110=1.0989, *120=1.1988, sell 0.00999*120*0.999=1.1976012, flat, 1.1976012*0.999*85/90=1.1299367322, 1.1976012*0.999*0.9*0.999=1.07568647568108. Trade returns 1.2*0.999^2-1=0.1976012 and 0.9*0.999^2-1=-0.1017991. MDD from peak 1.1988 to 1.0756865 = 1-0.9*0.999^3 = 0.1026973009. Held 0,1,1,0,0,1,0 gives 3/7. All match the spec and plan.",
+    "Lookahead: the pass reads positions[i-1] at row i and fills at opens[i]. positions[last] is never read for a fill. The end-of-frame close uses closes[-1] on the last row only, which matches R17. Equity at row i depends only on decisions at rows < i.",
+    "Claims against today's code: pyproject.toml line 9 is packages = [\"app\", \"app.data\"] (true, so app.backtest would be missing from a wheel; the flagged concern is real). app/data/__init__.py has a sorted __all__ (true). InvalidRequestError(ValueError) is in app/data/params.py (true). KlineGapError.frame exists in loader.py (true). schema.py has TIME_DTYPE = Datetime('ms','UTC') and Float64 open/close (true). combine() returns days sorted and unique in day order, so load_klines output passes the strict-increase check. _finite already guarantees finite prices. The test files listed as unchanged exist (test_smoke, test_data*, conftest, kucoin_stub). The CLAUDE.md line references (4-7 paragraph, app/data item ending at line 33, tests item at 36-37) match the file. docs/decisions/index.md does not exist, and the spec cites no decision.",
+    "Proof: design phase, so there are no toolchain logs yet. The Proof lists 19 named tests covering every acceptance bullet, plus parametrised bad values.",
+    "Blast radius: the diff touches only changes/0004-*/ (spec, plan, status, run/hook records). No guardrail file is in the diff. The planned code touches pyproject.toml (one list entry) and new files only. app/data and the existing tests stay unchanged. No risk-list item: the engine is an in-memory simulation with no funds, orders, credentials or config.",
+    "Policies: security-baseline rule 2 is applied (strict input schema, NaN fee, bool positions, non-positive prices). The no-I/O and no-new-dependency constraints are stated. ux-and-brand rule 4 shapes the error messages. data-conventions is correctly judged not applicable. The CLAUDE.md drift is named for the owner, as the intent asks.",
+    "Tests (design-level): the decision-candle and gap tests use distinct prices on either side, so an off-by-one fill cannot pass. The two-trade test pins every equity value, not only the total. Minor gaps, not parks: plan step 3 records the entry as (i, opens[i]) but never says to store entry_cash, which the return formula needs (R13 defines it, so a builder can follow it). The handling of a non-sequence positions argument (a generator) is unspecified.",
+    "Skip markers: not checked at design (the ratchets check runs at build and test).",
+    "Drive: commands.drive is not relevant at design; the plan lists no drive files."
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "decisions": [
+    {
+      "advocate": "Keep the `pyproject.toml` edit, but not in its easy form: name the proof for it (a wheel listing in the build verifier, as change 0002's verifier did) and prefer `[tool.setuptools.packages.find] include = [\"app*\"]` over a third hand-kept entry, so this concern is not re-filed by every later package; if the owner would rather honour the intent's \"needs no change\" line, leaving the file untouched is safe for every install this project actually performs.",
+      "at": "2026-11-07T11:06:26Z",
+      "cost_usd": null,
+      "decision": "Add \"app.backtest\" to `[tool.setuptools] packages`, have the build verifier build a wheel and list `app/backtest/*.py` in it as proof, and leave the intent's \"needs no change\" line for the owner to overturn at the design gate.",
+      "head": "d9b4053c505b208ea7c2d3b5e47441b92a35b3e4",
+      "item": "Packaging contradicts the intent: the intent says `pyproject.toml` needs no change, but its",
+      "item_n": 1,
+      "key": "concern:cbc50fc5008760a7",
+      "kind": "concern",
+      "n": 1,
+      "overturned": null,
+      "phase": "design",
+      "rationale": [
+        "Both verdicts agree to keep the edit: the explicit list leaves app.backtest out of a non-editable install, and pyproject.toml is not a guardrail file.",
+        "The intent line sits under 'no new dependency'. The edit adds no dependency and leaves ci.yml alone, so it keeps to what that line was for.",
+        "The advocate is right that no test catches the entry being absent or misspelt, so the safer reading adds the wheel listing change 0002 already used as proof.",
+        "Keep the explicit entry rather than switching to packages.find: it is the smaller change plan.md already names, and a discovery change is a wider design choice for the owner.",
+        "Leaving the edit out ships an engine that cannot be imported, and no gate would catch it. Making the edit risks only a typo, which step 6's setup run catches."
+      ],
+      "reviewer": "Keep the design: add `\"app.backtest\"` to `[tool.setuptools] packages` and close the concern as decided."
+    }
+  ],
+  "phase": "design",
+  "schema_version": 1
+}

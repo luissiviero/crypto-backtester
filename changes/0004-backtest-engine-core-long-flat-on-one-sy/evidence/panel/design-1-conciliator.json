@@ -1,0 +1,12 @@
+{
+  "reviewer": "keep the one-line edit adding \"app.backtest\" to the explicit packages list, since leaving it out silently breaks a regular install",
+  "advocate": "keep the edit but name a wheel-listing proof in the build verifier and prefer packages.find include = [\"app*\"], with the owner's design-gate merge recorded as overriding the intent line",
+  "decision": "Add \"app.backtest\" to `[tool.setuptools] packages`, have the build verifier build a wheel and list `app/backtest/*.py` in it as proof, and leave the intent's \"needs no change\" line for the owner to overturn at the design gate.",
+  "rationale": [
+    "Both verdicts agree to keep the edit: the explicit list leaves app.backtest out of a non-editable install, and pyproject.toml is not a guardrail file.",
+    "The intent line sits under 'no new dependency'. The edit adds no dependency and leaves ci.yml alone, so it keeps to what that line was for.",
+    "The advocate is right that no test catches the entry being absent or misspelt, so the safer reading adds the wheel listing change 0002 already used as proof.",
+    "Keep the explicit entry rather than switching to packages.find: it is the smaller change plan.md already names, and a discovery change is a wider design choice for the owner.",
+    "Leaving the edit out ships an engine that cannot be imported, and no gate would catch it. Making the edit risks only a typo, which step 6's setup run catches."
+  ]
+}
