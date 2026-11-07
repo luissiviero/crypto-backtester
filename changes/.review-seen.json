@@ -65,6 +65,17 @@
     "last_seen": "2026-10-28T17:18:27Z",
     "summary": "When a REST range is refused partway (for example HTTP 451 on the second page), any day that already got some candles is reported as 'missing candles in REST response' and the HTTP status is lost. Every empty day in the range gets the refusal reason, even one whose page answered with no candles."
   },
+  "146386ced56a3ff0": {
+    "changes": [
+      "0004"
+    ],
+    "count": 1,
+    "file": "app/backtest/inputs.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-11-07T13:58:27Z",
+    "summary": "A numpy integer array of 0/1 positions is refused (numpy.int64 is not `int`) with a hint to cast 'a Boolean or Float series with .cast(pl.Int8)', which does not apply to a numpy array and can mislead the caller."
+  },
   "192f90d781e7ed81": {
     "changes": [
       "0001"
@@ -120,6 +131,17 @@
     "last_seen": "2026-11-07T05:26:55Z",
     "summary": "cache_info validates --interval against the spot market even when --market futures is given, so `cache-info --market futures --interval 6h` is accepted and silently lists nothing instead of being refused like everywhere else; harmless today, and no spec line covers it."
   },
+  "40442704e34e5ea7": {
+    "changes": [
+      "0004"
+    ],
+    "count": 1,
+    "file": "app/backtest/inputs.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-11-07T13:56:11Z",
+    "summary": "A non-iterable `positions` (for example an int or None) raises a bare TypeError from `list(positions)` instead of BacktestInputError, so the input is not refused with a clear message as R14/R15 intend for bad inputs; doubt: R14 does not list a non-sequence explicitly."
+  },
   "4293ca6feec9d572": {
     "changes": [
       "0001"
@@ -174,6 +196,17 @@
     "last_change": "0002",
     "last_seen": "2026-11-05T20:50:36Z",
     "summary": "The spec acceptance item 'python -m pip install -e . succeeds and git status stays clean (Linux)' is only partly proven: the build run's install failed on a read-only sandbox and the test run built a wheel instead, so the first full editable install is the owner's Windows check at the deploy gate."
+  },
+  "57d5acae244d00e0": {
+    "changes": [
+      "0004"
+    ],
+    "count": 1,
+    "file": "app/backtest/inputs.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-11-07T13:58:27Z",
+    "summary": "A Float `open_time` with a NaN (for example [0.0, 1.0, NaN]) passes validation, because NaN is not null and polars orders NaN above every number, so the strict-increase check accepts it; doubt: load_klines never gives a Float open_time."
   },
   "69731a3b4fdfd6fc": {
     "changes": [
@@ -274,6 +307,17 @@
     "last_seen": "2026-11-07T05:26:55Z",
     "summary": "UNKNOWN_WEIGHT_WAIT keeps the Binance 'weight' name after WeightPacer became RateLimitPacer and the weight header was removed; a naming leftover only."
   },
+  "a9248cb5b1630bae": {
+    "changes": [
+      "0004"
+    ],
+    "count": 1,
+    "file": "app/backtest/inputs.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-11-07T13:58:27Z",
+    "summary": "A non-iterable `positions` (None or an int) escapes as a bare TypeError from `list(positions)` ('NoneType' object is not iterable) instead of a BacktestInputError naming the input and what is accepted; doubt: R14 does not list a non-sequence explicitly."
+  },
   "bca56c45b2be62e2": {
     "changes": [
       "0002"
@@ -372,5 +416,16 @@
     "last_change": "0003",
     "last_seen": "2026-11-07T05:29:24Z",
     "summary": "The diff makes CLAUDE.md outdated: lines 5-6 still describe Binance spot/USD-M klines from Binance Vision, line 30 lists the deleted `vision` module, and lines 36-37 name the deleted tests/binance_stub.py and tests/fixtures/binance/; plan.md names the replacement lines for the owner's follow-up PR, but until that lands the guardrail file misdescribes the package."
+  },
+  "f8a598e0ccf48f43": {
+    "changes": [
+      "0004"
+    ],
+    "count": 1,
+    "file": "app/backtest/inputs.py",
+    "first_change": "0004",
+    "last_change": "0004",
+    "last_seen": "2026-11-07T13:56:11Z",
+    "summary": "A numpy integer array of 0/1 positions is refused (numpy.int64 is not `int`) with a message that suggests casting 'a Boolean or Float series with .cast(pl.Int8)', which does not apply to a numpy array and may mislead the caller."
   }
 }

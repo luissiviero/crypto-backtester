@@ -3,7 +3,8 @@
 ## Files that change
 - `app/backtest/__init__.py` — new: module docstring and the public API. It re-exports
   `run_backtest`, `DEFAULT_FEE`, `BacktestResult`, `Summary` and `BacktestInputError`, with
-  `__all__` sorted as in `app/data/__init__.py`.
+  `__all__` sorted as in `app/data/__init__.py` (build: the format hook's ruff fix puts the
+  constant `DEFAULT_FEE` first, isort-style; `app/data/` has no constant to show the rule).
 - `app/backtest/inputs.py` — new: `BacktestInputError(ValueError)`, `DEFAULT_FEE = 0.001`,
   `REQUIRED_COLUMNS = ("open_time", "open", "close")` and
   `validate(frame, positions, fee) -> Inputs`. `Inputs` is a frozen dataclass holding
@@ -13,7 +14,9 @@
 - `app/backtest/engine.py` — new: `run_backtest(frame, positions, *, fee=DEFAULT_FEE) ->
   BacktestResult`, the frozen dataclass `BacktestResult(equity, trades, summary)`, the forward
   pass `_simulate(inputs)`, and the two frame builders `_equity_frame` and `_trades_frame`.
-  `TRADE_SCHEMA` is built from the input's `open_time` dtype.
+  The trade times keep the input's `open_time` dtype: `_trades_frame` gathers them from the
+  `open_time` series by row (build: this replaces a separate `TRADE_SCHEMA` constant, so an
+  empty trades frame has the same dtypes with no second source of them).
 - `app/backtest/summary.py` — new: the frozen dataclass `Summary(total_return, max_drawdown,
   trade_count, win_rate, time_in_market)` and `summarize(equity: list[float],
   held: list[int], returns: list[float]) -> Summary`. The `Summary` docstring says of

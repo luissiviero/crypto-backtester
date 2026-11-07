@@ -1,0 +1,217 @@
+{
+  "schema_version": 1,
+  "change_id": "0004",
+  "slug": "backtest-engine-core-long-flat-on-one-sy",
+  "phase": "deploy",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:deploy-ready",
+  "head": "d254b780cc6412aa868347ea59c930d007bf8be4",
+  "at": "2026-11-07T13:58:33Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 2,
+        "panel_cap": 4,
+        "elapsed_minutes": 1.9,
+        "spend_usd": null,
+        "spend_usd_total": 12.857442,
+        "spend_entries": 4,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "clean_tree",
+      "ok": true,
+      "reason": "no uncommitted change outside the change folder",
+      "need": "",
+      "details": {
+        "ignored": [
+          "CLAUDE.local.md",
+          "changes/.review-seen.json"
+        ]
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "0 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q .",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.14.4, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.14.3, typeguard-4.4.4\ncollected 152 items\n\ntests/test_backtest.py ...............................................   [ 30%]\ntests/test_data.py ..................................................... [ 65%]\n.............                                                            [ 74%]\ntests/test_data_cache.py ......                                          [ 78%]\ntests/test_data_cli.py ..........                                        [ 84%]\ntests/test_data_rest.py ......................                           [ 99%]\ntests/test_smoke.py .                                                    [100%]\n\n============================= 152 passed in 0.49s ==============================\n"
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "evidence",
+      "ok": true,
+      "reason": "evidence present: test.log, build.log, lint.log, verifier.md",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof",
+      "ok": true,
+      "reason": "no drive target: nothing to compare",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "findings",
+      "ok": true,
+      "reason": "no Important review finding",
+      "need": "",
+      "details": {
+        "tally": {
+          "important": 0,
+          "nit": 3,
+          "nits_omitted": 0
+        }
+      }
+    },
+    {
+      "name": "plan_sync",
+      "ok": true,
+      "reason": "every committed source file is in plan.md",
+      "need": "",
+      "details": {
+        "planned_but_unchanged": [
+          "app/data/",
+          "Lines",
+          "The"
+        ],
+        "plan_growth": {
+          "added": [],
+          "removed": []
+        }
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "test_lock",
+      "ok": true,
+      "reason": "not a fix-type change: no test-file lock",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "ratchets",
+      "ok": true,
+      "reason": "no undeclared test file or eval case drop",
+      "need": "",
+      "details": {
+        "hits": {},
+        "declared": [],
+        "skip_markers": [],
+        "accepted": []
+      }
+    },
+    {
+      "name": "lesson_and_eval",
+      "ok": true,
+      "reason": "not an incident change at gate (deploy): nothing to check",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "no adversarial verdict required at gate (deploy)",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "no readable verdict to check",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "phase": "build",
+  "head": "1044038d8640fb41e4b244743b1a517077633a09",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Spec is tight (acceptance numeric to 1e-9, both flagged concerns closed by panel decisions), but one open question (whether 0.001 is KuCoin's current base fee) is carried forward to the owner.",
+    "Blast radius is small but includes a shared config file: pyproject.toml's [tool.setuptools] packages list, which no test covers (only the verifier's wheel listing proves it).",
+    "All of app/backtest/ is new code; no existing test covers it, only the new tests/test_backtest.py."
+  ],
+  "attempted": [
+    "Intent: checked the fill rule (decide at close i, fill at open i+1 whatever the gap), the fee formulas, equity start 1.0, the five summary metrics and the refused inputs against intent.md. engine._simulate reads positions[row-1] and fills at opens[row], buys with cash*(1-fee)/open and sells with coins*open*(1-fee). positions[last] is never filled, and an open position is closed at the last close with the fee. All match. Out-of-scope items (CLI, shorts, slippage) are absent.",
+    "Spec and plan: R1-R19 each traced to code. Validation order is fee, then frame (type, columns, height, open_time nulls and strict increase, prices), then positions, as in spec Design. The diff touches exactly the files plan.md lists (app/backtest/{__init__,inputs,engine,summary}.py, pyproject.toml, tests/test_backtest.py, plan.md). The two build departures (the __all__ order, no TRADE_SCHEMA) are written into plan.md in the diff. The non-numeric price dtype refusal (a9f33f3) falls under R14's 'validate every input' and is tested.",
+    "Proof: no test.log, build.log or lint.log are committed, and verifier.md states it is a CI session (read, not run), so the targets are the runner's (the deferred case, not missing proof). The verifier exercised the changed behaviour by calling the code directly: worked example equity within 2.2e-16 of the spec values, gap fill at the 03:00 open, end-of-frame close, last-row decision, zero-trade schema and every R14 refusal, with literal messages. The wheel listing contains all four app/backtest modules. All 19 Proof test names in plan.md exist in tests/test_backtest.py.",
+    "Hand recomputation: worked example row 5 equity is 1.1976012*0.999*85/90 = 1.1299367322. Max drawdown is 1 - 1.07568647568108/1.1988 = 1 - 0.9*0.999^3 = 0.1026973009. Time in market from held [0,1,1,0,0,1,0] is 3/7. All match the test's asserted values.",
+    "Blast radius: app/data/ is unchanged and app.backtest imports nothing from it. No existing module imports app.backtest. pyproject.toml gets one list entry, and its removed line matches today's file. The version stays 0.1.0. No guardrail file (.claude/**, CLAUDE.md, REVIEW.md, sdlc.yaml, policies/**) is in the diff. Risk-list hits: none. The CLAUDE.md lines are named in plan.md for the owner, as CLAUDE.md requires.",
+    "Policies: security-baseline rule 2 is applied (strict schema on the frame, prices, positions and fee; bool and NaN refused). There is no I/O, logging, eval, pickle or numpy import, and no new dependency (coding-standards rule 5). Public functions have type hints, the result types are frozen dataclasses, BacktestInputError subclasses ValueError like InvalidRequestError (verified in app/data/params.py:61), and the messages name the input, the first bad index and what is accepted (R15).",
+    "Tests: a lookahead bug (filling at the decision row) would fail test_no_fill_on_decision_candle (close 110 differs from next open 120; entry_time and equity pinned) and the gap test (entry at times[2]). A missing end-of-frame fee would fail test_open_position_closed_at_last_close. A wrong drawdown peak would fail the pinned 0.1026973009. The tolerances are abs=1e-9 as required. The change is feature-type, and no test file on main is edited (only the new tests/test_backtest.py).",
+    "Skip markers: none added in the diff.",
+    "Claims against today's code: app/data/__init__.py __all__ is a sorted list (true). app/data/params.py InvalidRequestError(ValueError) exists. pyproject.toml packages was [\"app\", \"app.data\"] (the diff's removed line). app/data/schema.py open/close are Float64 and open_time is Datetime('ms','UTC'), so a load_klines frame passes _check_prices and _check_open_time. polars is already a runtime dependency. No claim was contradicted.",
+    "Edge probes in the code: a one-row frame (the loop is skipped, equity [1.0]); entry on the last row then closed at the same row's close (handled); a zero-trade trades frame keeps the open_time dtype via gather([]); max_drawdown never divides by zero, because prices > 0 and fee < 1 keep the peak > 0; a numpy int or generator for positions is refused or consumed strictly (consistent with the decided strictness). Nothing breaks behaviour.",
+    "Drive: commands.drive is empty in sdlc.yaml, so there is nothing to judge."
+  ]
+}

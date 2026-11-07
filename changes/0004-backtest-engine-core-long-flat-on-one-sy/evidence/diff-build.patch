@@ -1,0 +1,930 @@
+ app/backtest/__init__.py                           |  16 ++
+ app/backtest/engine.py                             | 109 ++++++++
+ app/backtest/inputs.py                             | 110 ++++++++
+ app/backtest/summary.py                            |  42 +++
+ .../evidence/hook-log.jsonl                        | 132 +++++++++
+ .../evidence/run-build.json                        |   6 +
+ .../evidence/verifier.md                           |  83 ++++++
+ .../plan.md                                        |   7 +-
+ .../status.yaml                                    |   4 +-
+ pyproject.toml                                     |   2 +-
+ tests/test_backtest.py                             | 310 +++++++++++++++++++++
+ 11 files changed, 816 insertions(+), 5 deletions(-)
+
+diff --git a/app/backtest/__init__.py b/app/backtest/__init__.py
+new file mode 100644
+index 0000000..617d629
+--- /dev/null
++++ b/app/backtest/__init__.py
+@@ -0,0 +1,16 @@
++"""The backtest engine: a long/flat backtest of one symbol on a klines frame.
++
++It does no I/O: pass it a frame such as `app.data.load_klines` returns and one position per row.
++"""
++
++from app.backtest.engine import BacktestResult, run_backtest
++from app.backtest.inputs import DEFAULT_FEE, BacktestInputError
++from app.backtest.summary import Summary
++
++__all__ = [
++    "DEFAULT_FEE",
++    "BacktestInputError",
++    "BacktestResult",
++    "Summary",
++    "run_backtest",
++]
+diff --git a/app/backtest/engine.py b/app/backtest/engine.py
+new file mode 100644
+index 0000000..3efddb7
+--- /dev/null
++++ b/app/backtest/engine.py
+@@ -0,0 +1,109 @@
++"""The long/flat engine: one forward pass that fills each decision at the next row's open."""
++
++from __future__ import annotations
++
++from collections.abc import Sequence
++from dataclasses import dataclass, field
++
++import polars as pl
++
++from app.backtest.inputs import DEFAULT_FEE, Inputs, validate
++from app.backtest.summary import START_EQUITY, Summary, summarize
++
++
++@dataclass(frozen=True)
++class BacktestResult:
++    """The equity per row (marked at close), the closed trades and the summary."""
++
++    equity: pl.DataFrame
++    trades: pl.DataFrame
++    summary: Summary
++
++
++@dataclass(frozen=True)
++class _Trade:
++    entry_row: int
++    entry_price: float
++    exit_row: int
++    exit_price: float
++    ret: float
++    closed_at_end: bool
++
++
++@dataclass
++class _Pass:
++    equity: list[float]
++    held: list[int]
++    trades: list[_Trade] = field(default_factory=list)
++
++
++def run_backtest(
++    frame: pl.DataFrame, positions: pl.Series | Sequence[int], *, fee: float = DEFAULT_FEE
++) -> BacktestResult:
++    """Backtest long/flat `positions` (0 or 1, decided at each row's close) on `frame`.
++
++    Each decision fills at the next row's open, whatever the gap; a position still long after
++    the last row's open is closed at the last close. Raises BacktestInputError on bad input.
++    """
++    inputs = validate(frame, positions, fee)
++    run = _simulate(inputs)
++    return BacktestResult(
++        equity=_equity_frame(inputs.open_time, run),
++        trades=_trades_frame(inputs.open_time, run.trades),
++        summary=summarize(run.equity, run.held, [trade.ret for trade in run.trades]),
++    )
++
++
++def _simulate(inputs: Inputs) -> _Pass:
++    fee = inputs.fee
++    opens, closes = inputs.opens, inputs.closes
++    cash, coins, held = START_EQUITY, 0.0, 0
++    entry_row, entry_cash = 0, 0.0
++    run = _Pass(equity=[START_EQUITY], held=[0])
++    for row in range(1, len(opens)):
++        target = inputs.positions[row - 1]
++        if target != held:
++            if target:
++                entry_row, entry_cash = row, cash
++                coins, cash = cash * (1 - fee) / opens[row], 0.0
++            else:
++                cash, coins = coins * opens[row] * (1 - fee), 0.0
++                run.trades.append(
++                    _Trade(
++                        entry_row, opens[entry_row], row, opens[row], cash / entry_cash - 1, False
++                    )
++                )
++            held = target
++        run.held.append(held)
++        run.equity.append(coins * closes[row] if held else cash)
++    if held:
++        last = len(closes) - 1
++        cash = coins * closes[last] * (1 - fee)
++        run.trades.append(
++            _Trade(entry_row, opens[entry_row], last, closes[last], cash / entry_cash - 1, True)
++        )
++        run.equity[last] = cash
++    return run
++
++
++def _equity_frame(open_time: pl.Series, run: _Pass) -> pl.DataFrame:
++    return pl.DataFrame(
++        [
++            open_time,
++            pl.Series("position", run.held, dtype=pl.Int8),
++            pl.Series("equity", run.equity, dtype=pl.Float64),
++        ]
++    )
++
++
++def _trades_frame(open_time: pl.Series, trades: list[_Trade]) -> pl.DataFrame:
++    return pl.DataFrame(
++        [
++            open_time.gather([trade.entry_row for trade in trades]).alias("entry_time"),
++            pl.Series("entry_price", [trade.entry_price for trade in trades], dtype=pl.Float64),
++            open_time.gather([trade.exit_row for trade in trades]).alias("exit_time"),
++            pl.Series("exit_price", [trade.exit_price for trade in trades], dtype=pl.Float64),
++            pl.Series("return", [trade.ret for trade in trades], dtype=pl.Float64),
++            pl.Series("closed_at_end", [trade.closed_at_end for trade in trades], dtype=pl.Boolean),
++        ]
++    )
+diff --git a/app/backtest/inputs.py b/app/backtest/inputs.py
+new file mode 100644
+index 0000000..fb2b189
+--- /dev/null
++++ b/app/backtest/inputs.py
+@@ -0,0 +1,110 @@
++"""Backtest inputs: the frame, the positions and the fee, checked before any calculation."""
++
++from __future__ import annotations
++
++import math
++from collections.abc import Sequence
++from dataclasses import dataclass
++
++import polars as pl
++
++DEFAULT_FEE = 0.001
++REQUIRED_COLUMNS = ("open_time", "open", "close")
++
++
++class BacktestInputError(ValueError):
++    """A frame, position series or fee the backtest engine refuses."""
++
++
++@dataclass(frozen=True)
++class Inputs:
++    open_time: pl.Series
++    opens: list[float]
++    closes: list[float]
++    positions: list[int]
++    fee: float
++
++
++def validate(frame: pl.DataFrame, positions: pl.Series | Sequence[int], fee: float) -> Inputs:
++    checked_fee = _check_fee(fee)
++    opens, closes = _check_frame(frame)
++    checked_positions = _check_positions(positions, frame.height)
++    return Inputs(
++        open_time=frame["open_time"],
++        opens=opens,
++        closes=closes,
++        positions=checked_positions,
++        fee=checked_fee,
++    )
++
++
++def _check_fee(fee: float) -> float:
++    if isinstance(fee, bool) or not isinstance(fee, (int, float)):
++        raise BacktestInputError(
++            f"fee {fee!r} is not a number: pass a proportional fee as a float, for example 0.001"
++        )
++    if not 0 <= fee < 1:
++        raise BacktestInputError(
++            f"fee {fee!r} is out of range: it must be at least 0 and below 1, for example 0.001"
++        )
++    return float(fee)
++
++
++def _check_frame(frame: pl.DataFrame) -> tuple[list[float], list[float]]:
++    if not isinstance(frame, pl.DataFrame):
++        raise BacktestInputError(
++            f"frame is a {type(frame).__name__}: pass a polars DataFrame such as load_klines returns"
++        )
++    missing = [name for name in REQUIRED_COLUMNS if name not in frame.columns]
++    if missing:
++        raise BacktestInputError(
++            f"frame lacks the column(s) {', '.join(missing)}: it needs "
++            f"{', '.join(REQUIRED_COLUMNS)}"
++        )
++    if frame.height == 0:
++        raise BacktestInputError("frame is empty: pass at least one candle")
++    _check_open_time(frame["open_time"])
++    return _check_prices(frame["open"]), _check_prices(frame["close"])
++
++
++def _check_open_time(open_time: pl.Series) -> None:
++    nulls = open_time.is_null().arg_true()
++    if nulls.len():
++        raise BacktestInputError(f"open_time[{nulls[0]}] is null: every row needs an open_time")
++    earlier = open_time.slice(0, open_time.len() - 1)
++    later = open_time.slice(1)
++    not_increasing = (later <= earlier).arg_true()
++    if not_increasing.len():
++        row = not_increasing[0] + 1
++        raise BacktestInputError(
++            f"open_time[{row}] is {open_time[row]!r}, not after open_time[{row - 1}] "
++            f"{open_time[row - 1]!r}: open_time must be strictly increasing"
++        )
++
++
++def _check_prices(column: pl.Series) -> list[float]:
++    if not column.dtype.is_numeric():
++        raise BacktestInputError(f"{column.name} has dtype {column.dtype}: prices must be numbers")
++    prices = column.cast(pl.Float64).to_list()
++    for row, value in enumerate(prices):
++        if value is None or not math.isfinite(value) or value <= 0:
++            raise BacktestInputError(
++                f"{column.name}[{row}] is {value!r}: every price must be a finite number above 0"
++            )
++    return prices
++
++
++def _check_positions(positions: pl.Series | Sequence[int], height: int) -> list[int]:
++    values = positions.to_list() if isinstance(positions, pl.Series) else list(positions)
++    if len(values) != height:
++        raise BacktestInputError(
++            f"positions has {len(values)} values but the frame has {height} rows: "
++            "pass one position per row"
++        )
++    for row, value in enumerate(values):
++        if type(value) is not int or value not in (0, 1):
++            raise BacktestInputError(
++                f"positions[{row}] is {value!r}: each position must be the integer 0 (flat) "
++                "or 1 (long); cast a Boolean or Float series with .cast(pl.Int8)"
++            )
++    return values
+diff --git a/app/backtest/summary.py b/app/backtest/summary.py
+new file mode 100644
+index 0000000..c08afd9
+--- /dev/null
++++ b/app/backtest/summary.py
+@@ -0,0 +1,42 @@
++"""The backtest summary: five numbers computed from the equity curve and the trades."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++
++START_EQUITY = 1.0
++
++
++@dataclass(frozen=True)
++class Summary:
++    """Total return, max drawdown, trade count, win rate and time in market.
++
++    `win_rate` is the share of trades whose return after fees is above 0: 0.0 when there are
++    no trades; see trade_count. `time_in_market` counts rows, not wall time.
++    """
++
++    total_return: float
++    max_drawdown: float
++    trade_count: int
++    win_rate: float
++    time_in_market: float
++
++
++def summarize(equity: list[float], held: list[int], returns: list[float]) -> Summary:
++    wins = sum(1 for value in returns if value > 0)
++    return Summary(
++        total_return=equity[-1] / START_EQUITY - 1,
++        max_drawdown=max_drawdown(equity),
++        trade_count=len(returns),
++        win_rate=wins / len(returns) if returns else 0.0,
++        time_in_market=sum(held) / len(held),
++    )
++
++
++def max_drawdown(equity: list[float]) -> float:
++    peak = equity[0]
++    worst = 0.0
++    for value in equity:
++        peak = max(peak, value)
++        worst = max(worst, 1 - value / peak)
++    return worst
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl
+index ba7a645..ef70bc1 100644
+--- a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/hook-log.jsonl
+@@ -45,3 +45,135 @@
+ {"at": "2026-11-07T11:10:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-11-07T11:10:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-11-07T11:10:27Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:36:22Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:36:22Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:36:26Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:37:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:11Z", "commands": [{"command": "ruff check --fix --quiet inputs.py", "exit_code": 0}, {"command": "ruff format inputs.py", "exit_code": 0}, {"command": "ruff check --output-format concise inputs.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:28Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:37Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:37Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/summary.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/summary.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/summary.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:52Z", "commands": [{"command": "ruff check --fix --quiet summary.py", "exit_code": 0}, {"command": "ruff format summary.py", "exit_code": 0}, {"command": "ruff check --output-format concise summary.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/summary.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:37:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:53Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:37:54Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:38:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:38:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:38:10Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:38:10Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 1}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "ruff reports remaining problems in test_backtest.py after auto-fix; fix them before moving on:\ntests/test_backtest.py:109:12: F821 Undefined name `max_drawdown`\ntests/test_backtest.py:110:12: F821 Undefined name `max_drawdown`\ntests/test_backtest.py:111:12: F821 Undefined name `max_drawdown`\ntests/test_backtest.py:112:12: F821 Undefined name `max_drawdown`\ntests/test_backtest.py:116:15: F821 Undefined name `summarize`\ntests/test_backtest.py:117:23: F821 Undefined name `Summary`\nFound 6 errors.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-07T13:38:13Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:38:13Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:38:13Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:38:13Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:38:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/engine.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:38:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/engine.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:38:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/engine.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:38:38Z", "commands": [{"command": "ruff check --fix --quiet engine.py", "exit_code": 0}, {"command": "ruff format engine.py", "exit_code": 0}, {"command": "ruff check --output-format concise engine.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/engine.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:39:13Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:39:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:38Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 1}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "ruff reports remaining problems in test_backtest.py after auto-fix; fix them before moving on:\ntests/test_backtest.py:132:19: F821 Undefined name `BacktestResult`\ntests/test_backtest.py:133:12: F821 Undefined name `run_backtest`\ntests/test_backtest.py:169:14: F821 Undefined name `run_backtest`\ntests/test_backtest.py:178:14: F821 Undefined name `run_backtest`\ntests/test_backtest.py:192:14: F821 Undefined name `run_backtest`\ntests/test_backtest.py:204:14: F821 Undefined name `run_backtest`\ntests/test_backtest.py:211:14: F821 Undefined name `run_backtest`\ntests/test_backtest.py:227:14: F821 Undefined name `run_backtest`\ntests/test_backtest.py:248:12: F821 Undefined name `DEFAULT_FEE`\ntests/test_backtest.py:250:15: F821 Undefined name `run_backtest`\ntests/test_backtest.py:252:31: F821 Undefined name `run_backtest`\ntests/test_backtest.py:257:17: F821 Undefined name `run_backtest`\ntests/test_backtest.py:259:23: F821 Undefined name `run_backtest`\ntests/test_backtest.py:263:33: F821 Undefined name `run_backtest`\ntests/test_backtest.py:274:13: F821 Undefined name `run_backtest`\ntests/test_backtest.py:275:14: F821 Undefined name `run_backtest`\ntests/test_backtest.py:283:9: F821 Undefined name `run_backtest`\nFound 17 errors.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-07T13:39:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:42Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:49Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:49Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:49Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:50Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:39:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:39:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:39:59Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:39:59Z", "commands": [{"command": "ruff check --fix --quiet __init__.py", "exit_code": 0}, {"command": "ruff format __init__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __init__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:40:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:02Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:06Z", "commands": [{"command": "ruff check --fix --quiet __init__.py", "exit_code": 0}, {"command": "ruff format __init__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __init__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__init__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:07Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:17Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:24Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:24Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:24Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:24Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:40:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/pyproject.toml"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:31Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:31Z", "commands": [{"command": "ruff check --fix --quiet inputs.py", "exit_code": 0}, {"command": "ruff format inputs.py", "exit_code": 0}, {"command": "ruff check --output-format concise inputs.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:32Z", "commands": [{"command": "ruff check --fix --quiet inputs.py", "exit_code": 0}, {"command": "ruff format inputs.py", "exit_code": 0}, {"command": "ruff check --output-format concise inputs.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:33Z", "commands": [{"command": "ruff check --fix --quiet inputs.py", "exit_code": 0}, {"command": "ruff format inputs.py", "exit_code": 0}, {"command": "ruff check --output-format concise inputs.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:36Z", "commands": [{"command": "ruff check --fix --quiet inputs.py", "exit_code": 0}, {"command": "ruff format inputs.py", "exit_code": 0}, {"command": "ruff check --output-format concise inputs.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:37Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:37Z", "commands": [{"command": "ruff check --fix --quiet inputs.py", "exit_code": 1}, {"command": "ruff format inputs.py", "exit_code": 0}, {"command": "ruff check --output-format concise inputs.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "ruff reports remaining problems in inputs.py after auto-fix; fix them before moving on:\napp/backtest/inputs.py:108:51: F821 Undefined name `POSITION_VALUES`\nFound 1 error.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-07T13:41:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:38Z", "commands": [{"command": "ruff check --fix --quiet inputs.py", "exit_code": 0}, {"command": "ruff format inputs.py", "exit_code": 0}, {"command": "ruff check --output-format concise inputs.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/engine.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/engine.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/engine.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:41:39Z", "commands": [{"command": "ruff check --fix --quiet engine.py", "exit_code": 0}, {"command": "ruff format engine.py", "exit_code": 0}, {"command": "ruff check --output-format concise engine.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/engine.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:42:34Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:42:34Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "shell_guard", "reason": "Shell guard: the write target `$TMPDIR/verify0004/scripts/exercise.py` is not a literal path (a variable, command substitution, backtick, `~`, a glob, a brace expansion or a git pathspec-magic prefix), or the working directory it would resolve against is not tracked (`cd -`, a bare `cd`, `popd`/`Pop-Location`); write the literal path, from a tracked directory, so the guard can check it.", "tool": "Bash", "verdict": "block"}
++{"at": "2026-11-07T13:42:57Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:43:40Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:43:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:43:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:43:57Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:44:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:44:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:44:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:44:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:44:52Z", "commands": [{"command": "ruff check --fix --quiet inputs.py", "exit_code": 0}, {"command": "ruff format inputs.py", "exit_code": 0}, {"command": "ruff check --output-format concise inputs.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/inputs.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:45:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:45:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:45:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:45:00Z", "commands": [{"command": "ruff check --fix --quiet test_backtest.py", "exit_code": 0}, {"command": "ruff format test_backtest.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T13:45:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:45:30Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:46:35Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:46:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T13:47:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:47:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:47:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T13:47:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/run-build.json b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/run-build.json
+new file mode 100644
+index 0000000..30ac7a5
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/run-build.json
+@@ -0,0 +1,6 @@
++{
++  "phase": "build",
++  "run": "build",
++  "spend_usd": null,
++  "started_at": "2026-11-07T13:36:30Z"
++}
+\ No newline at end of file
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/verifier.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/verifier.md
+new file mode 100644
+index 0000000..7085a1e
+--- /dev/null
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/evidence/verifier.md
+@@ -0,0 +1,83 @@
++The engine matches plan.md and spec.md on every case I ran, and the wheel built from a clean copy of HEAD contains all four `app/backtest/` modules. The verdict covers the code paths I called directly. The build, test and lint results for the final tree are not covered here: they come from the runner's run.
++
++## Commands run
++
++This is a CI session (`SDLC_GATE_COMMANDS=runner`), so I did not run the targets myself.
++
++**Read, not run:** `evidence/gate-design.json`, the runner's run on commit `155b4a62f4b9acbc4488d6b79f47e1220589555e` of 2026-11-07T11:10:43Z. That is the tree the build phase started from, not the final one. The final tree's result is the runner's: it runs the three targets once after this session and shows the result in the check run `sdlc/test` and in this phase's own gate record. Nothing in this report stands in for that.
++
++The record's `commands` entry: `ok: true`, `"reason": "build, test and lint exit 0"`, `ran_by: runner`, not deferred.
++- `python -m compileall -q .`: exit 0, output `""`
++- `python -m pytest`: exit 0, tail `============================= 105 passed in 0.34s ==============================`. These are the existing tests only; `tests/test_backtest.py` did not exist at that commit.
++- `python -m ruff check .`: exit 0, `All checks passed!`
++
++There are no `test.log`, `build.log` or `lint.log` files in `evidence/` yet.
++
++## Behavior exercised
++
++All calls were `python -c` against HEAD a9f33f3.
++
++- **Worked example** (the test file's opens `[100,100,110,120,100,90,81]`, closes `[100,110,120,100,90,85,81]`, positions `[1,1,0,0,1,0,0]`, fee 0.001):
++  - Positions held `0,1,1,0,0,1,0`.
++  - Trades: `1 → 3` at `100.0 → 120.0`, return `0.197601`; `5 → 6` at `90.0 → 81.0`, return `-0.101799`; both `closed_at_end` false.
++  - `Summary(total_return=0.07568647568108022, max_drawdown=0.10269730089999984, trade_count=2, win_rate=0.5, time_in_market=0.42857142857142855)`
++  - `max abs equity diff 2.220446049250313e-16` against the spec's seven equity values, and summary diffs `2.22e-16 1.53e-16 0.0`. All within 1e-9.
++- **Gap case** (`Datetime("ms","UTC")`, hours 00, 01, 03, 04; decision at the 01:00 close):
++  - It filled at the 03:00 open (`entry_price 13.0`).
++  - Both trade time columns kept the input's dtype: `Datetime(time_unit='ms', time_zone='UTC')`.
++  - The position still open after the last row closed at the last close (`exit_price 15.0`) with `closed_at_end` true.
++- **End-of-frame close with the fee** (`[1,1,1]`, opens `[100,100,110]`, closes `[100,105,120]`):
++  - Final equity `1.1976012`, equal to the expected `0.999**2*120/100` (`1.1976012`).
++  - `final==1+tr True`, trade `closed_at_end: True`.
++- **Last-row decision** (`[0,0,1]`): positions `[0,0,0]`, equity `[1.0,1.0,1.0]`, 0 trades. The decision was not filled.
++- **Zero-trade run:**
++  - `trade_count=0, win_rate=0.0`, with an empty trades frame that keeps its schema: Int64 times on an integer frame, `Datetime(ms, UTC)` on a datetime frame.
++  - A one-row frame gives equity `[1.0]` and no trades.
++- **Refused inputs (R14):** every case raised `BacktestInputError`, a `ValueError` subclass, with the bad index or value and what is accepted. Literal messages include:
++  - `positions has 2 values but the frame has 3 rows: pass one position per row`
++  - `positions[1] is True: each position must be the integer 0 (flat) or 1 (long); cast a Boolean or Float series with .cast(pl.Int8)`
++  - The same refusal for `None`, `nan`, `2`, `-1`, `0.5`, `'1'`, a Boolean Series, a Float Series and an Int Series with a null.
++  - `frame is empty: pass at least one candle`
++  - `open_time[2] is 1, not after open_time[1] 1: open_time must be strictly increasing`
++  - `open_time[1] is null: every row needs an open_time`
++  - `fee nan is out of range: it must be at least 0 and below 1, for example 0.001`, and the same for `-0.01`, `1` and `1.5`
++  - `fee True is not a number: …` and `fee '0.001' is not a number: …`
++  - `frame is a list: …` and `frame is a LazyFrame: …`
++  - `frame lacks the column(s) close: it needs open_time, open, close`
++  - `open[1] is None`, `close[1] is inf`, `open[1] is nan`, `open[1] is 0.0` and `close[1] is -2.0`, each with `: every price must be a finite number above 0`
++  - Non-numeric prices (the latest commit): `open has dtype String: prices must be numbers`, `close has dtype Boolean: prices must be numbers`, and `open has dtype Date: prices must be numbers`
++- **Just outside the refusals, all accepted:**
++  - fee `0` (int) with Int64 prices: `total_return=0.19999999999999996`
++  - fee `0.999`: `total_return=-0.9999989`
++  - A Decimal(10,2) `open` column: same result as Float64, `0.1976012…`
++- **No I/O dependency:** importing `app.backtest` alone loads `[]` `app.data` modules, and `numpy loaded: False`.
++- **Neighbouring flows:**
++  - `app.data.__all__` imports unchanged: `['DownloadError', 'Fetch', 'Gap', 'HttpResponse', 'InvalidRequestError', 'KlineGapError', 'cache_info', 'clear_cache', 'load_klines']`.
++  - `python -m app.data --help` printed the usage with `download`, `cache-info` and `cache-clear`.
++  - `python -m app.data cache-info --cache-dir /tmp/claude-1001/v0004-cache` printed `No cached klines under /tmp/claude-1001/v0004-cache/kucoin.`
++- **Wheel (plan step 6, panel #1):**
++  - I made a `git archive` of HEAD, extracted it to `/tmp/claude-1001/v0004-src`, and ran `python -m pip wheel /tmp/claude-1001/v0004-src --no-deps -w /tmp/claude-1001/v0004-wheel`. It printed `Successfully built crypto-backtester` (`crypto_backtester-0.1.0-py3-none-any.whl`).
++  - `python -m zipfile -l` lists `app/backtest/__init__.py` (464), `app/backtest/engine.py` (3687), `app/backtest/inputs.py` (4009) and `app/backtest/summary.py` (1197), plus `app/__init__.py` and the eight `app/data/*.py` modules.
++- **Proof tests:** all 19 test names in plan.md's Proof exist in `tests/test_backtest.py`. I counted them; I did not run them.
++
++**Blocked:** one call needed approval and was denied automatically: my `bash -c 'mkdir … && python -m app.data cache-info …'`. It broke the one-command-per-call rule. I reran it as separate commands without the `mkdir`, which worked.
++
++**Side effect:** pip stored a cached copy of the wheel in `/home/runner/work/crypto-backtester/crypto-backtester/.sdlc-cache/pip/wheels/…`. That directory is ignored by git: `git status` shows only the pre-existing `hook-log.jsonl` change and `CLAUDE.local.md`.
++
++## Not exercised
++
++- **The targets on the final tree:** build, test and lint on a9f33f3 are the runner's (`sdlc/test`). The design record above predates every backtest file.
++- **The pytest suite**, including `tests/test_backtest.py`: not run here, because this is CI.
++- **Platforms:** only Linux with Python 3.14. Not Windows or macOS, and not the oldest supported Python (3.10).
++- **Speed** on about 525,600 rows (a year of 1-minute candles): not timed.
++- **A real `load_klines` frame** or a `KlineGapError.frame`: not run, because there is no network. Only hand-built frames.
++- **Other inputs:** other `open_time` dtypes (Date, Datetime with another unit or timezone, strings), a polars `Object` column, and position sequences such as numpy arrays or generators.
++- **No test for Boolean prices:** `tests/test_backtest.py:89` tests a String `open` but no Boolean or Date price column. I checked those by calling the function directly. The plan does not require such a test.
++
++## Mismatches with plan.md / spec.md
++
++None. The two build-time changes to the plan are written into `plan.md` (lines 6–7 and 17–19), and the code matches them: `__all__` has `DEFAULT_FEE` first, and there is no `TRADE_SCHEMA`.
++
++## Verdict
++
++matches the plan
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md b/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md
+index 1efefc1..ddb7ac4 100644
+--- a/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/plan.md
+@@ -3,7 +3,8 @@
+ ## Files that change
+ - `app/backtest/__init__.py` — new: module docstring and the public API. It re-exports
+   `run_backtest`, `DEFAULT_FEE`, `BacktestResult`, `Summary` and `BacktestInputError`, with
+-  `__all__` sorted as in `app/data/__init__.py`.
++  `__all__` sorted as in `app/data/__init__.py` (build: the format hook's ruff fix puts the
++  constant `DEFAULT_FEE` first, isort-style; `app/data/` has no constant to show the rule).
+ - `app/backtest/inputs.py` — new: `BacktestInputError(ValueError)`, `DEFAULT_FEE = 0.001`,
+   `REQUIRED_COLUMNS = ("open_time", "open", "close")` and
+   `validate(frame, positions, fee) -> Inputs`. `Inputs` is a frozen dataclass holding
+@@ -13,7 +14,9 @@
+ - `app/backtest/engine.py` — new: `run_backtest(frame, positions, *, fee=DEFAULT_FEE) ->
+   BacktestResult`, the frozen dataclass `BacktestResult(equity, trades, summary)`, the forward
+   pass `_simulate(inputs)`, and the two frame builders `_equity_frame` and `_trades_frame`.
+-  `TRADE_SCHEMA` is built from the input's `open_time` dtype.
++  The trade times keep the input's `open_time` dtype: `_trades_frame` gathers them from the
++  `open_time` series by row (build: this replaces a separate `TRADE_SCHEMA` constant, so an
++  empty trades frame has the same dtypes with no second source of them).
+ - `app/backtest/summary.py` — new: the frozen dataclass `Summary(total_return, max_drawdown,
+   trade_count, win_rate, time_in_market)` and `summarize(equity: list[float],
+   held: list[int], returns: list[float]) -> Summary`. The `Summary` docstring says of
+diff --git a/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml b/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml
+index a2d3877..c633354 100644
+--- a/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml
++++ b/changes/0004-backtest-engine-core-long-flat-on-one-sy/status.yaml
+@@ -1,7 +1,7 @@
+ id: "0004"
+ slug: backtest-engine-core-long-flat-on-one-sy
+ title: "Backtest engine core: long/flat on one symbol"
+-phase: design
++phase: build
+ entry_route: idea
+ change_type: feature
+ gate:
+@@ -26,5 +26,5 @@ released_at: null
+ released_sha: null
+ released_pr: null
+ created_at: "2026-11-07T10:33:53Z"
+-updated_at: "2026-11-07T11:11:09Z"
++updated_at: "2026-11-07T13:36:31Z"
+ schema_version: 1
+diff --git a/pyproject.toml b/pyproject.toml
+index d1c9186..93cc96f 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -6,7 +6,7 @@ requires-python = ">=3.10"
+ dependencies = ["polars>=1.0", "tzdata; sys_platform == 'win32'"]
+ 
+ [tool.setuptools]
+-packages = ["app", "app.data"]
++packages = ["app", "app.data", "app.backtest"]
+ 
+ [tool.pytest.ini_options]
+ testpaths = ["tests"]
+diff --git a/tests/test_backtest.py b/tests/test_backtest.py
+new file mode 100644
+index 0000000..3a9d6e5
+--- /dev/null
++++ b/tests/test_backtest.py
+@@ -0,0 +1,310 @@
++"""Offline tests for the backtest engine, on frames built by hand with hand-computed results."""
++
++from __future__ import annotations
++
++import math
++from collections.abc import Sequence
++from datetime import datetime, timezone
++
++import polars as pl
++import pytest
++
++from app.backtest.engine import BacktestResult, run_backtest
++from app.backtest.inputs import DEFAULT_FEE, BacktestInputError, validate
++from app.backtest.summary import Summary, max_drawdown, summarize
++
++
++def _frame(
++    opens: Sequence[float | None],
++    closes: Sequence[float | None],
++    times: Sequence[object] | None = None,
++) -> pl.DataFrame:
++    return pl.DataFrame(
++        {
++            "open_time": list(range(len(opens))) if times is None else list(times),
++            "open": pl.Series(list(opens), dtype=pl.Float64),
++            "close": pl.Series(list(closes), dtype=pl.Float64),
++        }
++    )
++
++
++def test_refuses_length_mismatch() -> None:
++    frame = _frame([100, 100, 100], [100, 100, 100])
++    with pytest.raises(BacktestInputError, match="positions has 2 values but the frame has 3"):
++        validate(frame, [0, 1], 0.001)
++
++
++@pytest.mark.parametrize("bad", [None, math.nan, 2, -1, 0.5, "1", True])
++def test_refuses_bad_position_values(bad: object) -> None:
++    frame = _frame([100, 100, 100], [100, 100, 100])
++    with pytest.raises(BacktestInputError, match=r"positions\[1\] is .*: each position must be"):
++        validate(frame, [0, bad, 0], 0.001)
++
++
++def test_refuses_bad_position_series() -> None:
++    frame = _frame([100, 100], [100, 100])
++    for series in (
++        pl.Series([0, None], dtype=pl.Int64),
++        pl.Series([0.0, 1.0]),
++        pl.Series([False, True]),
++    ):
++        with pytest.raises(BacktestInputError, match="each position must be"):
++            validate(frame, series, 0.001)
++
++
++def test_refuses_empty_frame() -> None:
++    with pytest.raises(BacktestInputError, match="frame is empty"):
++        validate(_frame([], []), [], 0.001)
++
++
++@pytest.mark.parametrize("times", [[0, 2, 2], [0, 3, 1]])
++def test_refuses_non_increasing_open_time(times: list[int]) -> None:
++    frame = _frame([100, 100, 100], [100, 100, 100], times)
++    with pytest.raises(BacktestInputError, match=r"open_time\[2\] .* strictly increasing"):
++        validate(frame, [0, 0, 0], 0.001)
++
++
++@pytest.mark.parametrize("fee", [-0.01, 1, 1.5, math.nan, True, "0.001", None])
++def test_refuses_fee_out_of_range(fee: object) -> None:
++    frame = _frame([100], [100])
++    with pytest.raises(BacktestInputError, match="fee"):
++        validate(frame, [0], fee)  # type: ignore[arg-type]
++
++
++@pytest.mark.parametrize(
++    ("frame", "message"),
++    [
++        ({"open_time": [0], "open": [1.0], "close": [1.0]}, "polars DataFrame"),
++        (pl.DataFrame({"open_time": [0], "open": [1.0]}), "lacks the column"),
++        (
++            pl.DataFrame({"open_time": [None, 1], "open": [1.0, 1.0], "close": [1.0, 1.0]}),
++            r"open_time\[0\] is null",
++        ),
++        (_frame([100, None], [100, 100]), r"open\[1\] is None"),
++        (_frame([100, 100], [100, math.inf]), r"close\[1\] is inf"),
++        (_frame([100, 100], [math.nan, 100]), r"close\[0\] is nan"),
++        (_frame([100, 0], [100, 100]), r"open\[1\] is 0.0"),
++        (_frame([100, -5], [100, 100]), r"open\[1\] is -5.0"),
++        (
++            pl.DataFrame({"open_time": [0, 1], "open": ["10", "11"], "close": [1.0, 1.0]}),
++            "prices must be numbers",
++        ),
++        (
++            pl.DataFrame({"open_time": [0, 1], "open": [1.0, 1.0], "close": [True, True]}),
++            "prices must be numbers",
++        ),
++        (
++            pl.DataFrame({"open_time": [0, 1], "open": ["a", "b"], "close": [1.0, 1.0]}),
++            "prices must be numbers",
++        ),
++    ],
++)
++def test_refuses_bad_frame_schema_and_prices(frame: object, message: str) -> None:
++    with pytest.raises(BacktestInputError, match=message):
++        validate(frame, [0, 0], 0.001)  # type: ignore[arg-type]
++
++
++def test_validate_reads_the_three_columns() -> None:
++    times = [datetime(2024, 1, 1, hour, tzinfo=timezone.utc) for hour in (0, 1)]
++    frame = _frame([100, 110], [105, 120], times).with_columns(pl.lit(7.0).alias("volume"))
++    inputs = validate(frame, pl.Series([1, 0]), 0)
++    assert inputs.opens == [100.0, 110.0]
++    assert inputs.closes == [105.0, 120.0]
++    assert inputs.positions == [1, 0]
++    assert inputs.fee == 0.0
++    assert inputs.open_time.to_list() == times
++
++
++def test_max_drawdown_from_running_peak() -> None:
++    assert max_drawdown([1.0, 1.0, 1.0]) == 0.0
++    assert max_drawdown([1.0, 1.2, 1.5]) == 0.0
++    assert max_drawdown([1.0, 2.0, 1.5, 1.8, 1.0, 1.9]) == pytest.approx(0.5, abs=1e-9)
++    assert max_drawdown([1.0, 0.8, 1.2, 0.9]) == pytest.approx(0.25, abs=1e-9)
++
++
++def test_summarize_counts_wins_and_rows() -> None:
++    summary = summarize([1.0, 1.1, 0.99, 1.21], [0, 1, 0, 1], [0.1, -0.1, 0.0])
++    assert summary == Summary(
++        total_return=pytest.approx(0.21, abs=1e-9),
++        max_drawdown=pytest.approx(0.1, abs=1e-9),
++        trade_count=3,
++        win_rate=pytest.approx(1 / 3, abs=1e-9),
++        time_in_market=0.5,
++    )
++
++
++EXAMPLE_OPENS = [100, 100, 110, 120, 100, 90, 81]
++EXAMPLE_CLOSES = [100, 110, 120, 100, 90, 85, 81]
++EXAMPLE_POSITIONS = [1, 1, 0, 0, 1, 0, 0]
++
++
++def _example() -> BacktestResult:
++    return run_backtest(_frame(EXAMPLE_OPENS, EXAMPLE_CLOSES), EXAMPLE_POSITIONS, fee=0.001)
++
++
++def test_two_trade_example_trades() -> None:
++    trades = _example().trades
++    assert trades["entry_time"].to_list() == [1, 5]
++    assert trades["entry_price"].to_list() == [100.0, 90.0]
++    assert trades["exit_time"].to_list() == [3, 6]
++    assert trades["exit_price"].to_list() == [120.0, 81.0]
++    assert trades["return"].to_list() == pytest.approx([0.1976012, -0.1017991], abs=1e-9)
++    assert trades["closed_at_end"].to_list() == [False, False]
++
++
++def test_two_trade_example_equity_curve() -> None:
++    equity = _example().equity
++    assert equity.columns == ["open_time", "position", "equity"]
++    assert equity["open_time"].to_list() == list(range(7))
++    assert equity["position"].to_list() == [0, 1, 1, 0, 0, 1, 0]
++    assert equity["equity"].to_list() == pytest.approx(
++        [1.0, 1.0989, 1.1988, 1.1976012, 1.1976012, 1.1299367322, 1.07568647568108], abs=1e-9
++    )
++
++
++def test_two_trade_example_summary() -> None:
++    summary = _example().summary
++    assert summary.total_return == pytest.approx(0.07568647568108, abs=1e-9)
++    assert summary.total_return == pytest.approx(1.2 * 0.9 * 0.999**4 - 1, abs=1e-9)
++    assert summary.max_drawdown == pytest.approx(0.1026973009, abs=1e-9)
++    assert summary.trade_count == 2
++    assert summary.win_rate == 0.5
++    assert summary.time_in_market == pytest.approx(3 / 7, abs=1e-9)
++
++
++def test_buy_and_hold_equals_price_ratio_less_two_fees() -> None:
++    fee = 0.002
++    frame = _frame([100, 100, 120, 150], [100, 110, 130, 150])
++    result = run_backtest(frame, [1, 1, 0, 0], fee=fee)
++    final = result.equity["equity"][-1]
++    assert final == pytest.approx((1 - fee) ** 2 * 150 / 100, abs=1e-9)
++    assert result.summary.total_return == pytest.approx(final - 1, abs=1e-9)
++    assert result.trades["return"].to_list() == pytest.approx([final - 1], abs=1e-9)
++
++
++def test_no_fill_on_decision_candle() -> None:
++    frame = _frame([100, 120, 130], [110, 125, 130])
++    result = run_backtest(frame, [1, 0, 0], fee=0.001)
++    assert result.trades["entry_time"].to_list() == [1]
++    assert result.trades["entry_price"].to_list() == [120.0]
++    assert result.equity["position"].to_list() == [0, 1, 0]
++    assert result.equity["equity"].to_list() == pytest.approx(
++        [1.0, 0.999 / 120 * 125, 0.999**2 / 120 * 130], abs=1e-9
++    )
++
++
++def test_gap_fills_at_next_existing_row() -> None:
++    times = [datetime(2024, 1, 1, hour, tzinfo=timezone.utc) for hour in (0, 1, 3, 4)]
++    frame = _frame([100, 101, 120, 130], [101, 102, 125, 130], times).with_columns(
++        pl.col("open_time").cast(pl.Datetime("ms", "UTC"))
++    )
++    result = run_backtest(frame, [0, 1, 0, 0], fee=0.001)
++    trades = result.trades
++    assert trades.schema["entry_time"] == pl.Datetime("ms", "UTC")
++    assert trades["entry_time"].to_list() == [times[2]]
++    assert trades["entry_price"].to_list() == [120.0]
++    assert trades["exit_time"].to_list() == [times[3]]
++    assert trades["exit_price"].to_list() == [130.0]
++    assert result.equity["position"].to_list() == [0, 0, 1, 0]
++    assert result.equity["equity"][1] == 1.0
++
++
++def test_decision_on_last_row_not_filled() -> None:
++    result = run_backtest(_frame([100, 110, 120], [105, 115, 125]), [0, 0, 1])
++    assert result.trades.height == 0
++    assert result.equity["position"].to_list() == [0, 0, 0]
++    assert result.equity["equity"].to_list() == [1.0, 1.0, 1.0]
++
++
++def test_open_position_closed_at_last_close() -> None:
++    result = run_backtest(_frame([100, 100, 110], [100, 105, 121]), [1, 1, 1], fee=0.001)
++    trades = result.trades
++    assert trades["entry_time"].to_list() == [1]
++    assert trades["exit_time"].to_list() == [2]
++    assert trades["exit_price"].to_list() == [121.0]
++    assert trades["closed_at_end"].to_list() == [True]
++    final = 0.999**2 * 121 / 100
++    assert trades["return"].to_list() == pytest.approx([final - 1], abs=1e-9)
++    assert result.equity["position"].to_list() == [0, 1, 1]
++    assert result.equity["equity"][-1] == pytest.approx(final, abs=1e-9)
++    assert result.equity["equity"][-1] == pytest.approx(1 + result.summary.total_return, abs=1e-9)
++    assert result.summary.trade_count == 1
++    assert result.summary.time_in_market == pytest.approx(2 / 3, abs=1e-9)
++
++
++def test_no_trades_gives_zero_win_rate_and_flat_equity() -> None:
++    result = run_backtest(_frame([100, 50, 200], [50, 200, 10]), [0, 0, 0])
++    assert result.summary.trade_count == 0
++    assert result.summary.win_rate == 0.0
++    assert result.summary.total_return == 0.0
++    assert result.summary.max_drawdown == 0.0
++    assert result.summary.time_in_market == 0.0
++    assert result.equity["equity"].to_list() == [1.0, 1.0, 1.0]
++    assert result.trades.height == 0
++    assert result.trades.schema == pl.Schema(
++        {
++            "entry_time": pl.Int64,
++            "entry_price": pl.Float64,
++            "exit_time": pl.Int64,
++            "exit_price": pl.Float64,
++            "return": pl.Float64,
++            "closed_at_end": pl.Boolean,
++        }
++    )
++
++
++def test_default_fee_is_one_tenth_percent() -> None:
++    assert DEFAULT_FEE == 0.001
++    frame = _frame(EXAMPLE_OPENS, EXAMPLE_CLOSES)
++    default = run_backtest(frame, EXAMPLE_POSITIONS)
++    assert default.summary == _example().summary
++    assert default.summary != run_backtest(frame, EXAMPLE_POSITIONS, fee=0.0).summary
++
++
++def test_positions_accepts_series_and_list() -> None:
++    frame = _frame(EXAMPLE_OPENS, EXAMPLE_CLOSES)
++    from_list = run_backtest(frame, EXAMPLE_POSITIONS)
++    for series in (pl.Series(EXAMPLE_POSITIONS), pl.Series(EXAMPLE_POSITIONS, dtype=pl.Int8)):
++        from_series = run_backtest(frame, series)
++        assert from_series.summary == from_list.summary
++        assert from_series.equity.equals(from_list.equity)
++        assert from_series.trades.equals(from_list.trades)
++    assert from_list.summary == run_backtest(frame, tuple(EXAMPLE_POSITIONS)).summary
++
++
++def test_futures_volume_ignored() -> None:
++    frame = _frame(EXAMPLE_OPENS, EXAMPLE_CLOSES)
++    futures = frame.with_columns(
++        pl.Series("high", [1e6] * 7),
++        pl.Series("low", [1e-6] * 7),
++        pl.Series("volume", [0.0, 5.0, 1e9, 3.0, 0.0, 2.0, 7.0]),
++        pl.Series("quote_volume", [1.0] * 7),
++    )
++    plain = run_backtest(frame, EXAMPLE_POSITIONS)
++    result = run_backtest(futures, EXAMPLE_POSITIONS)
++    assert result.summary == plain.summary
++    assert result.equity.equals(plain.equity)
++    assert result.trades.equals(plain.trades)
++
++
++def test_public_api() -> None:
++    import app.backtest as api
++
++    assert set(api.__all__) == {
++        "BacktestInputError",
++        "BacktestResult",
++        "DEFAULT_FEE",
++        "Summary",
++        "run_backtest",
++    }
++    assert api.run_backtest is run_backtest
++    assert api.BacktestResult is BacktestResult
++    assert api.Summary is Summary
++    assert api.DEFAULT_FEE == DEFAULT_FEE
++    assert issubclass(api.BacktestInputError, ValueError)
++    assert isinstance(api.run_backtest(_frame([100], [100]), [0]), api.BacktestResult)
++
++
++def test_run_backtest_refuses_before_calculating() -> None:
++    with pytest.raises(BacktestInputError, match="fee"):
++        run_backtest(_frame([100], [100]), [0], fee=1.0)

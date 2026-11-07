@@ -5,7 +5,31 @@
       "run": "design",
       "source": "claude-design.json",
       "usd": 5.658019049999998
+    },
+    {
+      "at": "2026-11-07T13:50:12Z",
+      "run": "build",
+      "source": "claude-build.json",
+      "usd": 5.071710200000001
+    },
+    {
+      "at": "2026-11-07T13:54:36Z",
+      "run": "test",
+      "source": "claude-test.json",
+      "usd": 1.5163760000000006
+    },
+    {
+      "at": "2026-11-07T13:56:11Z",
+      "run": "review",
+      "source": "claude-review.json",
+      "usd": 0.6113370000000001
+    },
+    {
+      "at": "2026-11-07T13:59:15Z",
+      "run": "deploy",
+      "source": "claude-deploy.json",
+      "usd": 1.1739760000000004
     }
   ],
-  "total_usd": 5.658019
+  "total_usd": 14.031418
 }
