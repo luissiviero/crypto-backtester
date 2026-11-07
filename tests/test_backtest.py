@@ -10,6 +10,7 @@ import polars as pl
 import pytest
 
 from app.backtest.inputs import BacktestInputError, validate
+from app.backtest.summary import Summary, max_drawdown, summarize
 
 
 def _frame(
@@ -103,3 +104,21 @@ def test_validate_reads_the_three_columns() -> None:
     assert inputs.positions == [1, 0]
     assert inputs.fee == 0.0
     assert inputs.open_time.to_list() == times
+
+
+def test_max_drawdown_from_running_peak() -> None:
+    assert max_drawdown([1.0, 1.0, 1.0]) == 0.0
+    assert max_drawdown([1.0, 1.2, 1.5]) == 0.0
+    assert max_drawdown([1.0, 2.0, 1.5, 1.8, 1.0, 1.9]) == pytest.approx(0.5, abs=1e-9)
+    assert max_drawdown([1.0, 0.8, 1.2, 0.9]) == pytest.approx(0.25, abs=1e-9)
+
+
+def test_summarize_counts_wins_and_rows() -> None:
+    summary = summarize([1.0, 1.1, 0.99, 1.21], [0, 1, 0, 1], [0.1, -0.1, 0.0])
+    assert summary == Summary(
+        total_return=pytest.approx(0.21, abs=1e-9),
+        max_drawdown=pytest.approx(0.1, abs=1e-9),
+        trade_count=3,
+        win_rate=pytest.approx(1 / 3, abs=1e-9),
+        time_in_market=0.5,
+    )
