@@ -1,0 +1,596 @@
+ .../evidence/hook-log.jsonl                        |  13 +
+ .../evidence/run-design.json                       |   5 +
+ .../plan.md                                        | 296 +++++++++++++++++++++
+ .../spec.md                                        | 230 ++++++++++++++++
+ .../status.yaml                                    |   4 +-
+ 5 files changed, 546 insertions(+), 2 deletions(-)
+
+diff --git a/changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/hook-log.jsonl b/changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/hook-log.jsonl
+new file mode 100644
+index 0000000..2160d8e
+--- /dev/null
++++ b/changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/hook-log.jsonl
+@@ -0,0 +1,13 @@
++{"at": "2026-11-07T03:56:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T03:56:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T03:56:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T03:59:34Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T03:59:34Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T03:59:34Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T03:59:34Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/spec.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T03:59:43Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T04:01:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T04:01:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T04:01:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T04:01:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0003-replace-binance-with-kucoin-as-the-marke/plan.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T04:01:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+diff --git a/changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/run-design.json b/changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/run-design.json
+new file mode 100644
+index 0000000..1e2b7b4
+--- /dev/null
++++ b/changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/run-design.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "design",
++  "spend_usd": null,
++  "started_at": "2026-11-07T03:56:12Z"
++}
+\ No newline at end of file
+diff --git a/changes/0003-replace-binance-with-kucoin-as-the-marke/plan.md b/changes/0003-replace-binance-with-kucoin-as-the-marke/plan.md
+new file mode 100644
+index 0000000..854a8b0
+--- /dev/null
++++ b/changes/0003-replace-binance-with-kucoin-as-the-marke/plan.md
+@@ -0,0 +1,296 @@
++# Plan: Replace Binance with KuCoin as the market-data source (from intent.md 2026-11-06, spec.md 2026-11-07)
++
++## Files that change
++- `app/data/vision.py` — deleted.
++- `app/data/params.py` — `MARKETS = ("spot", "futures")`; `1s` and `SPOT_ONLY_INTERVALS`
++  removed; `FUTURES_REFUSED_INTERVALS = frozenset({"6h"})`; `SPOT_TYPES` (`"1m": "1min"`,
++  ... `"1h": "1hour"`, ... `"1d": "1day"`) and `FUTURES_GRANULARITY` (`"1m": 1` ... `"1d":
++  1440`, no `6h`); `validate_symbol(symbol, market)` with `_SPOT_SYMBOL =
++  [A-Z0-9-]{2,30}` and `_FUTURES_SYMBOL = [A-Z0-9]{2,25}USDTM`; messages name KuCoin examples
++  (`BTC-USDT`, `XBTUSDTM`) and `spot` / `futures`.
++- `app/data/http.py` — `BinanceBanError` and the 418 branch removed; `WEIGHT_HEADER`,
++  `WEIGHT_THRESHOLD` and `WeightPacer` replaced by `REMAINING_HEADER =
++  "gw-ratelimit-remaining"`, `RESET_HEADER = "gw-ratelimit-reset"`, `RATE_LIMIT_RESERVE =
++  100`, `MAX_RATE_LIMIT_WAIT = 60.0` and `RateLimitPacer` (`wait()`, `record()`); module and
++  `DownloadError` docstrings without Binance.
++- `app/data/schema.py` — eight-column `SCHEMA`; `frame_from_spot_rows(rows, interval_ms)`
++  and `frame_from_futures_rows(rows, interval_ms)`; `frame_from_csv`, `frame_from_rest`,
++  `CSV_FIELDS`, `INT_COLUMNS`, `MICROSECOND_THRESHOLD`, `_to_milliseconds`, `_is_number`
++  and the `csv`/`io` imports removed.
++- `app/data/rest.py` — KuCoin endpoints, `parse_answer`, spot and futures paging,
++  `RestRange` with `covered_from_ms` / `covered_until_ms`; `pacer_for` replaced by
++  `RateLimitPacer()`.
++- `app/data/cache.py` — `SUBTREE = "kucoin"`, `file_name` moved here, hyphen in the
++  day-file pattern, per-market symbol checks, `CachePathError` docstring.
++- `app/data/loader.py` — Vision pass and thread pool removed; per-day outcomes from the
++  covered span; new gap reasons; `_worth_caching`, `find_gaps`, docstrings.
++- `app/data/__main__.py` — KuCoin wording, `futures` market, help epilogs, labels, total line.
++- `app/data/__init__.py` — docstring; `BinanceBanError` out of the import and `__all__`.
++- `scripts/measure_storage.py` — eight-column synthetic rows, `--from-cache BTC-USDT 1m`
++  usage, `validate_symbol(symbol, market)`.
++- `tests/kucoin_stub.py` — new: `KuCoin` stub Fetch, `sequence`, `fixture`, `utc`,
++  `cached_days` (under `kucoin/`), synthetic row builders in the captured formats.
++- `tests/fixtures/kucoin/` — new: `spot-BTC-USDT-1hour-2026-10-01.json`,
++  `futures-XBTUSDTM-60-2026-10-01.json`, `futures-XBTUSDTM-1-2026-10-01.json`,
++  `spot-unknown-symbol.json`, `futures-unknown-symbol.json`,
++  `futures-from-in-seconds.json` — byte copies of the captured bodies in
++  `references/capture/` (same content, shorter names).
++- `tests/test_data.py` — rewritten for KuCoin (tests listed in Proof).
++- `tests/test_data_cli.py` — rewritten for KuCoin.
++- `tests/binance_stub.py` — deleted.
++- `tests/fixtures/binance/` — deleted (all six files).
++- `changes/0003-replace-binance-with-kucoin-as-the-marke/plan.md` — this file, when the
++  build departs from it.
++
++Unchanged: `pyproject.toml`, `.github/workflows/ci.yml`, `app/__init__.py` (version 0.1.0),
++`tests/test_smoke.py`.
++
++For the owner, not the run (guardrail file; edit in a PR of your own after this change
++reaches `main`), `CLAUDE.md`:
++- lines 5 and 6 become: `` `app/data/`: KuCoin spot and USDT-margined perpetual klines from KuCoin's public REST API `` /
++  `as polars frames, cached per day as Parquet outside the repository; its CLI is`;
++- line 30: remove `vision, ` from the module list;
++- lines 36 and 37: `tests/binance_stub.py` becomes `tests/kucoin_stub.py` and
++  `tests/fixtures/binance/` becomes `tests/fixtures/kucoin/`.
++The Setup and Test lines and the CI install step need no change (no new dependency, same
++`testpaths`).
++
++## Order of work
++1. **Parameters** (`params.py`). Markets, intervals, the two KuCoin interval tables,
++   `validate_interval(interval, market)` refusing `6h` on futures with
++   `interval '6h' is not offered on the futures market`, `validate_symbol(symbol, market)`.
++   `make_request` passes the market to `validate_symbol`. Keep `parse_date`, `day_start_ms`,
++   `KlineRequest` as they are.
++2. **Schema** (`schema.py`). `SCHEMA` = `open_time`, `open`, `high`, `low`, `close`,
++   `volume`, `close_time`, `quote_volume` with today's dtypes. Row parsers:
++   - `frame_from_spot_rows(rows: object, interval_ms: int)`: `rows` must be a list; each row
++     a list of exactly 7 `str`; time = `int(row[0]) * 1000`; open = row[1], close = row[2],
++     high = row[3], low = row[4], volume = row[5], quote_volume = row[6].
++   - `frame_from_futures_rows(rows: object, interval_ms: int)`: each row a list of exactly 7
++     `int`/`float` (not `bool`); time = `row[0]` as an `int` (a float time with a fraction is
++     malformed); open, high, low, close, volume, quote_volume in order.
++   - Shared: `_int64` bound on the time, `_finite` on every number, `close_time = open_time +
++     interval_ms - 1`, then the existing cast to `Datetime("ms", "UTC")`. Every failure is
++     `MalformedDataError`.
++3. **Transport** (`http.py`). Remove `BinanceBanError` and the 418 branch in `with_retries`
++   (418 is then returned like any 4xx). `RateLimitPacer.wait()`: no previous answer → return;
++   `remaining` or `reset` header missing or not an `int` → `sleep(UNKNOWN_WEIGHT_WAIT)`;
++   `remaining < RATE_LIMIT_RESERVE` → `sleep(min(max(reset, 0) / 1000, MAX_RATE_LIMIT_WAIT))`;
++   else no sleep. Keep `_int_or_none`.
++4. **REST** (`rest.py`).
++   - Constants: `SPOT_URL = "https://api.kucoin.com/api/v1/market/candles"`,
++     `FUTURES_URL = "https://api-futures.kucoin.com/api/v1/kline/query"`, `SUCCESS_CODE =
++     "200000"`, `UNEXPECTED_RESPONSE = "unexpected KuCoin response"`, `MAX_MESSAGE = 200`.
++   - `spot_url(request, start_ms, end_ms)`: `urlencode({"symbol", "type": SPOT_TYPES[...],
++     "startAt": start_ms // 1000, "endAt": end_ms // 1000})`.
++     `futures_url(request, start_ms, end_ms)`: `{"symbol", "granularity":
++     FUTURES_GRANULARITY[...], "from": start_ms, "to": end_ms - 1}`.
++   - `parse_answer(response, parse_rows, interval_ms) -> tuple[pl.DataFrame | None, str |
++     None]`: body longer than `MAX_BODY_BYTES` → `UNEXPECTED_RESPONSE`; JSON decode
++     (`ValueError`, `RecursionError`) → for HTTP 200 `UNEXPECTED_RESPONSE`, else `KuCoin
++     refused (HTTP <n>)`; envelope not a dict → same; `code` (compared as `str`) not
++     `SUCCESS_CODE` or status not 200 → `KuCoin refused (HTTP <n>, code <c>): <msg>` where
++     `msg` is `str(payload.get("msg", ""))` with every non-printable character removed,
++     cut to `MAX_MESSAGE` (`code` cut to 20 and cleaned the same way); `data` → `parse_rows`
++     (`MalformedDataError` → `UNEXPECTED_RESPONSE`).
++   - `fetch_range(fetch, pacer, request, start_ms, end_ms) -> RestRange` dispatches on the
++     market:
++     - spot (backwards): `window_end = end_ms`; loop while `window_end > start_ms`: wait,
++       fetch `spot_url(request, start_ms, window_end)`, record, parse; failure → stop with
++       `covered = [window_end, end_ms)`; keep rows with `start_ms <= open < window_end`;
++       empty → `covered = [start_ms, end_ms)`, stop; `oldest = min(open)`; append;
++       `window_end = oldest` (strictly smaller than before, else `UNEXPECTED_RESPONSE`).
++     - futures (forwards): `window_start = start_ms`; loop while `window_start < end_ms`:
++       fetch `futures_url(request, window_start, end_ms)`; failure → `covered =
++       [start_ms, window_start)`; keep rows with `window_start <= open < end_ms` (drops the
++       end-of-window row); empty → `covered = [start_ms, end_ms)`, stop; `newest = max(open)`;
++       append; `window_start = newest + interval_ms`.
++       A loop that ends because the window closed is fully covered too.
++     - `RestRange(frame, failure, covered_from_ms, covered_until_ms)`; the frame is the
++       concatenation (sorting and de-duplication stay in the loader's `_on_grid`).
++5. **Cache** (`cache.py`). `SUBTREE = "kucoin"`; `file_name(request, day)` moves from
++   `vision.py`; `_DAY_FILE` symbol group `[A-Z0-9-]{2,30}` (the interval `[0-9]{1,2}[mhd]`
++   and the date anchor it; the existing check that the symbol equals the directory name
++   stays); `cache_info`: with a market, `validate_symbol(symbol, market)`; without one,
++   accept a symbol valid for either market, else raise the spot error; `clear_cache`
++   validates with its market.
++6. **Loader** (`loader.py`). Remove `threading`, `ThreadPoolExecutor`, `vision`,
++   `VISION_WORKERS`, `VISION`, `_vision_pass`, `_Cancelled`, `MISSING_IN_FILE`,
++   `MISSING_IN_REST`. Reasons: `NO_CANDLES = "no candles; check the symbol exists"`,
++   `NO_CANDLES_ON_DAY = "no candles on this day"`, `BEFORE_FIRST = "no candles before {day}:
++   the date may be before KuCoin's oldest candle for this symbol"`.
++   `sync_days`: cached closed days first; the rest, grouped by `_consecutive_ranges`, go
++   through `_rest_pass` with one `RateLimitPacer` for the run. `_rest_pass` per range: call
++   `fetch_range`; `first_day_with_rows` = the earliest day with a row; for each day:
++   `in_span = covered_from <= day_start and day_start + DAY_MS <= covered_until` (for the
++   current day, `covered_until >= day_start + DAY_MS` still holds because the range end is
++   the day's end); rows of the day; `in_span and rows` → `REST`; `not in_span` →
++   `MISSING`, reason = the failure; `in_span and not rows` → `MISSING`, reason
++   `NO_CANDLES` when the range has no row, `BEFORE_FIRST` when the day is before
++   `first_day_with_rows`, else `NO_CANDLES_ON_DAY`. `_worth_caching`: `source == REST`.
++   `find_gaps`: skip outcomes that are not `MISSING`; the rest as today. `_gap_reason`
++   returns `outcome.reason or NO_CANDLES`. `load_klines` docstring: rows exist only for
++   intervals with trades (a short frame is normal; never assume one row per interval);
++   futures `volume` counts contracts, spot `volume` coins, compare `quote_volume`.
++7. **CLI and package** (`__main__.py`, `__init__.py`). Description `KuCoin kline data and its
++   local cache.`; `download` epilog with the two notes of step 6; `cache-clear` epilog:
++   `KuCoin may not serve old futures days again: a cleared futures day can be lost.`; use
++   `argparse.RawDescriptionHelpFormatter` only if the epilog needs line breaks; labels
++   `loader.CACHED: "skipped, already cached"`, `loader.REST: "fetched from KuCoin"`; total
++   line `Total for <symbol> <interval> <market>: <n> fetched, <n> skipped, <n> not found;
++   <n> candles missing. Cache: <root>`; drop the per-gap "missing inside a file" lines.
++   `__init__.py` docstring `The kline data layer: KuCoin REST klines and a local Parquet
++   cache.`; remove `BinanceBanError`.
++8. **Script** (`scripts/measure_storage.py`): the synthetic candle dict without `trades`
++   and the two taker columns; `validate_symbol(symbol, market)`; usage line `BTC-USDT`.
++9. **Tests.** Copy the six captured bodies into `tests/fixtures/kucoin/` (names in Files that
++   change). Write `tests/kucoin_stub.py`: `KuCoin(headers=None, spot_page=1500,
++   futures_page=200)` with `spot_rows` / `futures_rows` lists, `add_spot(name)`,
++   `add_futures(name)` (extend from a fixture's `data`), `add_spot_synthetic(start, count,
++   interval_ms)` / `add_futures_synthetic(...)` building rows in the captured formats (spot:
++   7 strings, seconds; futures: 7 numbers, ms) with `high` the largest and `low` the
++   smallest price, `refuse(match, response)` to answer a chosen page with a given
++   response, and `__call__` that serves spot `[startAt, endAt)` newest first keeping the
++   newest `spot_page`, futures `[from, to]` oldest first keeping the oldest
++   `futures_page`, in the KuCoin envelope with default headers
++   `{"gw-ratelimit-remaining": "1997", "gw-ratelimit-reset": "29999"}`, any other URL 404,
++   and records `calls`. Then rewrite `tests/test_data.py` and `tests/test_data_cli.py`
++   with the tests in Proof, then delete `tests/binance_stub.py` and
++   `tests/fixtures/binance/`.
++10. **Delete `app/data/vision.py`**, grep `app/` and `scripts/` for `binance`, `vision`,
++    `um"` (case-insensitive) and clean what remains; run build, test and lint and paste the
++    output.
++
++Steps 1–8 leave the old tests broken until step 9; commit 1–9 as one or a few commits that
++each keep `plan.md` in step, and run the suite after step 9.
++
++## Risks
++- **Riskiest: paging and completeness (steps 4 and 6).** A wrong window rule either loses
++  candles silently (a day marked complete that is not) or loops. Guards: every page must move
++  the window strictly (else `UNEXPECTED_RESPONSE`), which also bounds the loop; coverage only
++  grows from answered pages; the stub enforces the measured rules (spot end exclusive and
++  newest kept, futures end inclusive and oldest kept), and tests cover page caps smaller than
++  the range, a refusal on the second page (the days after it, or before it on spot, are
++  gaps), and the end-of-window row.
++- **The rule "an empty answer means the window has no candle"** rests on the measured
++  behaviour (spot keeps the newest, futures the oldest). If KuCoin returned an empty list for
++  an over-long window instead, a range would end early and days would read as
++  "no candles" gaps (raised, not silent; never cached). The owner's two real downloads at the
++  deploy gate (3 days at 1m futures needs about 22 pages) exercise it.
++- **Quiet days are no longer gaps; failures still are.** A day partly covered by a failed
++  range is a gap, never a short "complete" day; a test checks it is not cached.
++- **The futures `to = end − 1`**: measured only with `to` on a day boundary (the row at
++  `to` was returned, so `to` is inclusive). With `end − 1` the last candle of the range
++  (open at `end − interval`) is still at or before `to`, and the row at `end` is not asked
++  for; rows at or after `end` are dropped anyway, so either reading of `to` gives the same
++  frame. A test serves the measured end-of-window row and checks no next-day candle appears.
++- **Untrusted text in reasons**: KuCoin's `msg` reaches the terminal; it is cleaned of
++  non-printable characters and cut to 200 characters (security-baseline rule 2).
++- **Rate-limit reserve 100 and the 60 s cap** are a guess (spec Flagged concerns); a wrong
++  value costs speed or a 429, which the retries absorb.
++- **Callers touched**: `load_klines` (frame columns drop three; `market="um"` and `1s` now
++  refused; short frames), `cache_info` / `clear_cache` (new subtree, so existing Binance
++  files are invisible to them — intended), `BinanceBanError` importers (none in the repo
++  besides tests), `scripts/measure_storage.py`. No other module imports `app.data`.
++- **Old cache files**: `read_day` already returns `None` for another schema, and the
++  subtree changes, so no Binance file is ever read.
++- **Hyphenated symbols in the day-file regex**: `BTC-USDT-1h-2026-10-01.parquet` parses
++  with the symbol `BTC-USDT` because the interval and date groups are fixed; a test covers
++  it. Path safety: neither `.` nor `/` is allowed in a symbol.
++- **Dropped tests**: the Vision, checksum, zip, CSV, microsecond, 418 ban and weight-header
++  tests go with the behaviour; the ratchet line in Proof declares it.
++- **No new dependency**; `pyproject.toml` and CI unchanged.
++- **A file over 500 lines**: `tests/test_data.py` is 566 today; keep the rewrite under 500
++  or split by area (`test_data_rest.py`, `test_data_cache.py`) per the one-module-per-area
++  convention, and list any new test file here in the same commit.
++
++## Options not taken
++- **A contract lookup (`/api/v1/contracts/{symbol}`) per futures request**: clearer error
++  for a mistyped symbol; the owner chose no extra call (intent open question 1).
++- **Fixed windows of an assumed page size** (1500 spot, 200 futures): simpler coverage, but
++  depends on a number measured only at short intervals (intent open question 4).
++- **Treat a short day as gaps per missing interval, as today**: every quiet minute would
++  raise; the intent defines a day with one candle and a clean answer as complete.
++- **Keep `BinanceBanError` as an alias of a generic `RateLimitBanError`**: the intent removes
++  it; nothing shows KuCoin bans with 418.
++- **Map `BTCUSDT` to `BTC-USDT`**: the intent says callers type KuCoin's names, no mapping.
++- **Require exactly one hyphen in spot symbols**: stricter than the intent's "accept the
++  hyphen"; KuCoin's own 400100 refusal names a bad pair clearly.
++- **One generic parser with a column-order table**: the two endpoints differ in types,
++  order and time unit; two small parsers read more clearly.
++- **Convert futures volume to coins with the contract multiplier**: out of scope (intent).
++- **Bump the version or add a deprecation step for removed fields**: the intent keeps 0.1.0
++  (spec Flagged concerns, data-conventions rule 4).
++
++## Proof
++- ratchet: tests may fall, because the Binance behaviour they check is removed. Deleted:
++  `tests/binance_stub.py`, `tests/fixtures/binance/rest-spot-BTCUSDT-1h-2024-12-31.json`,
++  `tests/fixtures/binance/rest-um-BTCUSDT-1h-2025-01-01.json`,
++  `tests/fixtures/binance/spot-BTCUSDT-1h-2024-12-30-missing-two.csv`,
++  `tests/fixtures/binance/spot-BTCUSDT-1h-2024-12-31.csv`,
++  `tests/fixtures/binance/spot-BTCUSDT-1h-2025-01-01.csv`,
++  `tests/fixtures/binance/um-BTCUSDT-1h-2025-01-01.csv`; and in `tests/test_data.py` and
++  `tests/test_data_cli.py` the Binance-only tests (Vision checksum and member, CSV and
++  microsecond parsing, REST-vs-Vision equality, 418 ban, weight header, ban cancelling the
++  pool). Behaviours that stay keep a test below.
++- test: test_make_request_refuses_invalid_parameters (`um`, `1s`, `6h` futures, `XBTUSDM`,
++  `XBTMZ25`, `BTC/USDT`, `../etc`, dates)
++- test: test_make_request_normalises_valid_parameters (`btc-usdt` → `BTC-USDT`, `xbtusdtm`)
++- test: test_spot_rows_map_to_columns (every row of the spot fixture: `high` max, `low` min,
++  `close_time`, schema)
++- test: test_futures_rows_map_to_columns
++- test: test_malformed_rows_are_rejected (wrong length, bool, non-finite, wrong type, not a list)
++- test: test_retries_on_429_and_5xx_but_not_404
++- test: test_retries_stop_after_three
++- test: test_retry_after_is_honoured_and_a_long_one_stops
++- test: test_rate_limit_pacer (headers present above and below the reserve, missing, not an
++  integer, reset over the cap)
++- test: test_kucoin_error_code_is_a_refusal_with_its_message (spot-unknown-symbol fixture,
++  HTTP 200 code 400100)
++- test: test_http_error_with_kucoin_body_is_a_refusal (futures-from-in-seconds fixture, 400)
++- test: test_spot_range_over_1500_candles_loads_completely
++- test: test_futures_range_over_200_candles_loads_completely
++- test: test_futures_end_of_window_row_adds_no_next_day_candle
++- test: test_futures_day_without_some_minutes_has_no_gap (00:14 and 02:15 absent)
++- test: test_empty_day_is_a_gap_and_not_cached
++- test: test_refused_page_is_a_gap_and_not_cached
++- test: test_page_cut_short_is_a_gap_and_not_cached (second page refused; spot and futures)
++- test: test_mistyped_futures_symbol_names_the_symbol_check
++- test: test_day_before_first_candle_names_the_oldest_candle
++- test: test_invalid_parameters_raise_before_any_fetch
++- test: test_second_load_makes_no_fetch
++- test: test_cache_holds_parquet_files_only_under_kucoin
++- test: test_cache_root_priority
++- test: test_day_path_layout_and_escape (hyphenated spot symbol)
++- test: test_atomic_write_leaves_only_the_day_file
++- test: test_cache_info_and_clear_touch_only_day_files (hyphenated spot symbol, `binance-vision/` untouched)
++- test: test_no_cache_mode_writes_nothing
++- test: test_current_day_is_not_cached
++- test: test_no_module_names_a_binance_host
++- test: test_redirect_is_not_followed (origin a KuCoin URL)
++- test: test_only_https_urls_are_opened
++- test: test_datetime_bound_is_refused_not_a_type_error
++- test: test_clear_cache_refuses_a_datetime_bound
++- test: test_download_reports_fetched_skipped_and_missing
++- test: test_cache_info_shows_sizes
++- test: test_cache_clear_deletes_only_matching_day_files
++- test: test_invalid_parameter_prints_one_line_and_exits_2
++- test: test_unusable_cache_dir_prints_one_line_and_exits_2
++- test: test_download_error_prints_one_line_and_exits_2 (retries exhausted)
++- All are still to be written in step 9 (the ones that keep an existing name are rewritten
++  for KuCoin); `tests/test_smoke.py` stays.
++- `python -m compileall -q .` silent, exit 0; `python -m pytest` all passed, offline;
++  `python -m ruff check .` "All checks passed!".
++- Deploy gate, by the owner with network: `python -m app.data download BTC-USDT 1h
++  2026-10-01 2026-10-03 --market spot` and `python -m app.data download XBTUSDTM 1m
++  2026-10-01 2026-10-03 --market futures`, both exit 0.
++
++Interrogation (plan-template):
++1. Breaks: `load_klines` callers (frame shape, markets, intervals, short frames), the CLI,
++   `cache_info`/`clear_cache` (subtree), `scripts/measure_storage.py`, the tests; in Risks.
++2. Riskiest: paging and completeness; in Risks with its guards.
++3. Options: in Options not taken.
++4. Implementable cold: yes — each step names the function, the constants, the window rules,
++   the reason texts and the stub's behaviour; the measured endpoint rules are in intent.md
++   Constraints and `references/capture/summary.json`.
++5. Proof items: none exists yet; all are written in step 9.
+diff --git a/changes/0003-replace-binance-with-kucoin-as-the-marke/spec.md b/changes/0003-replace-binance-with-kucoin-as-the-marke/spec.md
+new file mode 100644
+index 0000000..e20fe14
+--- /dev/null
++++ b/changes/0003-replace-binance-with-kucoin-as-the-marke/spec.md
+@@ -0,0 +1,230 @@
++# Spec: Replace Binance with KuCoin as the market-data source
++Change id: 0003. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design prompt v1 (article p.14). Skills: coding-standards, security-baseline, ux-and-brand, data-conventions, definition-of-done (plugin 1.0.51); overrides: none; policy sources: none
++
++## Requirements
++Source and transport
++- R1. `app/data/` gets klines only from `https://api.kucoin.com/api/v1/market/candles` (spot)
++  and `https://api-futures.kucoin.com/api/v1/kline/query` (futures), with no API key, one
++  call at a time. No module under `app/` names a Binance host.
++- R2. `app/data/vision.py`, the zip and checksum handling and the parallel download pass are
++  gone. Git history keeps them.
++- R3. 0002's transport rules stay: every redirect is refused, only `https` URLs open, the
++  connect and read timeouts and the body size bound (`MAX_BODY_BYTES`) stay.
++- R4. HTTP 429, 5xx and connection errors keep the existing retries (1, 2, 4 s plus jitter,
++  `Retry-After` honoured, a wait over 60 s stops with `DownloadError`). Every other status is
++  returned to the caller, HTTP 418 included (it is no longer a ban).
++- R5. Before each call after the first, the run pauses on the previous answer's
++  `gw-ratelimit-remaining` and `gw-ratelimit-reset` headers; when either is absent or not an
++  integer it waits 1 s, as today.
++
++Public interface
++- R6. `load_klines`, `cache_info`, `clear_cache`, `Gap`, `KlineGapError`,
++  `InvalidRequestError`, `DownloadError`, `Fetch` and `HttpResponse` keep their names and
++  signatures. `BinanceBanError` is removed from `app.data` and from `app/data/http.py`.
++- R7. `python -m app.data download | cache-info | cache-clear` keep their names, positional
++  arguments and options in today's order; `--market` takes `spot` or `futures`.
++- R8. No CLI message, help text or docstring names Binance or Vision.
++- R9. The version stays 0.1.0 in `app/__init__.py` and `pyproject.toml`.
++
++Inputs (all refused with `InvalidRequestError` before any network call)
++- R10. Markets: `spot` and `futures`; `um` and anything else are refused.
++- R11. Symbols are upper-cased, then: spot accepts 2 to 30 letters, digits and hyphens
++  (`BTC-USDT`); futures accepts 2 to 30 letters and digits ending in `USDTM` (`XBTUSDTM`),
++  so coin-margined (`XBTUSDM`) and dated (`XBTMZ25`) contracts are refused. No name mapping.
++- R12. Intervals: `1m`, `3m`, `5m`, `15m`, `30m`, `1h`, `2h`, `4h`, `6h`, `8h`, `12h`, `1d`.
++  `1s`, weeks and months are refused; `6h` is refused on futures.
++- R13. Dates keep 0002's rules: a `datetime` bound is refused, start after end and an end in
++  the future are refused.
++
++The frame
++- R14. Columns, in order: `open_time`, `open`, `high`, `low`, `close`, `volume`,
++  `close_time`, `quote_volume`, with today's dtypes (`Datetime("ms", "UTC")` for the two
++  times, `Float64` for the rest). `trades`, `taker_buy_base_volume` and
++  `taker_buy_quote_volume` are gone.
++- R15. Spot rows map as time, open, close, high, low, volume, turnover; futures rows as time,
++  open, high, low, close, volume, turnover (the intent's measured table). On every row `high`
++  is the largest price and `low` the smallest.
++- R16. `close_time` = `open_time` + interval − 1 ms; `quote_volume` = KuCoin's turnover.
++- R17. Futures `volume` is KuCoin's contract count, not coins; the `load_klines` docstring
++  and the `download` help say so, and that only `quote_volume` compares across markets.
++- R18. The frame is sorted by `open_time`, with no duplicate open time, and holds only rows
++  of the asked UTC days.
++
++Completeness
++- R19. A day is complete when it has at least one candle and every page that covered it was
++  answered successfully; its quiet intervals have no row and raise nothing. The
++  `load_klines` docstring and the CLI help say that a short frame is normal and that callers
++  must not assume a row per interval.
++- R20. `KlineGapError` is raised, with `.frame` holding the rows found, for: a day with no
++  candle; a day any page of which was refused (HTTP status or KuCoin code other than
++  `200000`), malformed, or never asked because paging stopped earlier; a day before
++  KuCoin's oldest candle. Each gap's reason says which, with KuCoin's own message for a
++  refusal. No oldest date is written into the code.
++- R21. Paging never treats a quiet stretch inside the range as its end, and does not depend
++  on a fixed page size.
++
++The cache
++- R22. Day files live at `<cache>/kucoin/<market>/<SYMBOL>/<interval>/<SYMBOL>-<interval>-<YYYY-MM-DD>.parquet`
++  (zstd level 3, atomic write); the default location, `--cache-dir` and
++  `CRYPTO_BACKTESTER_CACHE_DIR` are unchanged. Only complete closed days are written; a
++  second load of them makes no fetch. Nothing under `binance-vision/` is read, written or
++  deleted.
++- R23. `cache-info` and `cache-clear` list and delete only files under `kucoin/` that match
++  the day-file pattern, hyphenated spot symbols included; the `cache-clear` help notes that
++  KuCoin may not serve old futures days again.
++
++Policies
++- R24. coding-standards applies: `CLAUDE.md` conventions (rule 1: Python >= 3.10, type hints
++  on public functions, ruff at 100 columns, one test module per area), the surrounding
++  style (rule 2: one module per job, frozen dataclasses, module constants for messages),
++  behaviour changes ship with tests (rule 4), no new dependency (rule 5; `polars` only),
++  no dead code (rule 7: the Vision code and the `trades` handling go entirely).
++- R25. security-baseline applies: rule 2, every KuCoin answer is untrusted, so the
++  envelope (`code`, `data`), each row's length and types, finite numbers and the body size
++  are checked before use, URLs are built with `urlencode` from validated values and fixed
++  hosts, and cache paths stay under the subtree; KuCoin's `msg` is shortened and stripped of
++  control characters before it enters a reason; rule 3, no key or secret exists; rule 7,
++  tests make no network call and `sandbox.allowed_domains` stays empty. Rules 1 and 5 do not
++  apply: there is no endpoint, login or audit log. Losing Vision's checksum is accepted by
++  the owner in intent.md (Constraints).
++- R26. data-conventions: rule 1, no personal or sensitive field exists (public market
++  prices, classified public); rule 2, the schema stays defined once in
++  `app/data/schema.py`; rule 3 does not apply: no migration, old cache files stay unread
++  where they are; rule 5, only the eight columns callers use are stored; rule 4 applies to
++  the frame contract (see Flagged concerns); rule 6, the dataset's owner is the owner and its
++  freshness is per request.
++- R27. ux-and-brand applies to CLI output only (no screen): rule 4, messages say what
++  happened and what to do next, with no stack trace (`error: <one line>`, exit 2, as today);
++  rule 6, copy stays in module constants as today. Rules 1, 2, 3, 5 and 7 have no screen to
++  act on.
++- R28. definition-of-done applies as written for each phase; the tests dropped with the
++  Binance behaviour are declared in plan.md's Proof (`ratchet:`).
++- R29. Risk list: none of `auth`, `data migrations`, `money movement`, `production config`
++  is touched (no login, no migration of stored data, no orders, no deployment config).
++
++## Design
++Same modules, one job each (`CLAUDE.md` Architecture); `vision.py` is deleted.
++
++- `params.py` — `MARKETS = ("spot", "futures")`; `INTERVAL_MS` without `1s`;
++  `FUTURES_REFUSED_INTERVALS = {"6h"}`; `validate_symbol(symbol, market)` with one pattern
++  per market (R11); `KlineRequest`, `parse_date`, `day_start_ms` unchanged. The KuCoin names
++  of each interval live here beside `INTERVAL_MS`: spot `type` (`1min` ... `1day`), futures
++  `granularity` in minutes.
++- `http.py` — `BinanceBanError` and the 418 branch go. `WeightPacer` becomes a
++  `RateLimitPacer` with the same `wait()` / `record()` shape: missing or non-integer headers
++  wait `UNKNOWN_WEIGHT_WAIT` (1 s); `remaining` below a reserve waits the `reset`
++  milliseconds, bounded to 0..60 s (an untrusted header never sleeps longer). One pacer per
++  run: both hosts share one pool.
++- `schema.py` — `SCHEMA` of the eight columns (R14). Two row parsers replace the CSV and
++  Binance REST ones, each taking the rows and the interval:
++  `frame_from_spot_rows` (7 strings; time in seconds, prices in the order of R15) and
++  `frame_from_futures_rows` (7 JSON numbers, bools refused; time in milliseconds). Both
++  require exactly 7 items per row, integer times inside the 64-bit range, finite numbers,
++  and compute `close_time`; any other shape raises `MalformedDataError`. The microsecond
++  detection goes (Vision-only).
++- `rest.py` — `ENDPOINTS` keyed by market (URL plus builder of the query). A shared
++  `parse_answer(response)` returns rows or a failure reason: not HTTP 200, body over
++  `MAX_BODY_BYTES`, not JSON, `code` not `"200000"` (reason `KuCoin refused (code <c>):
++  <msg>`; for a non-200 with a parseable body `KuCoin refused (HTTP <n>): <msg>`), `data`
++  not a list, or a row that fails the schema (`unexpected KuCoin response`).
++  `fetch_range(fetch, pacer, request, start_ms, end_ms) -> RestRange` pages one call at a
++  time and works from the rows returned, never from a page size:
++  - spot asks `startAt`/`endAt` in seconds over `[start, end)`; KuCoin keeps the newest rows,
++    so the next window ends at the oldest open time returned; an empty answer means the
++    window holds no candle, which ends the range;
++  - futures asks `from`/`to` in milliseconds with `to = end − 1`; KuCoin keeps the oldest
++    rows, so the next window starts one interval after the newest open time returned; rows at
++    or after `end` (the measured end-of-window row) are dropped; an empty answer ends the
++    range;
++  - a page whose rows do not move the window is an unexpected response.
++  `RestRange` carries the frame, the failure reason (or none) and the covered span
++  `[covered_from, covered_until)`: the part of the range every answered page vouches for
++  (spot grows it downwards from `end`, futures upwards from `start`; with no failure it is
++  the whole range).
++- `loader.py` — `sync_days` reads cached closed days, then runs `fetch_range` once per run
++  of consecutive uncached days, in order. Each day becomes one `DayOutcome`:
++  `rest` when the day lies inside the covered span and has a candle; otherwise `missing`
++  with a reason: the range's failure for a day outside the covered span; for an empty
++  covered day, `no candles before <first candle day>: the date may be before KuCoin's oldest
++  candle for this symbol` when a later day of the range has candles and no earlier one does,
++  `no candles on this day` when candles exist before it, and `no candles; check the symbol
++  exists` when the range has none at all. `_worth_caching` writes a `rest` closed day
++  whatever its row count. `find_gaps` reports gaps only for `missing` days (their grid open
++  times with no row, the current day's grid ending at the last closed interval);
++  `KlineGapError` and `Gap` are unchanged. `load_klines`'s docstring states R17 and R19.
++  The thread pool, `_vision_pass`, `MISSING_IN_FILE` and `MISSING_IN_REST` go.
++- `cache.py` — `SUBTREE = "kucoin"`; `file_name` moves here from `vision.py`; the day-file
++  pattern's symbol part admits hyphens (the interval and the date anchor the match, and the
++  symbol must still equal its directory's name); `cache_info` checks a `--symbol` against the
++  given market, or against either market when none is given.
++- `__main__.py` — the description names KuCoin; `--market` choices `spot`, `futures`;
++  `download` help (an epilog) states R17 and R19; `cache-clear` help states R23's note;
++  source labels `skipped, already cached` and `fetched from KuCoin`; the total line drops
++  the Vision count: `<n> fetched, <n> skipped, <n> not found; <n> candles missing`. Exit
++  codes stay (0, 1 when gaps, 2 on a refused input, `DownloadError` or `OSError`).
++- `__init__.py` — the docstring names KuCoin; `BinanceBanError` leaves `__all__`.
++- `scripts/measure_storage.py` — builds synthetic rows of the eight columns, reads the
++  `kucoin/` subtree and validates symbols per market, so it keeps working.
++- Tests — a KuCoin stub replaces `tests/binance_stub.py`: it answers both endpoints from
++  fixtures cut from the captured answers in `references/capture/`, honours each endpoint's
++  window rules, order and page cap (1500 spot, 200 futures), and records every URL.
++  Fixtures live in `tests/fixtures/kucoin/`. 0002's redirect test keeps its checks with a
++  KuCoin URL.
++- Unchanged: the cache location rules, the atomic write, `read_day`'s schema check (a file
++  of another schema is fetched again), the CLI's argument order, `Gap` and `KlineGapError`.
++
++## Open questions from intent
++- "A mistyped futures symbol looks like no data." — answered by the owner in intent.md: no
++  contract lookup; the gap reason of a range with no candle at all reads `no candles; check
++  the symbol exists` (Design, `loader.py`). Spot needs nothing extra: KuCoin refuses an
++  unknown pair with code 400100, which becomes a refusal reason with KuCoin's message.
++- "How do we show that a short frame is normal?" — answered by the owner in intent.md: the
++  `load_klines` docstring and the `download` help say so (R19).
++- "Is the futures history limit a rolling window?" — answered by the owner in intent.md: a
++  note in the `cache-clear` help, nothing more (R23). The fact itself stays unknown: the
++  runs have no network, and the owner's deploy-gate downloads do not settle it either.
++- "Does the futures page stay 200 at longer intervals?" — answered by the owner in
++  intent.md: page from the last row returned; the design never uses a page size (R21,
++  Design, `rest.py`).
++
++## Flagged concerns
++- data-conventions rule 4 ("a removed or renamed field is a new version with a deprecation
++  note") meets the intent's frame and API changes: three columns, `BinanceBanError`, the
++  `um` market and the `1s` interval are removed, and intent.md keeps the version at 0.1.0
++  with no deprecation step. The design follows the intent (the package is pre-1.0 and its
++  one caller is the owner); the policy text does not settle which wins.
++- Rate-limit reserve (a guess; the intent names the headers but no threshold): the design
++  pauses until `gw-ratelimit-reset` when `gw-ratelimit-remaining` falls below 100 (about 33
++  calls at the measured cost of 3 from the measured pool of 2000 per 30 s, left for anything
++  else the owner runs on the same IP), and bounds that pause to 60 s.
++- [x] Deleting the Binance tests: decided allowed per coding-standards rule 4 (it forbids
++  deleting a *failing* test; these pass and check behaviour this change removes) and the
++  plan-template skill (a dropped test file the plan's own work requires is declared in Proof
++  with `- ratchet: tests may fall, because ...`); behaviours that stay keep equivalent tests.
++
++## Acceptance
++- Build `python -m compileall -q .` prints nothing and exits 0; lint `python -m ruff check .`
++  prints `All checks passed!`; test `python -m pytest` passes every test, offline, with no
++  network call.
++- The tests show, against fixtures cut from `references/capture/`:
++  - on every spot and futures fixture row `high` is the largest price and `low` the smallest,
++    and the frame has the eight columns and dtypes of R14, `close_time` per R16;
++  - a spot range of more than 1500 candles and a futures range of more than 200 load
++    completely, sorted, with no duplicate;
++  - the futures end-of-window row adds no candle of the next day;
++  - the futures one-day fixture without 00:14 and 02:15 loads with no gap;
++  - an empty day, a refused page and a page cut short each raise `KlineGapError` with their
++    reason and are not cached; a day before the first candle names the oldest-candle reason;
++  - HTTP 200 with a KuCoin error code is a refusal whose reason holds KuCoin's message;
++  - `6h` on futures, `1s`, `um`, and a futures symbol not ending in `USDTM` are refused with
++    no fetch;
++  - the pacer waits on the two KuCoin headers and 1 s without them; 429 and 5xx retry;
++    redirects are not followed;
++  - a second load makes no fetch, and the cache holds Parquet files only, under `kucoin/`;
++    `cache-info` and `cache-clear` handle a hyphenated spot symbol;
++  - no module under `app/` names a Binance host;
++  - `download`, `cache-info` and `cache-clear` work against the stubbed transport.
++- At the deploy gate the owner runs
++  `python -m app.data download BTC-USDT 1h 2026-10-01 2026-10-03 --market spot` and
++  `python -m app.data download XBTUSDTM 1m 2026-10-01 2026-10-03 --market futures`; both exit 0.
++- No screen is touched (CLI only), so no `Mock:` line.
+diff --git a/changes/0003-replace-binance-with-kucoin-as-the-marke/status.yaml b/changes/0003-replace-binance-with-kucoin-as-the-marke/status.yaml
+index 51394c0..bbb6d6d 100644
+--- a/changes/0003-replace-binance-with-kucoin-as-the-marke/status.yaml
++++ b/changes/0003-replace-binance-with-kucoin-as-the-marke/status.yaml
+@@ -1,7 +1,7 @@
+ id: "0003"
+ slug: replace-binance-with-kucoin-as-the-marke
+ title: Replace Binance with KuCoin as the market-data source
+-phase: intent
++phase: design
+ entry_route: idea
+ change_type: feature
+ gate:
+@@ -26,5 +26,5 @@ released_at: null
+ released_sha: null
+ released_pr: null
+ created_at: "2026-11-06T00:21:16Z"
+-updated_at: "2026-11-06T00:21:16Z"
++updated_at: "2026-11-07T04:01:25Z"
+ schema_version: 1

@@ -1,0 +1,11 @@
+{
+  "reviewer": "keep the concern open for the owner, keep 0.1.0 as the intent says, and add a deprecation note for the removed names now",
+  "advocate": "close it as the owner's decision citing intent.md (version stays 0.1.0, fields removed) and add the deprecation note the intent does not forbid",
+  "decision": "Keep version 0.1.0 as intent.md directs, and add a deprecation note naming the removed columns (trades, taker_buy_*), BinanceBanError, the um market and the 1s interval, with the reason (KuCoin does not publish them), to the load_klines docstring and the app/data/__init__.py module docstring; the version half of rule 4 stays the owner's call, to confirm at the merge gate.",
+  "rationale": [
+    "Both verdicts agree: intent.md (the owner's words, lines 26-46) settles the version half, so 0.1.0 stays, and nothing in the intent forbids the note, so the note is added.",
+    "They disagree only on whether the run may close the concern; the safer reading is the reviewer's, because closing it would be the run deciding a policy breach for itself (REVIEW.md: policy breaches are Important).",
+    "Rule 4 gives no pre-1.0 or single-caller exemption, so the design must not close on that argument; it records the intent as the source and leaves the version breach for the owner to accept.",
+    "The note costs one sentence of copy, changes no code path, and shrinks the remaining breach to the version alone, which is the owner's decision under the intent."
+  ]
+}

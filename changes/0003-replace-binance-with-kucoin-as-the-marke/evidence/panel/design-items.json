@@ -1,0 +1,44 @@
+{
+  "decided": 0,
+  "gate": "park",
+  "items": [
+    {
+      "decided": false,
+      "item": "data-conventions rule 4 (\"a removed or renamed field is a new version with a deprecation",
+      "key": "concern:be9e62056ac78dfb",
+      "kind": "concern",
+      "n": 1
+    },
+    {
+      "decided": false,
+      "item": "Rate-limit reserve (a guess; the intent names the headers but no threshold): the design",
+      "key": "concern:ad4133f85f1674be",
+      "kind": "concern",
+      "n": 2
+    },
+    {
+      "decided": false,
+      "item": "adversarial reviewer says park: Design silently drops an existing behaviour that this change keeps: today sync_days promises (docstring, app/data/loader.py:93-97) and tests (tests/test_data.py:452 test_days_fetched_before_a_ban_stay_cached) that a run stopped part way keeps the closed days it already downloaded in the cache. The plan (step 4: fetch_range returns one RestRange per range; step 6: _rest_pass builds DayOutcomes only after fetch_range returns) means a DownloadError raised by with_retries in the middle of a range (5xx or 429 after three retries, Retry-After over 60 s, connection errors, all of which stay under R4) leaves fetch_range with no result, so every page already fetched for that range is thrown away and nothing gets cached. Once Vision is gone, all data arrives through REST paging (about 22 pages for 3 days of futures 1m, about 2,600 for a year), so this matters more than it does today. DownloadError and the retries stay, so this is not Binance-only behaviour, and the ratchet line in Proof does not cover it (it names 'ban cancelling the pool', not 'days fetched before a stop stay cached'). No Proof test replaces it. Fix in the design: settle and cache each day as soon as the covered span vouches for it (spot covers backwards from end, futures forwards from start), or catch DownloadError per range, settle the covered complete days, then re-raise. Add a Proof test, e.g. test_days_fetched_before_a_download_error_stay_cached, with the error on a later page.",
+      "key": "park:acfa63991fdd5a74",
+      "kind": "park",
+      "n": 3
+    }
+  ],
+  "iterations": {
+    "cap": 2,
+    "left": 2,
+    "used": 0
+  },
+  "panel_calls": {
+    "cap": 4,
+    "left": 4,
+    "used": 0
+  },
+  "parks": [],
+  "pending": [
+    1,
+    2,
+    3
+  ],
+  "phase": "design"
+}

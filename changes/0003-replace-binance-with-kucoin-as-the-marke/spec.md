@@ -188,7 +188,7 @@ Same modules, one job each (`CLAUDE.md` Architecture); `vision.py` is deleted.
   Design, `rest.py`).
 
 ## Flagged concerns
-- data-conventions rule 4 ("a removed or renamed field is a new version with a deprecation
+- decided (by panel #1): Keep version 0.1.0 as intent.md directs, and add a deprecation note naming the removed columns (trades, taker_buy_*), BinanceBanError, the um market and the 1s interval, with the reason (KuCoin does not publish them), to the load_klines docstring and the app/data/__init__.py module docstring; the version half of rule 4 stays the owner's call, to confirm at the merge gate. — data-conventions rule 4 ("a removed or renamed field is a new version with a deprecation
   note") meets the intent's frame and API changes: three columns, `BinanceBanError`, the
   `um` market and the `1s` interval are removed, and intent.md keeps the version at 0.1.0
   with no deprecation step. The design follows the intent (the package is pre-1.0 and its
