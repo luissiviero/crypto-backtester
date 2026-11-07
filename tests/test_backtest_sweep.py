@@ -105,7 +105,8 @@ def expected_lines(grid: list[tuple[int, int]], skipped: int, fee: float) -> lis
 
 
 def table_pairs(lines: list[str]) -> list[tuple[int, int]]:
-    return [(int(line.split()[0]), int(line.split()[1])) for line in lines[3:-2]]
+    rows = [line.split() for line in lines[3:-2]]
+    return [(int(fast), int(slow)) for fast, slow, *_ in rows]
 
 
 def assert_refused(capsys: pytest.CaptureFixture[str], message: str) -> None:
