@@ -50,11 +50,13 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design
   exit 2:
   - what `download` refuses (symbol, interval, market, dates), with its messages;
   - `--fast` or `--slow` not a whole number of at least 1, or `--fast` not below `--slow`;
-  - a `--fee` that is not a number;
-  - a frame with fewer candles than `--slow`;
+  - a `--fee` that is not a number, or one the engine's fee check refuses
+    (`BacktestInputError`, with the engine's message), both before any kline is loaded
+    (panel #1);
+  - a frame with no more candles than `--slow` (`height <= slow`, panel #2): such a range
+    can never take a position;
   - a missing day (`KlineGapError`) or a download error (`DownloadError`), with the reason
-    `load_klines` gives; a cache directory error (`OSError`) with the same hint as `download`;
-  - a `--fee` that `run_backtest` refuses (`BacktestInputError`), with the engine's message.
+    `load_klines` gives; a cache directory error (`OSError`) with the same hint as `download`.
 - R13. Messages say what is wrong and what is accepted, and never show a stack trace
   (ux-and-brand rule 4).
 - R14. Unchanged: the engine (`inputs.py`, `engine.py`, `summary.py`) and its public API; all
@@ -119,11 +121,12 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design
     `app/data/params.py`, with `today` from `loader.utc_now()` as `_download` does: the same
     function, so the same messages, and it gives the normalised symbol and parsed dates for
     the header; (2) `--fast` and `--slow` to `int`, then `validate_lengths`; (3) `--fee` to
-    `float`; (4) `load_klines(...)` with the request's values, `market`, `cache_dir` and
-    `fetch`; (5) frame height against `--slow`; (6) `sma_cross_positions`, then
-    `run_backtest(frame, positions, fee=fee)`, where the engine's fee check (fee first in its
-    `validate`) refuses a bad fee before any calculation; (7) `run_backtest(frame,
-    [1] * frame.height, fee=fee)` for buy and hold.
+    `float`, then the engine's own fee check, `app/backtest/inputs.py: _check_fee`, called
+    as it is (panel #1: one copy of the `0 <= fee < 1` rule, `inputs.py` unchanged, nothing
+    downloaded for a bad fee); (4) `load_klines(...)` with the request's values, `market`,
+    `cache_dir` and `fetch`; (5) refuse `frame.height <= slow` (panel #2); (6)
+    `sma_cross_positions`, then `run_backtest(frame, positions, fee=fee)`; (7)
+    `run_backtest(frame, [1] * frame.height, fee=fee)` for buy and hold.
   - `main` catches `InvalidRequestError`, `KlineGapError`, `DownloadError` and
     `BacktestInputError` and prints `error: {error}` to stderr with exit 2; an `OSError`
     gets `download`'s cache-directory hint. The length, fee-text and candle-count refusals
@@ -131,7 +134,7 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design
   - Message shapes (final wording at the build, each naming the value and what is
     accepted): `fast '0' is not a whole number of at least 1`, `fast 50 is not below slow
     20: the fast SMA must be the shorter one`, `fee 'abc' is not a number: pass a
-    proportional fee, for example 0.001`, `the range has 30 candles, fewer than slow 50:
+    proportional fee, for example 0.001`, `the range has 30 candles, not more than slow 50:
     the strategy could never take a position; widen the dates or lower --slow`.
 - **app/data/ needs no refactor.** The command calls `make_request`, `MARKETS`,
   `loader.utc_now` and `load_klines` as they are; `python -m app.data` is untouched.
@@ -194,7 +197,8 @@ Change id: 0005. Status: proposed. Produced by: sdlc plugin 1.0.51, /sdlc-design
     the eight lines of R11 with the summary `run_backtest` returns for
     `sma_cross_positions` on that frame and the buy-and-hold return, and exits 0;
   - each refused input of R12 prints its `error:` line on stderr and exits 2 (a bad
-    `--market` through argparse's exit 2, as on `download`);
+    `--market` through argparse's exit 2, as on `download`); a bad `--fee` makes no fetch;
+  - on a 24-candle range, `--slow 24` exits 2 and `--slow 23` exits 0;
   - `sma_cross_positions` is in `app.backtest.__all__`.
 - Results match hand calculations within about 1e-9.
 - `python -m compileall -q .` prints nothing and exits 0; `python -m pytest` passes every

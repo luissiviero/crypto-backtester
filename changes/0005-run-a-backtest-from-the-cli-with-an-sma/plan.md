@@ -78,11 +78,15 @@ before the build PR, so the deploy review does not flag an outdated `CLAUDE.md`)
      args.interval, args.start, args.end, args.market, now.date())`; `fast, slow =
      _length(args.fast, "fast"), _length(args.slow, "slow")` (int() of the text; a
      `ValueError` becomes `BacktestInputError(f"{name} {text!r} is not a whole number of at
-     least 1")`), `validate_lengths(fast, slow)`; `fee = _fee(args.fee)` (float() of the
+     least 1")`), `validate_lengths(fast, slow)`; `fee = _fee(args.fee)`: float() of the
      text, else `BacktestInputError("fee ... is not a number: pass a proportional fee, for
-     example 0.001")`); `frame = load_klines(request.symbol, request.interval,
+     example 0.001")`, then `return _check_fee(value)` with `_check_fee` imported from
+     `app.backtest.inputs` as it is (panel #1: the engine's rule and message, checked
+     before any download); `frame = load_klines(request.symbol, request.interval,
      request.start, request.end, market=request.market, cache_dir=args.cache_dir,
-     fetch=fetch)`; refuse `frame.height < slow` with the message of spec Design;
+     fetch=fetch)`; refuse `frame.height <= slow` (panel #2) with
+     `BacktestInputError(f"the range has {frame.height} candles, not more than slow {slow}:
+     the strategy could never take a position; widen the dates or lower --slow")`;
      `result = run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee)`;
      `hold = run_backtest(frame, [1] * frame.height, fee=fee)`; print the eight lines of
      spec R11; return 0.
@@ -121,11 +125,14 @@ before the build PR, so the deploy review does not flag an outdated `CLAUDE.md`)
 - **Bad `--market` exits via argparse** (`SystemExit(2)`, usage plus `error: argument
   --market: invalid choice`), as `download` does; its test uses
   `pytest.raises(SystemExit)` and checks the code is 2 and stderr names the choice.
-- **Fee checked after loading** (spec, flagged concern 1): a bad `--fee` range downloads the
-  range first. Changing that needs a CLI range check before `load_klines`; one line in step
-  3 and its test.
-- **Candle-count rule** (spec, flagged concern 2): `<` as the intent says; if the owner asks
-  for `<=`, one comparison and its test change.
+- **The CLI calls a private engine helper** (`inputs._check_fee`, panel #1). It keeps one
+  copy of the fee rule and leaves `inputs.py` unchanged, at the cost of a cross-module call
+  to a `_` name inside the same package. A later rename of `_check_fee` breaks the CLI at
+  import time, which the CLI tests catch. If the owner overturns panel #1 at the gate, the
+  fee check moves back to `run_backtest` after loading and the `calls == []` assertion goes.
+- **Candle-count rule** (panel #2): `height <= slow`, the intent's stated reason rather
+  than its literal "fewer than". If the owner overturns it, one comparison, the message and
+  the boundary test change.
 - **CLAUDE.md drift.** Until the owner lands the lines above, the deploy review may raise an
   outdated-CLAUDE.md finding (as on change 0003). The run cannot edit that file.
 - **No new dependency** (coding-standards rule 5; security-baseline rule 6): polars and the
@@ -142,9 +149,12 @@ before the build PR, so the deploy review does not flag an outdated `CLAUDE.md`)
 - **argparse `type=int` / `type=float` for `--fast`, `--slow`, `--fee`.** Not taken: argparse
   exits with a usage dump through `SystemExit` instead of one `error:` line and `main`
   returning 2, and `0` or `-5` would still need a second check.
-- **A range check of `--fee` in the CLI before loading.** Not taken for now: it would copy
-  the engine's `0 <= fee < 1` rule while `inputs.py` stays unchanged (spec, flagged
-  concern 1).
+- **A range check of `--fee` written in the CLI.** Not taken: it would copy the engine's
+  `0 <= fee < 1` rule; calling `_check_fee` keeps one copy (panel #1).
+- **Leaving the fee range check to `run_backtest` after loading.** Not taken (panel #1): a
+  bad fee would download and cache the range before being refused.
+- **The literal `height < slow`.** Not taken (panel #2): a range of exactly `slow` candles
+  can never trade, which the intent's own reason refuses.
 - **A strategy class or registry.** Not taken: the intent puts a plug-in mechanism out of
   scope; one function is the smallest API.
 - **Positions as a Python list.** Not taken: a polars `Int8` Series matches the frame type
@@ -178,6 +188,7 @@ Interrogation answers:
 - test: test_run_refuses_bad_lengths
 - test: test_run_refuses_bad_fee
 - test: test_run_refuses_too_few_candles
+- test: test_run_candle_count_boundary
 - test: test_run_refuses_missing_day
 - test: test_run_reports_download_error
 - `test_run_prints_summary_and_buy_and_hold` runs `run BTC-USDT 1h 2026-10-01 2026-10-01
@@ -188,11 +199,16 @@ Interrogation answers:
   with a stub that holds no rows, and gets the same output.
 - The refusal tests are parametrised: bad symbol, interval, dates (future end, start after
   end, not ISO); `--fast 0`, `--fast x`, `--fast 1.5`, `--fast 50 --slow 20`, `--fast 20
-  --slow 20`; `--fee abc`, `--fee 1.5`, `--fee -0.1`; too few candles (`--slow 30` on the
-  24-candle day); a missing day (2026-09-30 .. 2026-10-01 with only the 10-01 fixture); a
+  --slow 20`; `--fee abc`, `--fee 1.5`, `--fee -0.1` (each also asserts the stub's
+  `calls == []`: nothing fetched, panel #1); too few candles (`--slow 30` on the 24-candle
+  day); a missing day (2026-09-30 .. 2026-10-01 with only the 10-01 fixture); a
   download error (a stub `refuse` answering 503 until retries are exhausted, with the
   `sleeps` fixture so nothing waits). Each asserts stderr starts with `error: ` and exit 2
   (bad market: `SystemExit` with code 2).
+- `test_run_candle_count_boundary` (panel #2): on the 24-candle day with `--fast 3`,
+  `--slow 24` exits 2 with the candle-count message and `--slow 23` exits 0.
+- Every CLI test passes `--cache-dir` under `tmp_path`, so no test reads or writes the
+  developer's real cache.
 - Target (spec Acceptance): hand-computed positions exact; summary values equal to
   `run_backtest`'s within 1e-9 via the exact printed text.
 - `python -m compileall -q .` prints nothing. `python -m pytest` reports every test passed.
