@@ -193,7 +193,7 @@ Same modules, one job each (`CLAUDE.md` Architecture); `vision.py` is deleted.
   `um` market and the `1s` interval are removed, and intent.md keeps the version at 0.1.0
   with no deprecation step. The design follows the intent (the package is pre-1.0 and its
   one caller is the owner); the policy text does not settle which wins.
-- Rate-limit reserve (a guess; the intent names the headers but no threshold): the design
+- decided (by panel #2): Keep RATE_LIMIT_RESERVE = 100 and MAX_RATE_LIMIT_WAIT = 60.0 as module constants; on a 429 with no usable Retry-After, with_retries waits gw-ratelimit-reset ms capped at MAX_RATE_LIMIT_WAIT (R4, plan step 3, Proof test test_429_without_retry_after_waits_for_the_reset), and the plan's Risks line drops 'which the retries absorb'. — Rate-limit reserve (a guess; the intent names the headers but no threshold): the design
   pauses until `gw-ratelimit-reset` when `gw-ratelimit-remaining` falls below 100 (about 33
   calls at the measured cost of 3 from the measured pool of 2000 per 30 s, left for anything
   else the owner runs on the same IP), and bounds that pause to 60 s.
