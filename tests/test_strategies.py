@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import polars as pl
 import pytest
 
+import app.backtest
 from app.backtest.engine import run_backtest
 from app.backtest.inputs import BacktestInputError
 from app.backtest.strategy import sma_cross_positions
@@ -49,10 +50,8 @@ def test_positions_ignore_later_closes() -> None:
     assert positions[:4] == EXAMPLE_POSITIONS[:4] == [0, 0, 1, 1]
     for k in range(len(EXAMPLE)):
         later = [*EXAMPLE[: k + 1], *([50] * (len(EXAMPLE) - k - 1))]
-        assert (
-            sma_cross_positions(_frame(later), 2, 3).to_list()[: k + 1]
-            == (EXAMPLE_POSITIONS[: k + 1])
-        )
+        kept = sma_cross_positions(_frame(later), 2, 3).to_list()[: k + 1]
+        assert kept == EXAMPLE_POSITIONS[: k + 1]
 
 
 def test_positions_accepted_by_run_backtest() -> None:
@@ -96,3 +95,8 @@ def test_refuses_frame_without_close(frame: object, message: str) -> None:
     with pytest.raises(BacktestInputError) as caught:
         sma_cross_positions(frame, 2, 3)  # type: ignore[arg-type]
     assert str(caught.value).startswith(message)
+
+
+def test_public_api_exports_strategy() -> None:
+    assert "sma_cross_positions" in app.backtest.__all__
+    assert app.backtest.sma_cross_positions is sma_cross_positions

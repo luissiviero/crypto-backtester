@@ -296,6 +296,7 @@ def test_public_api() -> None:
         "DEFAULT_FEE",
         "Summary",
         "run_backtest",
+        "sma_cross_positions",
     }
     assert api.run_backtest is run_backtest
     assert api.BacktestResult is BacktestResult
