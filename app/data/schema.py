@@ -1,11 +1,8 @@
-"""The kline schema, defined once, and the normalisation of Vision CSV and REST rows to it."""
+"""The kline schema, defined once, and the normalisation of KuCoin spot and futures rows to it."""
 
 from __future__ import annotations
 
-import csv
-import io
 import math
-from collections.abc import Sequence
 
 import polars as pl
 
@@ -19,106 +16,89 @@ SCHEMA: dict[str, pl.DataType] = {
     "volume": pl.Float64(),
     "close_time": TIME_DTYPE,
     "quote_volume": pl.Float64(),
-    "trades": pl.Int64(),
-    "taker_buy_base_volume": pl.Float64(),
-    "taker_buy_quote_volume": pl.Float64(),
 }
 COLUMNS = tuple(SCHEMA)
 TIME_COLUMNS = ("open_time", "close_time")
-INT_COLUMNS = (*TIME_COLUMNS, "trades")
-CSV_FIELDS = len(COLUMNS) + 1  # Binance's trailing "ignore" field, dropped
-MICROSECOND_THRESHOLD = 10**14
+ROW_ITEMS = 7
+
+# Where each value sits in a row (after the time at index 0): spot puts close before high.
+_SPOT_ORDER = {"open": 1, "close": 2, "high": 3, "low": 4, "volume": 5, "quote_volume": 6}
+_FUTURES_ORDER = {"open": 1, "high": 2, "low": 3, "close": 4, "volume": 5, "quote_volume": 6}
 
 
 class MalformedDataError(ValueError):
-    """A Vision file or REST body whose rows do not fit the kline layout."""
+    """A KuCoin answer whose rows do not fit the kline layout."""
 
 
 def empty_frame() -> pl.DataFrame:
     return pl.DataFrame(schema=SCHEMA)
 
 
-def frame_from_csv(data: bytes) -> pl.DataFrame:
-    """Parse a Vision daily kline CSV (optional header row, 12 fields per row)."""
-    try:
-        text = data.decode("ascii")
-    except UnicodeDecodeError:
-        raise MalformedDataError("the file is not ASCII text") from None
-    rows = [row for row in csv.reader(io.StringIO(text)) if row]
-    if rows and not _is_number(rows[0][0]):
-        rows = rows[1:]
-    for row in rows:
-        if len(row) != CSV_FIELDS:
-            raise MalformedDataError(f"a row has {len(row)} fields, expected {CSV_FIELDS}")
-    return _frame_from_fields([row[: len(COLUMNS)] for row in rows])
+def frame_from_spot_rows(rows: object, interval_ms: int) -> pl.DataFrame:
+    """Parse spot rows: 7 strings each, the time in seconds, prices open, close, high, low."""
+    parsed = []
+    for row in _rows(rows):
+        if not all(isinstance(value, str) for value in row):
+            raise MalformedDataError("a spot row holds a value that is not a string")
+        try:
+            open_ms = _open_ms(int(row[0]) * 1000, interval_ms)
+            values = {name: _finite(float(row[index])) for name, index in _SPOT_ORDER.items()}
+        except ValueError as exc:
+            raise MalformedDataError(f"a value does not parse: {exc}") from None
+        parsed.append((open_ms, values))
+    return _frame(parsed, interval_ms)
 
 
-def frame_from_rest(rows: object) -> pl.DataFrame:
-    """Parse a REST klines body: a list of lists of at least 11 items."""
+def frame_from_futures_rows(rows: object, interval_ms: int) -> pl.DataFrame:
+    """Parse futures rows: 7 JSON numbers each, the time in milliseconds, prices in OHLC order."""
+    parsed = []
+    for row in _rows(rows):
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in row):
+            raise MalformedDataError("a futures row holds a value that is not a number")
+        time = row[0]
+        if isinstance(time, float) and not time.is_integer():
+            raise MalformedDataError(f"the open time {time!r} is not a whole number")
+        try:
+            open_ms = _open_ms(int(time), interval_ms)
+            values = {name: _finite(float(row[index])) for name, index in _FUTURES_ORDER.items()}
+        except (ValueError, OverflowError) as exc:
+            raise MalformedDataError(f"a value does not parse: {exc}") from None
+        parsed.append((open_ms, values))
+    return _frame(parsed, interval_ms)
+
+
+def _rows(rows: object) -> list[list[object]]:
     if not isinstance(rows, list):
-        raise MalformedDataError("the body is not a list")
-    fields = []
+        raise MalformedDataError("the data is not a list")
     for row in rows:
-        if not isinstance(row, list) or len(row) < len(COLUMNS):
-            raise MalformedDataError("a row is not a list of at least 11 items")
-        for name, value in zip(COLUMNS, row):
-            if name in INT_COLUMNS:
-                if isinstance(value, bool) or not isinstance(value, int):
-                    raise MalformedDataError(f"{name} is not an integer")
-            elif not isinstance(value, str):
-                raise MalformedDataError(f"{name} is not a numeric string")
-        fields.append([str(value) for value in row[: len(COLUMNS)]])
-    return _frame_from_fields(fields)
+        if not isinstance(row, list) or len(row) != ROW_ITEMS:
+            raise MalformedDataError(f"a row is not a list of exactly {ROW_ITEMS} items")
+    return rows
 
 
-def _is_number(text: str) -> bool:
-    try:
-        float(text)
-    except ValueError:
-        return False
-    return True
-
-
-def _frame_from_fields(rows: Sequence[Sequence[str]]) -> pl.DataFrame:
-    columns: dict[str, list[int] | list[float]] = {}
-    try:
-        for index, name in enumerate(COLUMNS):
-            if name in INT_COLUMNS:
-                columns[name] = [_int64(row[index]) for row in rows]
-            else:
-                columns[name] = [_finite(row[index]) for row in rows]
-    except ValueError as exc:
-        raise MalformedDataError(f"a value does not parse: {exc}") from None
-    for name in TIME_COLUMNS:
-        columns[name] = _to_milliseconds(columns[name])
-    raw_schema = {name: pl.Int64() if name in INT_COLUMNS else pl.Float64() for name in COLUMNS}
+def _frame(parsed: list[tuple[int, dict[str, float]]], interval_ms: int) -> pl.DataFrame:
+    columns: dict[str, list[int] | list[float]] = {
+        "open_time": [open_ms for open_ms, _ in parsed],
+        "close_time": [open_ms + interval_ms - 1 for open_ms, _ in parsed],
+    }
+    for name in COLUMNS:
+        if name not in TIME_COLUMNS:
+            columns[name] = [values[name] for _, values in parsed]
+    raw_schema = {name: pl.Int64() if name in TIME_COLUMNS else pl.Float64() for name in COLUMNS}
     frame = pl.DataFrame(columns, schema=raw_schema)
     return frame.with_columns(
         pl.col(name).cast(pl.Datetime("ms")).dt.replace_time_zone("UTC") for name in TIME_COLUMNS
     )
 
 
-def _int64(text: str) -> int:
-    value = int(text)
-    if not -(2**63) <= value < 2**63:
-        raise ValueError(f"{text!r} does not fit a 64-bit integer")
+def _open_ms(value: int, interval_ms: int) -> int:
+    """An open time whose close time (open + interval - 1) still fits a 64-bit integer."""
+    if not -(2**63) <= value < 2**63 - interval_ms:
+        raise ValueError(f"{value!r} does not fit a 64-bit time")
     return value
 
 
-def _finite(text: str) -> float:
-    value = float(text)
+def _finite(value: float) -> float:
     if not math.isfinite(value):
-        raise ValueError(f"{text!r} is not a finite number")
+        raise ValueError(f"{value!r} is not a finite number")
     return value
-
-
-def _to_milliseconds(times: list[int]) -> list[int]:
-    """Detect the unit of one file's times (microseconds from 10^14) and floor them to ms."""
-    if not times:
-        return times
-    in_microseconds = times[0] >= MICROSECOND_THRESHOLD
-    if any((time >= MICROSECOND_THRESHOLD) != in_microseconds for time in times):
-        raise MalformedDataError("the file mixes millisecond and microsecond times")
-    if in_microseconds:
-        return [time // 1000 for time in times]
-    return times

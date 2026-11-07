@@ -14,6 +14,7 @@ import polars as pl
 
 from app.data.params import (
     MARKETS,
+    InvalidRequestError,
     KlineRequest,
     parse_date,
     validate_interval,
@@ -21,20 +22,20 @@ from app.data.params import (
     validate_symbol,
 )
 from app.data.schema import SCHEMA
-from app.data.vision import file_name
 
 ENV_VAR = "CRYPTO_BACKTESTER_CACHE_DIR"
 APP_NAME = "crypto-backtester"
-SUBTREE = "binance-vision"
+SUBTREE = "kucoin"
 COMPRESSION_LEVEL = 3
 
+# The interval and the date anchor the match, so a hyphenated spot symbol parses whole.
 _DAY_FILE = re.compile(
-    r"(?P<symbol>[A-Z0-9]{2,30})-(?P<interval>[0-9]{1,2}[smhd])-(?P<day>\d{4}-\d{2}-\d{2})\.parquet"
+    r"(?P<symbol>[A-Z0-9-]{2,30})-(?P<interval>[0-9]{1,2}[mhd])-(?P<day>\d{4}-\d{2}-\d{2})\.parquet"
 )
 
 
 class CachePathError(ValueError):
-    """A cache path that would land outside `<cache>/binance-vision/`."""
+    """A cache path that would land outside `<cache>/kucoin/`."""
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,10 @@ def cache_root(cache_dir: str | Path | None = None) -> Path:
     xdg = os.environ.get("XDG_CACHE_HOME")
     base = Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".cache"
     return base / APP_NAME
+
+
+def file_name(request: KlineRequest, day: date) -> str:
+    return f"{request.symbol}-{request.interval}-{day.isoformat()}"
 
 
 def day_path(root: Path, request: KlineRequest, day: date) -> Path:
@@ -112,7 +117,7 @@ def cache_info(
 ) -> list[CacheEntry]:
     """Day files and bytes per market, symbol and interval, optionally filtered."""
     markets = [validate_market(market)] if market else list(MARKETS)
-    wanted_symbol = validate_symbol(symbol) if symbol else None
+    wanted_symbol = _symbol_for_info(symbol, market) if symbol else None
     if interval is not None:
         validate_interval(interval, "spot")
     entries = []
@@ -129,6 +134,19 @@ def cache_info(
     return entries
 
 
+def _symbol_for_info(symbol: str, market: str | None) -> str:
+    """Check against the given market; with none, a symbol valid on either market will do."""
+    if market:
+        return validate_symbol(symbol, market)
+    try:
+        return validate_symbol(symbol, "spot")
+    except InvalidRequestError as spot_error:
+        try:
+            return validate_symbol(symbol, "futures")
+        except InvalidRequestError:
+            raise spot_error from None
+
+
 def clear_cache(
     symbol: str,
     interval: str | None = None,
@@ -140,7 +158,7 @@ def clear_cache(
 ) -> ClearResult:
     """Delete the matching day files only; never a directory, never outside the subtree."""
     market = validate_market(market)
-    symbol = validate_symbol(symbol)
+    symbol = validate_symbol(symbol, market)
     if interval is not None:
         validate_interval(interval, market)
     first = parse_date(start, "start") if start is not None else date.min

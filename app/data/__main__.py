@@ -15,9 +15,15 @@ from app.data.params import MARKETS, InvalidRequestError, make_request
 
 SOURCE_LABELS = {
     loader.CACHED: "skipped, already cached",
-    loader.VISION: "fetched from Vision",
-    loader.REST: "filled from REST",
+    loader.REST: "fetched from KuCoin",
 }
+DOWNLOAD_NOTES = (
+    "KuCoin has no candle for an interval without trades, so a complete day can hold fewer "
+    "rows than intervals: a short day is normal, never assume one row per interval. "
+    "Futures volume counts contracts, spot volume coins; only quote_volume compares across "
+    "markets."
+)
+CLEAR_NOTE = "KuCoin may not serve old futures days again: a cleared futures day can be lost."
 
 
 def main(argv: Sequence[str] | None = None, fetch: Fetch | None = None) -> int:
@@ -34,11 +40,13 @@ def main(argv: Sequence[str] | None = None, fetch: Fetch | None = None) -> int:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m app.data", description="Binance Vision kline data and its local cache."
+        prog="python -m app.data", description="KuCoin kline data and its local cache."
     )
     commands = parser.add_subparsers(required=True, metavar="COMMAND")
 
-    download = commands.add_parser("download", help="fill the cache for a date range")
+    download = commands.add_parser(
+        "download", help="fill the cache for a date range", epilog=DOWNLOAD_NOTES
+    )
     download.add_argument("symbol", metavar="SYMBOL")
     download.add_argument("interval", metavar="INTERVAL")
     download.add_argument("start", metavar="START", help="first day, YYYY-MM-DD (UTC)")
@@ -54,7 +62,7 @@ def _parser() -> argparse.ArgumentParser:
     info.add_argument("--cache-dir")
     info.set_defaults(command=_cache_info)
 
-    clear = commands.add_parser("cache-clear", help="delete cached day files")
+    clear = commands.add_parser("cache-clear", help="delete cached day files", epilog=CLEAR_NOTE)
     clear.add_argument("symbol", metavar="SYMBOL")
     clear.add_argument("interval", metavar="INTERVAL", nargs="?")
     clear.add_argument("--market", choices=MARKETS, default="spot")
@@ -78,18 +86,12 @@ def _download(args: argparse.Namespace, fetch: Fetch) -> int:
         label = SOURCE_LABELS.get(source) or f"not found: {reason}"
         print(f"{span:<24}  {label} ({_count(len(days), 'day')})")
     gaps = loader.find_gaps(request, outcomes, now)
-    for gap in gaps:
-        if gap.reason in (loader.MISSING_IN_FILE, loader.MISSING_IN_REST):
-            print(
-                f"{gap.start:%Y-%m-%d %H:%M:%S} .. {gap.end:%Y-%m-%d %H:%M:%S} UTC  "
-                f"{_count(gap.candles, 'candle')} missing: {gap.reason}"
-            )
     counts = Counter(outcome.source for outcome in outcomes)
     missing = sum(gap.candles for gap in gaps)
     print(
         f"Total for {request.symbol} {request.interval} {request.market}: "
-        f"{counts[loader.VISION]} fetched, {counts[loader.CACHED]} skipped, "
-        f"{counts[loader.REST]} from REST, {counts[loader.MISSING]} not found; "
+        f"{counts[loader.REST]} fetched, {counts[loader.CACHED]} skipped, "
+        f"{counts[loader.MISSING]} not found; "
         f"{_count(missing, 'candle')} missing. Cache: {root}"
     )
     return 1 if gaps else 0
