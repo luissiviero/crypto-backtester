@@ -16,7 +16,8 @@
   `TRADE_SCHEMA` is built from the input's `open_time` dtype.
 - `app/backtest/summary.py` — new: the frozen dataclass `Summary(total_return, max_drawdown,
   trade_count, win_rate, time_in_market)` and `summarize(equity: list[float],
-  held: list[int], returns: list[float]) -> Summary`.
+  held: list[int], returns: list[float]) -> Summary`. The `Summary` docstring says of
+  `win_rate`: "0.0 when there are no trades; see trade_count" (panel #2).
 - `pyproject.toml` — `[tool.setuptools] packages = ["app", "app.data", "app.backtest"]`
   (spec Design, Packaging; decided by panel #1: keep the explicit entry, proven by a wheel
   listing; the owner may overturn it at the design gate, and then this line is dropped).
@@ -58,11 +59,12 @@ the build PR if they want `sdlc/review` green on the first pass, per the intent)
    Each message names the input, the first bad index or value, and what is accepted
    (spec R15). Commit with its tests.
 2. `app/backtest/summary.py` and the summary unit tests: max drawdown as a running peak over
-   the equity list; win rate `0.0` with no trades; time in market =
+   the equity list; win rate `0.0` with no trades (panel #2); time in market =
    `sum(held) / len(held)`. Commit with its tests.
 3. `app/backtest/engine.py`: the pass of spec Design. `cash = 1.0`, `coins = 0.0`,
    `held = 0`; row 0 marks `1.0`; for `i >= 1`: `target = positions[i-1]`; on a buy
-   `coins = cash * (1 - fee) / opens[i]`, `cash = 0.0`, record entry `(i, opens[i])`; on a
+   `entry_cash = cash`, `coins = cash * (1 - fee) / opens[i]`, `cash = 0.0`, record entry
+   `(i, opens[i])`; on a
    sell `cash = coins * opens[i] * (1 - fee)`, `coins = 0.0`, append the trade with
    `return = cash / entry_cash - 1`; then `equity[i] = coins * closes[i] if held else cash`.
    After the loop, if `held`: sell at `closes[-1]`, append the trade with
@@ -122,8 +124,9 @@ the build PR if they want `sdlc/review` green on the first pass, per the intent)
 - **Accepting Boolean or float positions** (`True`/`1.0` as long). Not taken: the intent says
   "a position value other than 0 or 1" is refused, and security-baseline rule 2 favours a
   strict schema. A caller casts with `.cast(pl.Int8)`.
-- **`win_rate = None` or NaN with no trades.** Not taken: it would make the field
-  `float | None` and NaN fails equality checks. The choice is an open concern for the gate.
+- **`win_rate = None` or NaN with no trades.** Not taken (panel #2): it would make the
+  field `float | None`, and NaN fails equality checks. `trade_count == 0` tells "no trades"
+  apart from "no winners".
 - **Equity marked at open, or an open position left out of the trade list.** Not taken: the
   intent's recommended answers were accepted (spec, open questions 2 and 3).
 - **A `Backtest` class with configuration.** Not taken: one function with a keyword fee is
@@ -172,6 +175,8 @@ Interrogation answers:
 - test: test_public_api
 - The bad-value tests are parametrised over the values in spec R14 (null, NaN, `2`, `-1`,
   `0.5`, `"1"`, `True` for positions; `-0.01`, `1`, `1.5`, NaN, `True` for fees).
+- `test_no_trades_gives_zero_win_rate_and_flat_equity` asserts `trade_count == 0` and
+  `win_rate == 0.0` together (panel #2).
 - Target (spec Acceptance): the worked example matches to 1e-9: total return
   `0.07568647568108`, max drawdown `0.1026973009`, 2 trades, win rate `0.5`, time in market
   `3/7`, equity `[1.0, 1.0989, 1.1988, 1.1976012, 1.1976012, 1.1299367322,
