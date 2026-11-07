@@ -26,6 +26,7 @@ MAX_MESSAGE = 200
 MAX_CODE = 20
 
 ParseRows = Callable[[object, int], pl.DataFrame]
+_OPEN_MS = pl.col("open_time").dt.epoch("ms")
 
 
 @dataclass(frozen=True)
@@ -125,18 +126,17 @@ def _fetch_spot(
 ) -> RestRange:
     """Backwards: KuCoin keeps the newest rows, so each window ends at the oldest one returned."""
     frames = []
-    open_ms = pl.col("open_time").dt.epoch("ms")
     window_end = end_ms
     while window_end > start_ms:
         url = spot_url(request, start_ms, window_end)
         page, failure, error = _page(fetch, pacer, url, frame_from_spot_rows, request.interval_ms)
         if page is None:
             return _range(frames, failure, window_end, end_ms, error)
-        page = page.filter((open_ms >= start_ms) & (open_ms < window_end))
+        page = page.filter((_OPEN_MS >= start_ms) & (_OPEN_MS < window_end))
         if page.is_empty():
             break
         frames.append(page)
-        window_end = page["open_time"].dt.epoch("ms").min()
+        window_end = page.select(_OPEN_MS.min()).item()
     return _range(frames, None, start_ms, end_ms)
 
 
@@ -145,7 +145,6 @@ def _fetch_futures(
 ) -> RestRange:
     """Forwards: KuCoin keeps the oldest rows, so each window starts after the newest one."""
     frames = []
-    open_ms = pl.col("open_time").dt.epoch("ms")
     window_start = start_ms
     while window_start < end_ms:
         url = futures_url(request, window_start, end_ms)
@@ -155,11 +154,11 @@ def _fetch_futures(
         if page is None:
             return _range(frames, failure, start_ms, window_start, error)
         # The window's end row (open at `to`, or later) belongs to the next range.
-        page = page.filter((open_ms >= window_start) & (open_ms < end_ms))
+        page = page.filter((_OPEN_MS >= window_start) & (_OPEN_MS < end_ms))
         if page.is_empty():
             break
         frames.append(page)
-        window_start = page["open_time"].dt.epoch("ms").max() + request.interval_ms
+        window_start = page.select(_OPEN_MS.max()).item() + request.interval_ms
     return _range(frames, None, start_ms, end_ms)
 
 

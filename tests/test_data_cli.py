@@ -2,24 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-from kucoin_stub import KuCoin
+from kucoin_stub import SPOT_1H, KuCoin
 
-from app.data import http, loader
+from app.data import http
 from app.data.__main__ import human_size, main
 from app.data.http import HttpResponse
 
-NOW = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
-SPOT_1H = "spot-BTC-USDT-1hour-2026-10-01.json"
-
-
-@pytest.fixture(autouse=True)
-def clock(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(loader, "utc_now", lambda: NOW)
-    monkeypatch.setattr(http, "sleep", lambda seconds: None)
+pytestmark = pytest.mark.usefixtures("clock")
 
 
 def download(kucoin: http.Fetch, root: Path, *days: str) -> int:

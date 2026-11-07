@@ -40,9 +40,14 @@ def test_kucoin_error_code_is_a_refusal_with_its_message(clock: None, tmp_path: 
 
 
 def load(
-    fetch: http.Fetch, start: str, end: str, root: Path, symbol: str = "BTC-USDT", **options: object
+    fetch: http.Fetch,
+    start: str,
+    end: str,
+    root: Path,
+    symbol: str = "BTC-USDT",
+    interval: str = "1h",
+    **options: object,
 ) -> pl.DataFrame:
-    interval = options.pop("interval", "1h")
     return load_klines(symbol, interval, start, end, cache_dir=root, fetch=fetch, **options)
 
 
@@ -248,9 +253,10 @@ def test_no_cache_mode_writes_nothing(clock: None, tmp_path: Path) -> None:
     assert len(kucoin.calls) == 3 * per_load
 
 
-def test_current_day_is_not_cached(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_current_day_is_not_cached(
+    monkeypatch: pytest.MonkeyPatch, sleeps: list[float], tmp_path: Path
+) -> None:
     monkeypatch.setattr(loader, "utc_now", lambda: utc(2026, 10, 1, 5, 30))
-    monkeypatch.setattr(http, "sleep", lambda seconds: None)
     kucoin = KuCoin()
     kucoin.add_futures_synthetic(utc(2026, 10, 1), 6, HOUR_MS)
     frame = futures(kucoin, "2026-10-01", "2026-10-01", tmp_path)
