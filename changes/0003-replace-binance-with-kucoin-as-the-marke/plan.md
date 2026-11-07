@@ -173,8 +173,9 @@ The Setup and Test lines and the CI install step need no change (no new dependen
    with the tests in Proof, then delete `tests/binance_stub.py` and
    `tests/fixtures/binance/`.
 10. **Delete `app/data/vision.py`**, grep `app/` and `scripts/` for `binance`, `vision`,
-    `um"` (case-insensitive) and clean what remains; run build, test and lint and paste the
-    output.
+    `um"` (case-insensitive) and clean every hit except the deprecation notes of steps 6
+    and 7 (the `load_klines` docstring and the `app/data/__init__.py` module docstring,
+    spec R6 and R8, panel #4); run build, test and lint and paste the output.
 
 Steps 1–8 leave the old tests broken until step 9; commit 1–9 as one or a few commits that
 each keep `plan.md` in step, and run the suite after step 9.
@@ -202,6 +203,10 @@ each keep `plan.md` in step, and run the suite after step 9.
   (open at `end − interval`) is still at or before `to`, and the row at `end` is not asked
   for; rows at or after `end` are dropped anyway, so either reading of `to` gives the same
   frame. A test serves the measured end-of-window row and checks no next-day candle appears.
+- **The current day on futures**: the forward loop may ask one more window that starts after
+  the last closed candle. If KuCoin refused a window in the future instead of answering an
+  empty list, today would read as a gap with KuCoin's message (raised, never silent; today is
+  never cached). The owner's deploy-gate downloads use past days and do not exercise it.
 - **Untrusted text in reasons**: KuCoin's `msg` reaches the terminal; it is cleaned of
   non-printable characters and cut to 200 characters (security-baseline rule 2).
 - **Rate-limit reserve 100 and the 60 s cap** are a guess (spec Flagged concerns); a wrong

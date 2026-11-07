@@ -29,7 +29,9 @@ Public interface
   interval) and why: KuCoin does not publish them (panel #1).
 - R7. `python -m app.data download | cache-info | cache-clear` keep their names, positional
   arguments and options in today's order; `--market` takes `spot` or `futures`.
-- R8. No CLI message, help text or docstring names Binance or Vision.
+- R8. No CLI message, help text or docstring names Binance or Vision, except R6's
+  deprecation note in the `load_klines` docstring and the `app/data/__init__.py` module
+  docstring (panel #4).
 - R9. The version stays 0.1.0 in `app/__init__.py` and `pyproject.toml`.
 
 Inputs (all refused with `InvalidRequestError` before any network call)
@@ -133,8 +135,8 @@ Same modules, one job each (`CLAUDE.md` Architecture); `vision.py` is deleted.
   detection goes (Vision-only).
 - `rest.py` — `ENDPOINTS` keyed by market (URL plus builder of the query). A shared
   `parse_answer(response)` returns rows or a failure reason: not HTTP 200, body over
-  `MAX_BODY_BYTES`, not JSON, `code` not `"200000"` (reason `KuCoin refused (code <c>):
-  <msg>`; for a non-200 with a parseable body `KuCoin refused (HTTP <n>): <msg>`), `data`
+  `MAX_BODY_BYTES`, not JSON, `code` not `"200000"` (reason `KuCoin refused (HTTP <n>, code <c>): <msg>`, the
+  same for a non-200 with a parseable body), `data`
   not a list, or a row that fails the schema (`unexpected KuCoin response`).
   `fetch_range(fetch, pacer, request, start_ms, end_ms) -> RestRange` pages one call at a
   time and works from the rows returned, never from a page size:
