@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "phase": "design",
+  "head": "79311818e9cec7f9fffeffe9fc6a3273c90caa0c",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Spec is tight now: both flagged concerns are closed by panel decisions #1 and #2, and the acceptance criteria are measurable (exact eight-line output, hand-computed positions, the 24-candle boundary, calls == [] for a bad fee).",
+    "Blast radius: two new modules, a new CLI entry point (python -m app.backtest run) and a public API addition (sma_cross_positions in app.backtest.__all__). The CLI also calls a private engine helper (inputs._check_fee) across modules. No risk-list item, no schema change.",
+    "No existing test covers the new code: all 18 proof tests are still to be written in two new files."
+  ],
+  "attempted": [
+    "Intent: R1-R16 cover every intent bullet: command shape, shared download checks and messages, strict '>', slow-1 warm-up, rows not wall time, no lookahead, eight-line output with buy and hold, every refusal with exit 2, offline tests, no new dependency, version 0.1.0. The four open questions are answered with the recommended choices. '1hour' vs '1h' is reconciled in R8. Panel #2's '<=' follows the intent's stated purpose ('so the strategy could never take a position') and still refuses everything the literal '<' refuses. Panel #1's pre-load fee check satisfies 'before any backtest' and keeps inputs.py unchanged, as the intent requires.",
+    "Spec and plan after the panel edits: spec R12, Design (order of checks steps 3 and 5), plan step 3, Risks, Options not taken and Proof (test_run_candle_count_boundary, calls == [] on --fee 1.5/-0.1/abc) all agree with the two decisions. I found no leftover text that still describes the old '<' rule or the post-load fee check as the plan. Files that change: strategy.py, __main__.py, __init__.py edit, two new test files. No test file on main is touched.",
+    "Claim checked: inputs._check_fee(fee) exists (inputs.py:41-50). It refuses bool and non-numbers, then anything outside 0 <= fee < 1, so NaN and inf from float() are refused too, and it returns float(fee). Calling it from the CLI and using its return value works as planned. The ruff config selects default rules only, so importing a '_' name triggers no lint rule.",
+    "Claim checked: app/data/__main__.py main(argv, fetch) catches InvalidRequestError and DownloadError -> 'error: ...' exit 2, and OSError -> the '--cache-dir' hint. _download calls loader.utc_now() then make_request(..., now.date()). The download parser declares --market choices=MARKETS default 'spot'. The plan mirrors all of this.",
+    "Claim checked: none of InvalidRequestError (ValueError), KlineGapError (Exception), DownloadError (RuntimeError) or BacktestInputError (ValueError) is an OSError, so the plan's two handlers do not overlap. CachePathError and MalformedDataError stay internal (cache.day_path; rest catches MalformedDataError), as they do for download.",
+    "Claim checked: app.data exports load_klines, KlineGapError, InvalidRequestError, DownloadError and Fetch. load_klines(symbol, interval, start, end, *, market, cache_dir, cache=True, fetch) accepts date objects. It re-validates harmlessly, raises KlineGapError for a missing day and lets DownloadError propagate from _rest_pass.",
+    "Claim checked: params.make_request returns a KlineRequest with an upper-cased symbol and date start/end. INTERVAL_MS includes '1h'. loader.utc_now is a module attribute that conftest's clock fixture monkeypatches (NOW = 2026-10-03 12:00 UTC).",
+    "Claim checked: tests/fixtures/kucoin/spot-BTC-USDT-1hour-2026-10-01.json holds exactly 24 hourly rows (timestamps counted). The boundary proof (--slow 24 -> exit 2, --slow 23 -> exit 0) and the '--slow 30' too-few case are therefore valid against the real fixture. With 24 rows and slow 23, row 22's decision can fill at row 23's open, so a position is at least possible.",
+    "Claim checked: the missing-day proof (2026-09-30..10-01 with only the 10-01 fixture) yields MISSING for 09-30 via BEFORE_FIRST, so load_klines raises KlineGapError. The download-error proof via a 503 refusal plus the sleeps fixture matches tests/test_data_cli.py:138-141.",
+    "Claim checked: engine.run_backtest with [1]*height buys at row 1's open and closes at the last close with the fee, which is the buy-and-hold described. Summary fields exist. win_rate is 0.0 with no trades. _check_positions accepts an Int8 Series via to_list() (Python ints).",
+    "Claim checked: app/backtest/__init__.py __all__ is sorted, and adding 'sma_cross_positions' after 'run_backtest' keeps it sorted. tests/test_backtest.py imports from submodules, so no caller breaks.",
+    "Hand example re-derived: closes [1,2,3,2,1,1,3] with fast 2 and slow 3 give positions [0,0,1,1,0,0,1]. The tie [2,2,2,2] gives exact 2.0 means, so all positions are 0. Replacing rows 4-6 leaves rows 0-3 at [0,0,1,1]. rolling_mean's default min_samples equals the window, so R3 holds.",
+    "Edge attempts: '--fast -5' (argparse accepts it as a value; validate_lengths refuses it), '--fast 1.5' (int() raises ValueError -> BacktestInputError), '--fee nan' and '--fee inf' (refused by _check_fee before any fetch), '--fast 20 --slow 20' (refused by fast >= slow). An empty frame cannot reach the strategy, because load_klines raises KlineGapError for a day with no candle and height <= slow catches the rest. I found no path to a traceback.",
+    "Proof (design phase): no toolchain logs exist yet. The 18 named proof tests cover each acceptance bullet and each R12 refusal, including both panel additions.",
+    "Blast radius: the diff touches only changes/0005-*/. It has no guardrail files and no risk-list hits. The CLAUDE.md lines are handed to the owner, not edited. The only network path is load_klines' existing KuCoin call, and every CLI test uses the stub and --cache-dir under tmp_path.",
+    "Policies: security-baseline rule 2 (every argument is checked before use, and symbol and interval reach URL and path only through make_request), rule 6 and the risk list are addressed. ux-and-brand rules 3, 4 and 6 are covered by R11-R13. coding-standards: one module per job, typed public functions, new per-area test files, no new dependency. The private cross-module call is disclosed in Risks, with its failure mode caught by the CLI tests at import.",
+    "Tests: the summary test derives its expected numbers from the same functions, so it checks wiring and formatting. The strategy arithmetic is pinned independently by the hand-computed, tie and lookahead tests, so one bug cannot pass both. The boundary test makes the '<=' choice observable, since '--slow 24' would exit 0 under '<'.",
+    "Skip markers: not applicable at design.",
+    "Drive: not applicable at design (no commands.drive work in this plan)."
+  ]
+}

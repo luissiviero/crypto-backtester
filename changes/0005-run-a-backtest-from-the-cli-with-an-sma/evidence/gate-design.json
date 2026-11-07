@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "change_id": "0005",
+  "slug": "run-a-backtest-from-the-cli-with-an-sma",
+  "phase": "design",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:design-ready",
+  "head": "79311818e9cec7f9fffeffe9fc6a3273c90caa0c",
+  "at": "2026-11-07T18:42:50Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 2,
+        "panel_cap": 4,
+        "elapsed_minutes": 10.8,
+        "spend_usd": null,
+        "spend_usd_total": null,
+        "spend_entries": 0,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0005-run-a-backtest-from-the-cli-with-an-sma/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "CLAUDE.local.md",
+          "changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/adversarial-review-design.json",
+          "changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/adversarial-review-design.model.json",
+          "changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/diff-design.patch",
+          "changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/hook-log.jsonl",
+          "changes/0005-run-a-backtest-from-the-cli-with-an-sma/evidence/panel/design-items.json"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof_items",
+      "ok": true,
+      "reason": "the Proof items follow the grammar",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "2 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "concern",
+            "decision": "The CLI's fee parser refuses a bad --fee before load_klines by returning inputs._check_fee(float(text)), so inputs.py stays unchanged and the engine's message is kept; test_run_refuses_bad_fee also asserts the stub's calls == [] for --fee 1.5 and --fee -0.1."
+          },
+          {
+            "n": 2,
+            "kind": "concern",
+            "decision": "Refuse when `frame.height <= slow` (exit 2, message \"the range has N candles, not more than slow S: the strategy could never take a position; widen the dates or lower --slow\"), and add proof tests pinning `--slow 24` on 24 candles to exit 2 and `--slow 23` on 24 candles to exit 0."
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "build, test and lint exit 0",
+      "need": "",
+      "details": {
+        "runs": {
+          "build": {
+            "command": "python -m compileall -q .",
+            "exit_code": 0,
+            "output": ""
+          },
+          "test": {
+            "command": "python -m pytest",
+            "exit_code": 0,
+            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.14.4, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.14.3, typeguard-4.4.4\ncollected 152 items\n\ntests/test_backtest.py ...............................................   [ 30%]\ntests/test_data.py ..................................................... [ 65%]\n.............                                                            [ 74%]\ntests/test_data_cache.py ......                                          [ 78%]\ntests/test_data_cli.py ..........                                        [ 84%]\ntests/test_data_rest.py ......................                           [ 99%]\ntests/test_smoke.py .                                                    [100%]\n\n============================= 152 passed in 0.54s ==============================\n"
+          },
+          "lint": {
+            "command": "python -m ruff check .",
+            "exit_code": 0,
+            "output": "All checks passed!\n"
+          }
+        },
+        "ran_by": "runner"
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}
