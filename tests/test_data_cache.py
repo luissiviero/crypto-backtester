@@ -59,6 +59,17 @@ def test_atomic_write_leaves_only_the_day_file(tmp_path: Path) -> None:
     assert cache.read_day(path) is None
 
 
+def test_cache_info_checks_the_interval_against_the_market(tmp_path: Path) -> None:
+    cached_days(tmp_path, "spot", "BTC-USDT", "6h", ["2026-10-01"])
+    with pytest.raises(InvalidRequestError, match="not offered on the futures market"):
+        cache.cache_info(tmp_path, market="futures", interval="6h")
+    spot_6h = [cache.CacheEntry("spot", "BTC-USDT", "6h", 1, 100)]
+    assert cache.cache_info(tmp_path, market="spot", interval="6h") == spot_6h
+    assert cache.cache_info(tmp_path, interval="6h") == spot_6h
+    with pytest.raises(InvalidRequestError, match="unknown interval"):
+        cache.cache_info(tmp_path, market="futures", interval="1s")
+
+
 def test_cache_info_and_clear_touch_only_day_files(tmp_path: Path) -> None:
     spot = cached_days(tmp_path, "spot", "BTC-USDT", "1h", ["2026-10-01", "2026-10-02"])
     cached_days(tmp_path, "futures", "XBTUSDTM", "1h", ["2026-10-01"])

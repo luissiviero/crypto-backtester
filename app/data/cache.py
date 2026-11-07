@@ -119,7 +119,8 @@ def cache_info(
     markets = [validate_market(market)] if market else list(MARKETS)
     wanted_symbol = _symbol_for_info(symbol, market) if symbol else None
     if interval is not None:
-        validate_interval(interval, "spot")
+        # Against the given market; with none, an interval valid on either market will do.
+        validate_interval(interval, market or "spot")
     entries = []
     subtree = cache_root(cache_dir) / SUBTREE
     for market_name in markets:
