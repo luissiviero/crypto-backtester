@@ -1,64 +1,88 @@
-The sweep matches plan.md and spec.md. Every acceptance case I called offline behaved as specified, and the design gate's `commands` record is green. That record was taken on the design tree, so it doesn't stand in for the runner's run on the final tree.
+# Verifier report: change 0006, sweep SMA crossover lengths on one range (test phase)
 
-**Commands run** (read, not run: this is a CI session)
+## Commands run
 
-I read `evidence/gate-design.json`, the runner's run on commit `44ea2daa9018050097cce32db232dd4d2dcec1e0` of 2026-11-07T22:39:20Z (`details.ran_by: runner`, not deferred). That is the tree this phase started from, not the final one. The final tree's result comes from the runner, which runs the three targets once after this session and shows it in the check run `sdlc/test`; a red target there starts the next fix round by itself.
-- `python -m compileall -q .`: exit 0, output `""`
-- `python -m pytest`: exit 0, `193 passed in 0.71s` (Python 3.14.4, pytest-9.2.0)
-- `python -m ruff check .`: exit 0, `All checks passed!`
-- There are no `test.log`, `build.log` or `lint.log` under `evidence/` yet; none are expected before the runner's test gate.
+This is a CI session (`SDLC_GATE_COMMANDS=runner`), so I did not run the three targets. I read the build phase's gate record, which is the runner's run on **commit 3cd37833ea of 2026-11-07T23:03:05Z**. That is the tree this phase started from, not the final tree. The final tree's result comes from the runner, which runs the three targets once after this session and shows the result in the check run `sdlc/test` and in this phase's own gate record. Nothing in this report stands in for that run.
 
-**Behavior exercised**
+`git diff --stat 3cd3783 HEAD` touches only files under `changes/0006-.../evidence/` and `status.yaml`. So `app/` and `tests/` at HEAD (55d7200) are the same as on the tree the record judged.
 
-One `python -c` call, with `loader.utc_now` set to `NOW` (2026-10-03 12:00 UTC), driving `main(argv, fetch=KuCoin stub)` with a fresh `--cache-dir` for each call. I did not start pytest, since this is a CI session.
-- **Main success case:** `sweep btc-usdt 1h 2026-10-01 2026-10-01 --fast 2,3,5 --slow 5,8,12,24` exited 0 with 1 stub call. The run line read `... 24 candles; sma-cross, 8 pairs tried, 4 skipped; fee 0.10%`, followed by `SMA_NOTE`, an aligned header and 8 rows sorted by total return (`5 8 1.37%` first, `2 5 -0.81%` last), then `buy and hold     1.45%` and the warning.
-- **Rows equal `run` (R9):** the 2/8 row (`0.48% 0.50% 3 33.33% 50.00%`) and the 3/8 row (`1.12% 0.41% 2 50.00% 50.00%`) are the same as `run --fast 2 --slow 8` and `run --fast 3 --slow 8`. The buy-and-hold line is the same character for character.
-- **Same requests as `run` (R7):** `sweep calls == run calls: True`.
-- **Repeats tried once (R3):** `--fast 3,2,2,3 --slow 8,8` gave `2 pairs tried, 0 skipped`.
-- **Candle-count boundary (R8):** `--fast 1 --slow 23` worked (`1 pairs tried`). Just outside it, `--slow 24` on 24 candles exited 2 with the R8 message after 1 call.
-- **Cap boundary (R6):**
-  - Exactly 400 pairs (fasts 1..20, slows 21..40) is accepted: `60 pairs tried, 340 skipped`. Equal returns sort by fast, then slow.
-  - 441 pairs gives `error: the grid has 441 pairs with fast below slow, more than 400: ...` with 0 calls.
-- **Refusals with exit 2, one `error:` line, empty stdout and 0 calls:**
-  - `--fast ""` → `--fast is empty: ... 5,10,20`
-  - `5,,10` → `fast '' is not a whole number of at least 1`
-  - `x` → `fast 'x' ...`
-  - `--fast=-5,10` and two-word `-5` → `fast -5 ...`
-  - `--slow 0` → `slow 0 ...`
-  - `1.5` → `fast '1.5' ...`
-  - `--fee abc` and `--fee 1.5` → the same messages as `run`
-  - `--fast 50 --slow 10,20` → `no pair has fast below slow: ...`
-  - interval `7m` and end date 2026-10-05 → `make_request`'s messages
-  - `--market margin` → `SystemExit(2)` from argparse
-- **Two-word `--fast -5,10`:** on this Python (3.14) it reaches the command and gets the R4 message, which is what plan.md expects for 3.14.
-- **Default grid with no lengths given:**
-  - On the 24-candle day: exit 2 with the R8 message after 1 call.
-  - On a 120-candle synthetic range (2026-09-28 .. 2026-10-02): `9 pairs tried, 0 skipped`, 9 rows.
-- **Neighbour 1, `run`:** `run --help` is byte-identical to origin/main's (`run --help identical: True`). `run` output is as above; `run` with its defaults on the 24-candle day exits 2 with its old message. The top-level help differs only because it now lists `sweep`, which is expected.
-- **Neighbour 2, data layer:** `load_klines` returned a `(24, 8)` frame. The first call made 1 fetch, the cached reload made none, and the two frames are equal.
-- **Static checks:** `app.backtest.__all__` is unchanged. `git diff --stat origin/main...HEAD` is empty for `app/data`, `__init__.py`, `inputs`, `engine`, `summary`, `strategy`, `pyproject.toml`, `app/__init__.py`, `tests/test_backtest_cli.py`, `conftest.py` and `kucoin_stub.py`. All 17 Proof test names exist in `tests/test_backtest_sweep.py`.
+From `evidence/gate-build.json`, check `commands`: `ok: true`, `"reason": "build, test and lint exit 0"`, `ran_by: runner`. No `deferred` flag is set on `commands` or `evidence`.
 
-**Not exercised**
-- The three targets on the final tree; that result is the runner's.
-- The new test file; I did not run pytest here.
-- The `--market futures` sweep.
-- The `OSError` hint for an unwritable `--cache-dir`.
-- `DownloadError` and `KlineGapError` during a sweep.
-- Two-word `--fast -5,10` on Python 3.10–3.13, where argparse refuses it itself.
-- Windows and macOS.
-- Large real ranges (speed of 400 pairs on 1m candles).
-- A bad symbol: `btc` is accepted by `make_request` (`KlineRequest(symbol='BTC', ...)`), so I never hit a symbol refusal.
+- `python -m compileall -q .`: exit 0, output `""`. Read, not run.
+- `python -m pytest`: exit 0. Read, not run. Tail of the output:
+  ```
+  tests/test_backtest_cli.py .......................                       [ 31%]
+  tests/test_backtest_sweep.py ..............................              [ 44%]
+  ...
+  ============================= 223 passed in 0.48s ==============================
+  ```
+- `python -m ruff check .`: exit 0, output `All checks passed!`. Read, not run.
 
-**Mismatches with plan.md / spec.md**
+First line of each log in `evidence/`. Each one is this session's deferred placeholder, which the runner replaces. They are not failures.
+- `test.log`: `# python -m pytest — deferred to the runner — 2026-11-07T23:04:39Z`
+- `build.log`: `# python -m compileall -q . — deferred to the runner — 2026-11-07T23:04:39Z`
+- `lint.log`: `# python -m ruff check . — deferred to the runner — 2026-11-07T23:04:39Z`
 
-None. Two small notes that are not mismatches:
-- With one pair the run line reads `1 pairs tried`, which is the spec's format taken literally.
-- `_run` now computes buy and hold after printing its rows, not before. Its output is unchanged.
+## Behavior exercised
 
-**Blocked actions**
-- The guard denied a heredoc to `python -` (an unverifiable redirect) and a `for` loop over a shell variable. I re-ran both checks without them, so nothing went unchecked.
-- `python -I` couldn't import polars, so the script ran with plain `python` from the repository root.
+I called the code directly: the CLI, and `main(argv, fetch=KuCoin stub)` with `loader.utc_now` patched to the stub's `NOW` and a temporary cache directory. These calls read no `.env*`. I did not start pytest. Python is 3.14.4.
 
-**Verdict:** matches the plan
+**Sub-command help**
+- `python -m app.backtest sweep --help` lists the arguments in `run`'s order: positionals, `--market {spot,futures}`, `--fast` (default 5,10,20), `--slow` (default 30,50,100), `--fee` (default 0.001), `--cache-dir`. The epilog is `SMA_NOTE`. This matches R1 and R3.
+- `python -m app.backtest run --help` shows the same options, help strings and epilog as `main:app/backtest/__main__.py`. This matches R13.
 
-Files: `/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py`, `/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py`, `/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py`, `/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/gate-design.json`
+**Refusals made before any load, through the real CLI** (each exits 2, prints one `error:` line on stderr and nothing on stdout)
+- `--fast 5,,10` → `error: fast '' is not a whole number of at least 1` (R4).
+- 21 fasts `1..21` × 21 slows `22..42` → `error: the grid has 441 pairs with fast below slow, more than 400: pass shorter --fast or --slow lists` (R6).
+- `--fast 50 --slow 10,20,50` → `error: no pair has fast below slow: pass a --fast value below a --slow value` (R6).
+- `--fee 2` → `error: fee 2.0 is out of range: it must be at least 0 and below 1, for example 0.001` (R2). The fee is checked before the pair count, as Design step 3 orders.
+
+**The cap, from inside the limit**
+- A grid of exactly 400 pairs (fasts `1..20`, slows `21..40`) on 120 synthetic candles: exit 0. Run line `... 120 candles; sma-cross, 400 pairs tried, 0 skipped; fee 0.10%`, 400 table rows, 1 stub call.
+
+**Defaults**
+- No `--fast` or `--slow` on 120 synthetic candles: exit 0, `9 pairs tried, 0 skipped`, nine rows.
+- Rows are sorted by total return, highest first: 0.00%, -0.19%, -0.20%, ... -0.26%.
+- Ties are broken by fast: `20 50`, `10 50`, `5 50` read -0.25%, -0.26%, -0.26%, and the two at -0.26% are ordered 10 before 5 only because their rounded value hides a difference in the raw return.
+- Then come the `buy and hold    -0.18%` line and the warning line (R10, R11).
+
+**Skip counting**
+- `--fast 2 --slow 23,24` on the 24-candle day: `1 pairs tried, 1 skipped`, one row `2 23 -0.03% 0.03% 1 0.00% 4.17%`, `buy and hold 1.45%` (R8).
+
+**Neighbouring flow: `run`**
+- `run ... --fast 2 --slow 23` on the same day prints `total return -0.03%`, `max drawdown 0.03%`, `trades 1`, `win rate 0.00%`, `time in market 4.17%`, `buy and hold 1.45%`. Every number equals the sweep row (R9).
+
+**Two-word negative list**
+- `--fast -5,10` written as two words, on Python 3.14: `(2, '', 'error: fast -5 is not a whole number of at least 1\n')`, and the stub made no call. This is the 3.14 path described in the spec's flagged concern.
+
+**Static review against spec and plan**
+- All 17 `test:` Proof items exist with those names in `tests/test_backtest_sweep.py`. The refusal cases listed in Proof are all there, including `--fast=-5,10`, two-word `--fast -5`, and two-word `--fast -5,10` as its own test.
+- `count_pairs` counts by bisecting and never builds the grid.
+- `_sweep` follows Design steps 1 to 9 in order. The note is printed with `flush=True` before the backtests run.
+- `main` is unchanged.
+- `git diff --stat main...HEAD` on these paths is empty: `app/backtest/__init__.py`, `inputs.py`, `engine.py`, `summary.py`, `strategy.py`, `app/data/`, `app/__init__.py`, `pyproject.toml`, `tests/test_backtest_cli.py`, `tests/conftest.py`, `tests/kucoin_stub.py`, `.github/`. This covers R13, R14 and R15.
+- The one change to `plan.md` records that the two-word negative list became its own Proof test. That is a declared departure, not a mismatch.
+
+## Not exercised
+
+- The three targets on the final tree. That result comes from the runner (check run `sdlc/test`).
+- The pytest suite in this session (not run in CI). My first attempts at multi-step shell commands were refused by the permission system (no approval surface). I then used single commands only.
+- `--market futures` on a successful sweep, and the `OSError` hint for a bad cache directory on `sweep`. These are not called, and not covered by the sweep tests either.
+- A real KuCoin fetch. Every load went through the stub.
+- Windows and macOS. I ran on Linux only.
+- Python 3.10 to 3.13, where argparse itself refuses the two-word `--fast -5,10`. I ran on 3.14 only.
+- Large real ranges, such as a year of 1m candles with 400 pairs. Neither run time nor memory was measured.
+
+## Screenshots
+
+None. spec.md says "Mock: none"; the change is CLI text output only.
+
+## Mismatches with plan.md / spec.md
+
+None.
+
+A wording note, not a mismatch: when one pair is tried, the run line reads `1 pairs tried`. That follows the spec's literal format `{tried} pairs tried` (spec.md, Design, "Output").
+
+## Verdict
+
+matches the plan
