@@ -11,7 +11,7 @@ gate:
   at: null
 parked_reason: null
 iterations: 0
-panel_calls: 1
+panel_calls: 2
 external_ref: null
 risk_accepted: []
 tests_locked: false
@@ -30,5 +30,5 @@ fast_lane:
     sha: "32db462ad4d611dc3237780f0afcfc37f553c279"
     pr: 27
 created_at: "2026-11-07T22:16:39Z"
-updated_at: "2026-11-07T22:37:36Z"
+updated_at: "2026-11-07T22:37:38Z"
 schema_version: 1
