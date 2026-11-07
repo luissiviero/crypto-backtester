@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "change_id": "0003",
+  "slug": "replace-binance-with-kucoin-as-the-marke",
+  "phase": "design",
+  "human_gate": true,
+  "result": "wait",
+  "label": "sdlc:design-ready",
+  "head": "f7f047d5f17fa4888d8770bc3298736bc71d7395",
+  "at": "2026-11-07T04:18:59Z",
+  "dry_run": false,
+  "reason": "",
+  "config_note": "",
+  "checks": [
+    {
+      "name": "limits",
+      "ok": true,
+      "reason": "within the run limits",
+      "need": "",
+      "details": {
+        "iterations": 0,
+        "cap": 2,
+        "classification": "non-routine",
+        "panel_calls": 4,
+        "panel_cap": 4,
+        "elapsed_minutes": 22.8,
+        "spend_usd": null,
+        "spend_usd_total": null,
+        "spend_entries": 0,
+        "max_budget_usd": 150.0
+      }
+    },
+    {
+      "name": "artifacts",
+      "ok": true,
+      "reason": "every required artifact exists and has its template sections",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "evidence_links",
+      "ok": true,
+      "reason": "no symbolic link under the change folder",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "design_scope",
+      "ok": true,
+      "reason": "the committed diff stays inside changes/0003-replace-binance-with-kucoin-as-the-marke/",
+      "need": "",
+      "details": {
+        "dirty": [
+          "CLAUDE.local.md",
+          "changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/adversarial-review-design.json",
+          "changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/adversarial-review-design.model.json",
+          "changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/diff-design.patch",
+          "changes/0003-replace-binance-with-kucoin-as-the-marke/evidence/hook-log.jsonl"
+        ]
+      }
+    },
+    {
+      "name": "open_concerns",
+      "ok": true,
+      "reason": "no open flagged concern",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "proof_items",
+      "ok": true,
+      "reason": "the Proof items follow the grammar",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "panel",
+      "ok": true,
+      "reason": "4 panel decision(s) recorded",
+      "need": "",
+      "details": {
+        "decisions": [
+          {
+            "n": 1,
+            "kind": "concern",
+            "decision": "Keep version 0.1.0 as intent.md directs, and add a deprecation note naming the removed columns (trades, taker_buy_*), BinanceBanError, the um market and the 1s interval, with the reason (KuCoin does not publish them), to the load_klines docstring and the app/data/__init__.py module docstring; the version half of rule 4 stays the owner's call, to confirm at the merge gate."
+          },
+          {
+            "n": 2,
+            "kind": "concern",
+            "decision": "Keep RATE_LIMIT_RESERVE = 100 and MAX_RATE_LIMIT_WAIT = 60.0 as module constants; on a 429 with no usable Retry-After, with_retries waits gw-ratelimit-reset ms capped at MAX_RATE_LIMIT_WAIT (R4, plan step 3, Proof test test_429_without_retry_after_waits_for_the_reset), and the plan's Risks line drops 'which the retries absorb'."
+          },
+          {
+            "n": 3,
+            "kind": "park",
+            "decision": "continue, after the run amends spec.md and plan.md so that _rest_pass catches DownloadError per range, settles and caches the complete closed days the covered span vouches for, then re-raises, and adds test_days_fetched_before_a_download_error_stay_cached (error on a later page, spot and futures) to Proof"
+          },
+          {
+            "n": 4,
+            "kind": "park",
+            "decision": "continue: amend R8 to read 'No CLI message, help text or docstring names Binance or Vision, except R6's deprecation note in the load_klines docstring and the app/data/__init__.py module docstring', and amend plan step 10 so its grep skips only those two docstrings' deprecation notes and cleans every other hit"
+          }
+        ],
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "name": "commands",
+      "ok": true,
+      "reason": "deferred to the runner: build, test and lint run after the model's session, outside its sandbox (issue #91); not yet run",
+      "need": "",
+      "details": {
+        "deferred": true
+      }
+    },
+    {
+      "name": "guardrails",
+      "ok": true,
+      "reason": "the diff does not touch a guardrail file",
+      "need": "",
+      "details": {}
+    },
+    {
+      "name": "risk_list",
+      "ok": true,
+      "reason": "no risk-list item touched",
+      "need": "",
+      "details": {
+        "hits": {},
+        "accepted": []
+      }
+    },
+    {
+      "name": "owner_actions",
+      "ok": true,
+      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
+      "need": "",
+      "details": {
+        "risk_accepted": [],
+        "label_actors": {}
+      }
+    },
+    {
+      "name": "adversarial_review",
+      "ok": true,
+      "reason": "adversarial reviewer says continue",
+      "need": "",
+      "details": {
+        "classification": "non-routine",
+        "reasons": []
+      }
+    },
+    {
+      "name": "reviewer_model",
+      "ok": true,
+      "reason": "the adversarial reviewer ran on claude-opus-5-5",
+      "need": "",
+      "details": {
+        "wanted": "claude-opus-5-5"
+      }
+    }
+  ],
+  "what_i_need": ""
+}
