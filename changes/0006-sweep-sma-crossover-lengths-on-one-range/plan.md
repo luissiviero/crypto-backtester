@@ -157,6 +157,7 @@ Interrogation answers:
 - test: test_sweep_refuses_bad_request
 - test: test_sweep_refuses_bad_market
 - test: test_sweep_refuses_bad_lengths
+- test: test_sweep_refuses_two_word_negative_list
 - test: test_sweep_refuses_bad_fee
 - test: test_sweep_refuses_empty_grid
 - test: test_sweep_refuses_grid_over_cap
@@ -170,7 +171,9 @@ Interrogation answers:
   the every-pair-skipped one) `kucoin.calls == []`. Cases: bad symbol, interval and dates;
   `--fast ""`, `--fast 5,,10`, `--fast x`, `--fast=-5,10`, two-word `--fast -5` (the R4 message), `--slow 0`,
   `--fast 1.5`; two-word `--fast -5,10` (exit 2, empty stdout and no stub call only, since
-  argparse or the command refuses it depending on the Python version, panel #1); `--fee
+  argparse or the command refuses it depending on the Python version, panel #1; in the build
+  it is its own test, `test_sweep_refuses_two_word_negative_list`, because it accepts either a
+  `SystemExit` or a return code and asserts less than the parametrized cases); `--fee
   abc`, `--fee 1.5`; `--fast 50 --slow 10,20` (no pair); 21 fasts `1..21` by 21 slows
   `22..42` (441 pairs, over the cap); the default grid on the 24-candle day (every pair
   skipped by the candle count). A bad `--market` raises `SystemExit` with code 2.

@@ -538,6 +538,17 @@
     "last_seen": "2026-11-07T05:29:24Z",
     "summary": "The diff makes CLAUDE.md outdated: lines 5-6 still describe Binance spot/USD-M klines from Binance Vision, line 30 lists the deleted `vision` module, and lines 36-37 name the deleted tests/binance_stub.py and tests/fixtures/binance/; plan.md names the replacement lines for the owner's follow-up PR, but until that lands the guardrail file misdescribes the package."
   },
+  "eacbde8749b09982": {
+    "changes": [
+      "0006"
+    ],
+    "count": 2,
+    "file": "app/backtest/sweep.py",
+    "first_change": "0006",
+    "last_change": "0006",
+    "last_seen": "2026-11-07T23:11:34Z",
+    "summary": "The parameter `pairs` of `sweep()` shadows the module-level function `pairs()` defined just above, so a later edit that calls `pairs(...)` inside `sweep` would call the sequence and fail; renaming it (for example `grid`) removes the trap."
+  },
   "f8a598e0ccf48f43": {
     "changes": [
       "0004"

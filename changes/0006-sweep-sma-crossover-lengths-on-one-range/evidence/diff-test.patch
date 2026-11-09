@@ -1,0 +1,2241 @@
+ app/backtest/__main__.py                           | 163 +++-
+ app/backtest/sweep.py                              |  49 ++
+ .../evidence/adversarial-review-build.json         |  28 +
+ .../evidence/adversarial-review-build.model.json   |  14 +
+ .../evidence/build.log                             |   2 +
+ .../evidence/claude-build.json                     | 142 ++++
+ .../evidence/claude-build.stderr.txt               |   1 +
+ .../evidence/diff-build.patch                      | 825 +++++++++++++++++++++
+ .../evidence/gate-build.json                       | 204 +++++
+ .../evidence/hook-log.jsonl                        | 103 +++
+ .../evidence/lint.log                              |   2 +
+ .../evidence/panel/build-items.json                |  18 +
+ .../evidence/run-build.json                        |  11 +
+ .../evidence/run-test.json                         |   5 +
+ .../evidence/screenshots/.gitkeep                  |   0
+ .../evidence/spend.json                            |   8 +-
+ .../evidence/test.log                              |   2 +
+ .../evidence/verifier.md                           |  88 +++
+ .../plan.md                                        |   5 +-
+ .../status.yaml                                    |  12 +-
+ tests/test_backtest_sweep.py                       | 317 ++++++++
+ 21 files changed, 1969 insertions(+), 30 deletions(-)
+
+diff --git a/app/backtest/__main__.py b/app/backtest/__main__.py
+index c611fd2..73a507b 100644
+--- a/app/backtest/__main__.py
++++ b/app/backtest/__main__.py
+@@ -1,4 +1,4 @@
+-"""CLI: `python -m app.backtest run`, the SMA crossover on one symbol's KuCoin klines."""
++"""CLI: `python -m app.backtest run | sweep`, the SMA crossover on one symbol's KuCoin klines."""
+ 
+ from __future__ import annotations
+ 
+@@ -6,14 +6,32 @@ import argparse
+ import sys
+ from collections.abc import Sequence
+ 
++import polars as pl
++
+ from app.backtest.engine import run_backtest
+ from app.backtest.inputs import DEFAULT_FEE, BacktestInputError, _check_fee
+ from app.backtest.strategy import STRATEGY_NAME, sma_cross_positions, validate_lengths
++from app.backtest.sweep import MAX_PAIRS, SweepRow, count_pairs, pairs, sweep
+ from app.data import DownloadError, Fetch, KlineGapError, load_klines, loader
+-from app.data.params import MARKETS, InvalidRequestError, make_request
++from app.data.params import MARKETS, InvalidRequestError, KlineRequest, make_request
+ 
+ SMA_NOTE = "SMAs count candles, not wall time: an interval without a candle is skipped, not filled."
+ RUN_HELP = "backtest the SMA crossover on a date range, loading missing days from KuCoin"
++SWEEP_HELP = "backtest the SMA crossover for every pair of a grid of lengths, best first"
++SWEEP_WARNING = (
++    "The best pair on past data is often luck: check it on another date range before trusting it."
++)
++SWEEP_FAST = "5,10,20"
++SWEEP_SLOW = "30,50,100"
++SWEEP_HEADERS = (
++    "fast",
++    "slow",
++    "total return",
++    "max drawdown",
++    "trades",
++    "win rate",
++    "time in market",
++)
+ 
+ 
+ def main(argv: Sequence[str] | None = None, fetch: Fetch | None = None) -> int:
+@@ -36,43 +54,57 @@ def _parser() -> argparse.ArgumentParser:
+     commands = parser.add_subparsers(required=True, metavar="COMMAND")
+ 
+     run = commands.add_parser("run", help=RUN_HELP, epilog=SMA_NOTE)
+-    run.add_argument("symbol", metavar="SYMBOL")
+-    run.add_argument("interval", metavar="INTERVAL")
+-    run.add_argument("start", metavar="START", help="first day, YYYY-MM-DD (UTC)")
+-    run.add_argument("end", metavar="END", help="last day, YYYY-MM-DD (UTC), inclusive")
+-    run.add_argument("--market", choices=MARKETS, default="spot")
++    _add_range_arguments(run)
+     run.add_argument("--fast", default="20", help="fast SMA length in candles (default 20)")
+     run.add_argument("--slow", default="50", help="slow SMA length in candles (default 50)")
+-    run.add_argument(
+-        "--fee", default=str(DEFAULT_FEE), help=f"proportional fee per fill (default {DEFAULT_FEE})"
+-    )
+-    run.add_argument("--cache-dir")
++    _add_fee_arguments(run)
+     run.set_defaults(command=_run)
++
++    grid = commands.add_parser("sweep", help=SWEEP_HELP, epilog=SMA_NOTE)
++    _add_range_arguments(grid)
++    grid.add_argument(
++        "--fast",
++        default=SWEEP_FAST,
++        help=f"comma-separated fast SMA lengths in candles (default {SWEEP_FAST})",
++    )
++    grid.add_argument(
++        "--slow",
++        default=SWEEP_SLOW,
++        help=f"comma-separated slow SMA lengths in candles (default {SWEEP_SLOW})",
++    )
++    _add_fee_arguments(grid)
++    grid.set_defaults(command=_sweep)
+     return parser
+ 
+ 
++def _add_range_arguments(parser: argparse.ArgumentParser) -> None:
++    parser.add_argument("symbol", metavar="SYMBOL")
++    parser.add_argument("interval", metavar="INTERVAL")
++    parser.add_argument("start", metavar="START", help="first day, YYYY-MM-DD (UTC)")
++    parser.add_argument("end", metavar="END", help="last day, YYYY-MM-DD (UTC), inclusive")
++    parser.add_argument("--market", choices=MARKETS, default="spot")
++
++
++def _add_fee_arguments(parser: argparse.ArgumentParser) -> None:
++    parser.add_argument(
++        "--fee", default=str(DEFAULT_FEE), help=f"proportional fee per fill (default {DEFAULT_FEE})"
++    )
++    parser.add_argument("--cache-dir")
++
++
+ def _run(args: argparse.Namespace, fetch: Fetch | None) -> int:
+     today = loader.utc_now().date()
+     request = make_request(args.symbol, args.interval, args.start, args.end, args.market, today)
+     fast, slow = _length(args.fast, "fast"), _length(args.slow, "slow")
+     validate_lengths(fast, slow)
+     fee = _fee(args.fee)
+-    frame = load_klines(
+-        request.symbol,
+-        request.interval,
+-        request.start,
+-        request.end,
+-        market=request.market,
+-        cache_dir=args.cache_dir,
+-        fetch=fetch,
+-    )
++    frame = _load(request, args, fetch)
+     if frame.height <= slow:
+         raise BacktestInputError(
+             f"the range has {frame.height} candles, not more than slow {slow}: the strategy "
+             "could never take a position; widen the dates or lower --slow"
+         )
+     result = run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee)
+-    hold = run_backtest(frame, [1] * frame.height, fee=fee)
+     print(
+         f"{request.symbol} {request.interval} {request.market}, "
+         f"{request.start} .. {request.end}: {frame.height} candles; "
+@@ -86,12 +118,99 @@ def _run(args: argparse.Namespace, fetch: Fetch | None) -> int:
+         ("trades", str(summary.trade_count)),
+         ("win rate", _percent(summary.win_rate)),
+         ("time in market", _percent(summary.time_in_market)),
+-        ("buy and hold", _percent(hold.summary.total_return)),
+     ):
+         print(f"{label:<14}{value:>8}")
++    print(_hold_line(frame, fee))
+     return 0
+ 
+ 
++def _sweep(args: argparse.Namespace, fetch: Fetch | None) -> int:
++    today = loader.utc_now().date()
++    request = make_request(args.symbol, args.interval, args.start, args.end, args.market, today)
++    fasts = _lengths(args.fast, "fast", SWEEP_FAST)
++    slows = _lengths(args.slow, "slow", SWEEP_SLOW)
++    fee = _fee(args.fee)
++    kept, skipped = count_pairs(fasts, slows)
++    if kept == 0:
++        raise BacktestInputError(
++            "no pair has fast below slow: pass a --fast value below a --slow value"
++        )
++    if kept > MAX_PAIRS:
++        raise BacktestInputError(
++            f"the grid has {kept} pairs with fast below slow, more than {MAX_PAIRS}: "
++            "pass shorter --fast or --slow lists"
++        )
++    frame = _load(request, args, fetch)
++    grid = [(fast, slow) for fast, slow in pairs(fasts, slows) if slow < frame.height]
++    skipped += kept - len(grid)
++    if not grid:
++        raise BacktestInputError(
++            f"the range has {frame.height} candles, not more than any slow length with a smaller "
++            "fast: no pair could take a position; widen the dates or lower --slow"
++        )
++    print(
++        f"{request.symbol} {request.interval} {request.market}, "
++        f"{request.start} .. {request.end}: {frame.height} candles; "
++        f"{STRATEGY_NAME}, {len(grid)} pairs tried, {skipped} skipped; fee {_percent(fee)}"
++    )
++    print(SMA_NOTE, flush=True)
++    for line in _table(sweep(frame, grid, fee)):
++        print(line)
++    print(_hold_line(frame, fee))
++    print(SWEEP_WARNING)
++    return 0
++
++
++def _lengths(text: str, name: str, example: str) -> list[int]:
++    if text.strip() == "":
++        raise BacktestInputError(
++            f"--{name} is empty: pass comma-separated whole numbers, for example {example}"
++        )
++    values = []
++    for item in text.split(","):
++        value = _length(item, name)
++        if value < 1:
++            raise BacktestInputError(f"{name} {value} is not a whole number of at least 1")
++        values.append(value)
++    return sorted(set(values))
++
++
++def _table(rows: Sequence[SweepRow]) -> list[str]:
++    lines = [SWEEP_HEADERS, *(_cells(row) for row in rows)]
++    widths = [max(len(cell) for cell in column) for column in zip(*lines)]
++    return ["  ".join(cell.rjust(width) for cell, width in zip(line, widths)) for line in lines]
++
++
++def _cells(row: SweepRow) -> tuple[str, ...]:
++    summary = row.summary
++    return (
++        str(row.fast),
++        str(row.slow),
++        _percent(summary.total_return),
++        _percent(summary.max_drawdown),
++        str(summary.trade_count),
++        _percent(summary.win_rate),
++        _percent(summary.time_in_market),
++    )
++
++
++def _load(request: KlineRequest, args: argparse.Namespace, fetch: Fetch | None) -> pl.DataFrame:
++    return load_klines(
++        request.symbol,
++        request.interval,
++        request.start,
++        request.end,
++        market=request.market,
++        cache_dir=args.cache_dir,
++        fetch=fetch,
++    )
++
++
++def _hold_line(frame: pl.DataFrame, fee: float) -> str:
++    hold = run_backtest(frame, [1] * frame.height, fee=fee)
++    return f"{'buy and hold':<14}{_percent(hold.summary.total_return):>8}"
++
++
+ def _length(text: str, name: str) -> int:
+     try:
+         return int(text)
+diff --git a/app/backtest/sweep.py b/app/backtest/sweep.py
+new file mode 100644
+index 0000000..27bad21
+--- /dev/null
++++ b/app/backtest/sweep.py
+@@ -0,0 +1,49 @@
++"""The SMA crossover sweep: count, build and backtest a grid of fast and slow lengths. No I/O."""
++
++from __future__ import annotations
++
++from bisect import bisect_right
++from collections.abc import Sequence
++from dataclasses import dataclass
++
++import polars as pl
++
++from app.backtest.engine import run_backtest
++from app.backtest.strategy import sma_cross_positions
++from app.backtest.summary import Summary
++
++MAX_PAIRS = 400
++
++
++@dataclass(frozen=True)
++class SweepRow:
++    """One pair of lengths and the summary of its backtest."""
++
++    fast: int
++    slow: int
++    summary: Summary
++
++
++def count_pairs(fasts: Sequence[int], slows: Sequence[int]) -> tuple[int, int]:
++    """(kept, skipped) for sorted distinct lengths: kept pairs have fast below slow.
++
++    Counts without building the grid, so a long list costs nothing before the cap check.
++    """
++    kept = sum(len(slows) - bisect_right(slows, fast) for fast in fasts)
++    return kept, len(fasts) * len(slows) - kept
++
++
++def pairs(fasts: Sequence[int], slows: Sequence[int]) -> list[tuple[int, int]]:
++    """The pairs with fast below slow, fast-major, for sorted distinct lengths."""
++    return [(fast, slow) for fast in fasts for slow in slows[bisect_right(slows, fast) :]]
++
++
++def sweep(frame: pl.DataFrame, pairs: Sequence[tuple[int, int]], fee: float) -> list[SweepRow]:
++    """One backtest per pair, sorted by total return, highest first; ties by fast, then slow."""
++    rows = [
++        SweepRow(
++            fast, slow, run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee).summary
++        )
++        for fast, slow in pairs
++    ]
++    return sorted(rows, key=lambda row: (-row.summary.total_return, row.fast, row.slow))
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.json
+new file mode 100644
+index 0000000..2283ac0
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.json
+@@ -0,0 +1,28 @@
++{
++  "schema_version": 1,
++  "phase": "build",
++  "head": "3cd37833ead07abd2601ea03abfb438afce48140",
++  "verdict": "continue",
++  "reasons": [],
++  "classification": "non-routine",
++  "classification_reasons": [
++    "Spec is tight: the one flagged concern (two-word negative list) is closed by panel #1, every message and the output layout are fixed, acceptance is measurable.",
++    "Blast radius is moderate: a new module (app/backtest/sweep.py), a new CLI sub-command, and a refactor of the existing `run` command's argument and load code into shared helpers; no risk-list item, no schema or contract change, __all__ unchanged.",
++    "The new behaviour is not covered by existing tests; it is covered only by the new tests/test_backtest_sweep.py. The run refactor is pinned by the unchanged tests/test_backtest_cli.py plus a new help-order test."
++  ],
++  "attempted": [
++    "Intent: the sweep command takes SYMBOL INTERVAL START END, --market, --fast/--slow comma lists (defaults 5,10,20 / 30,50,100), --fee and --cache-dir. It loads klines once, skips and counts fast>=slow pairs and slow>=height pairs, sorts by -total_return then fast then slow, and prints the run line, SMA_NOTE, the aligned table, run's buy-and-hold line and the warning. This matches every bullet of intent.md. The run line's wording ('N pairs tried, M skipped' instead of the sketch's 'N pairs (M skipped)') is a design decision recorded in the spec, which the intent allowed.",
++    "Spec R1-R15 against __main__.py and sweep.py: the checks run in the order the spec gives (make_request, then fast and slow lists, then fee, then count_pairs with kept==0 and kept>400 refusals before _load, then the candle-count filter, then the empty-grid refusal, then printing). Messages match R4, R6 and R8 word for word. count_pairs bisects without building the grid (security-baseline rule 2). Every refusal is a BacktestInputError or an existing exception, and main's handler is unchanged.",
++    "Plan files and order: the diff touches only app/backtest/sweep.py, app/backtest/__main__.py, tests/test_backtest_sweep.py and the change folder (plan.md, status.yaml, evidence). The commits follow plan steps 1 to 3. One added helper, _cells, is a private split of the planned _table and not a departure. The extra Proof test test_sweep_refuses_two_word_negative_list is declared in plan.md in the diff.",
++    "Claims against today's code: make_request's messages ('invalid spot symbol', 'unknown interval', 'is in the future', 'is after end', 'invalid start date') exist in app/data/params.py. validate_lengths and _length's wording matches R4. Summary is a frozen dataclass with total_return, max_drawdown, trade_count, win_rate and time_in_market. kucoin_stub has KuCoin.add_spot_synthetic, HOUR_MS, utc and SPOT_1H. The conftest clock fixture patches loader.utc_now, which _sweep reads. sma_cross_positions validates fast<slow, which pairs() guarantees.",
++    "Run refactor (riskiest step): _add_range_arguments and _add_fee_arguments add the same arguments with the same strings in the same order, and --fast/--slow stay between them. _load passes the same load_klines arguments. _hold_line produces the same f-string. Buy and hold is now computed after the rows are printed instead of before, which only matters if run_backtest raised on a frame that already passed the strategy backtest, which it does not. The verifier reports run --help byte-identical to origin/main.",
++    "Proof: no test.log, build.log or lint.log yet. The verifier is 'read, not run' in a CI session, so the runner owns the targets. The verifier drove main() offline and exercised the changed behaviour: table, skips, repeats, cap boundary at 400 and 441, every refusal, defaults on 120 synthetic candles, and run parity on the 2/8 and 3/8 rows. All 17 Proof test names exist in the new file.",
++    "Blast radius: no guardrail file in the diff (CLAUDE.md already names `run | sweep`, sweep.py and tests/test_backtest_sweep.py on the base). app/data, inputs, engine, summary, strategy, __init__.py, pyproject.toml and the CI workflow are untouched. No new dependency (bisect, dataclasses, polars). No risk-list hits.",
++    "Policies: input is validated and bounded before any fetch, with no eval, exec, pickle or shell. The only network call is the existing load_klines one. Copy lives in module constants (SWEEP_HELP, SWEEP_WARNING, SWEEP_HEADERS). Type hints are on all functions. No stored data or schema, so data-conventions does not apply.",
++    "Tests: rows_match compares each summary with an independent run_backtest call and asserts descending returns with more than one distinct value, so a sort by fast/slow alone would fail. The ties test uses constant closes (exact 0.0 returns), so a missing tie key would fail. prints_table compares full stdout against lines built independently. loads_once counts calls through a monkeypatched cli.load_klines, which _load resolves at call time, and compares stub calls with a fresh run. Refusal tests assert empty stdout, one error line and no stub calls. No test file on main is modified, and this is a feature change in any case.",
++    "Skip markers: the new test file adds no skip, skipif or xfail marker. Plan declares none.",
++    "Edge inputs tried by reading: ' 5' parses as 5 and is accepted. '5,' and '5,,10' give fast '' refused. '-0' gives 0 refused. '--slow 0' refused. A huge value only adds a skip. A very long list is parsed linearly and counted by bisect before the cap, so it costs no memory. '--fast -5' (two words) reaches the command on every version because it matches argparse's negative-number pattern. '--fast -5,10' is version-dependent and the test accepts both paths, as panel #1 decided.",
++    "Drive: sdlc.yaml commands.drive is not part of this change's plan, and the change adds no drive files. Nothing to check.",
++    "Nits, not reasons: with one pair the run line reads '1 pairs tried'. test_sweep_refuses_range_with_every_pair_skipped does not assert the stub was called exactly once, though the spec does not require that."
++  ]
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.model.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.model.json
+new file mode 100644
+index 0000000..b2c2f25
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.model.json
+@@ -0,0 +1,14 @@
++{
++  "agent_id": "acd66f204ce68aee3",
++  "agent_type": "sdlc:adversarial-reviewer",
++  "at": "2026-11-07T23:02:48Z",
++  "head": "3cd37833ead07abd2601ea03abfb438afce48140",
++  "member": "reviewer",
++  "models": [
++    "claude-opus-5-5"
++  ],
++  "phase": "build",
++  "reason": null,
++  "schema_version": 1,
++  "transcript": "/home/runner/.claude/projects/-home-runner-work-crypto-backtester-crypto-backtester/f9be61c5-6cd7-4241-b154-d7ecf3cb9983/subagents/agent-acd66f204ce68aee3.jsonl"
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/build.log b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/build.log
+new file mode 100644
+index 0000000..5471b3b
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/build.log
+@@ -0,0 +1,2 @@
++# python -m compileall -q . — deferred to the runner — 2026-11-07T23:04:39Z
++The target did not run inside the model's session: build, test and lint run after the session, outside its sandbox (issue #91), and the runner replaces this file with the target's own output. A file still reading this line was never replaced: the targets did not run, and the gate does not pass on it.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/claude-build.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/claude-build.json
+new file mode 100644
+index 0000000..42a2589
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/claude-build.json
+@@ -0,0 +1,142 @@
++{
++  "api_error_status": null,
++  "duration_api_ms": 495347,
++  "duration_ms": 513798,
++  "fast_mode_disabled_reason": "sdk_opt_in_required",
++  "fast_mode_state": "off",
++  "first_content_frame_ms": 1648,
++  "is_error": false,
++  "modelUsage": {
++    "claude-opus-5-5": {
++      "cacheCreationInputTokens": 272798,
++      "cacheReadInputTokens": 4721439,
++      "canonicalModel": "claude-opus-5-5",
++      "contextWindow": 1000000,
++      "costBasis": "list",
++      "costUSD": 3.7233018000000007,
++      "inputTokens": 146,
++      "maxOutputTokens": 128000,
++      "outputTokens": 52899,
++      "provider": "firstParty",
++      "thinkingTokens": 7864,
++      "webSearchRequests": 0
++    }
++  },
++  "num_turns": 77,
++  "permission_denials": [
++    {
++      "tool_input": {
++        "command": "python -m app.backtest run --help > \"$TMPDIR/run-help-before.txt\"",
++        "description": "Save run help to a temp file"
++      },
++      "tool_name": "Bash",
++      "tool_use_id": "toolu_01CgQtSMx1tcKDyrsuy4juba"
++    },
++    {
++      "tool_input": {
++        "command": "mkdir -p $TMPDIR/v && cat > $TMPDIR/v/drive.py <<'EOF'\nimport io, sys, contextlib, tempfile\nsys.path.insert(0, \"tests\")\nfrom kucoin_stub import NOW, SPOT_1H, KuCoin, utc, HOUR_MS\nfrom app.data import loader, load_klines\nloader.utc_now = lambda: NOW\nfrom app.backtest.__main__ import main\nimport app.backtest as ab\n\ndef stub():\n    k = KuCoin(); k.add_spot(SPOT_1H); return k\n\ndef call(argv, k=None):\n    k = k or stub()\n    out, err = io.StringIO(), io.StringIO()\n    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):\n        try: code = main(argv, fetch=k)\n        except SystemExit as e: code = f\"SystemExit({e.code})\"\n    print(f\"$ {' '.join(argv)!s}\\n  exit={code} calls={len(k.calls)}\")\n    for l in out.getvalue().splitlines(): print(\"  out| \" + l)\n    for l in err.getvalue().splitlines()[-2:]: print(\"  err| \" + l)\n    return k, out.getvalue()\n\ndef tmp(): return tempfile.mkdtemp(dir=sys.argv[1])\nD = [\"btc-usdt\", \"1h\", \"2026-10-01\", \"2026-10-01\"]\nprint(\"__all__\", ab.__all__)\nk1, _ = call([\"sweep\", *D, \"--fast\", \"2,3,5\", \"--slow\", \"5,8,12,24\", \"--cache-dir\", tmp()])\nk2, _ = call([\"run\", *D, \"--fast\", \"2\", \"--slow\", \"8\", \"--cache-dir\", tmp()])\nprint(\"sweep calls == run calls:\", k1.calls == k2.calls)\ncall([\"sweep\", *D, \"--fast\", \"3,2,2,3\", \"--slow\", \"8,8\", \"--cache-dir\", tmp()])\ncall([\"sweep\", *D, \"--fast\", \"1\", \"--slow\", \"23\", \"--cache-dir\", tmp()])   # just inside: 23 < 24\ncall([\"sweep\", *D, \"--fast\", \"1\", \"--slow\", \"24\", \"--cache-dir\", tmp()])   # just outside: 24 == height\nfor bad in ([\"--fast\", \"\"], [\"--fast\", \"5,,10\"], [\"--fast\", \"x\"], [\"--fast=-5,10\"], [\"--fast\", \"-5\"],\n            [\"--slow\", \"0\"], [\"--fast\", \"1.5\"], [\"--fast\", \"-5,10\"], [\"--fee\", \"abc\"], [\"--fee\", \"1.5\"],\n            [\"--fast\", \"50\", \"--slow\", \"10,20\"], [\"--market\", \"margin\"]):\n    call([\"sweep\", *D, *bad, \"--cache-dir\", tmp()])\ncall([\"sweep\", *D, \"--fast\", \",\".join(map(str, range(1, 22))), \"--slow\", \",\".join(map(str, range(22, 43))), \"--cache-dir\", tmp()])\ncall([\"sweep\", *D, \"--fast\", \",\".join(map(str, range(1, 21))), \"--slow\", \",\".join(map(str, range(21, 41))), \"--cache-dir\", tmp()])  # exactly 400 -> loads, all skipped\ncall([\"sweep\", *D, \"--cache-dir\", tmp()])\ncall([\"sweep\", \"btc\", \"1h\", \"2026-10-01\", \"2026-10-01\", \"--cache-dir\", tmp()])\ncall([\"sweep\", \"btc-usdt\", \"7m\", \"2026-10-01\", \"2026-10-01\", \"--cache-dir\", tmp()])\ncall([\"sweep\", \"btc-usdt\", \"1h\", \"2026-10-05\", \"2026-10-05\", \"--cache-dir\", tmp()])\nk = KuCoin(); k.add_spot_synthetic(utc(2026, 9, 28), 120, HOUR_MS)\ncall([\"sweep\", \"btc-usdt\", \"1h\", \"2026-09-28\", \"2026-10-02\", \"--cache-dir\", tmp()], k)\n# neighbour 1: run output + help\ncall([\"run\", *D, \"--fast\", \"3\", \"--slow\", \"8\", \"--cache-dir\", tmp()])\ncall([\"run\", *D, \"--cache-dir\", tmp()])\n_, h = call([\"run\", \"--help\"])\n# neighbour 2: data layer load + cache\nc = tmp(); k = stub()\nf1 = load_klines(\"BTC-USDT\", \"1h\", NOW.date().replace(day=1), NOW.date().replace(day=1), cache_dir=c, fetch=k)\nn = len(k.calls)\nf2 = load_klines(\"BTC-USDT\", \"1h\", NOW.date().replace(day=1), NOW.date().replace(day=1), cache_dir=c, fetch=k)\nprint(\"load_klines\", f1.shape, \"calls first\", n, \"after cached reload\", len(k.calls), \"equal\", f1.equals(f2))\nEOF\ncd /home/runner/work/crypto-backtester/crypto-backtester && python -I -c \"import sys; sys.path.insert(0,'.'); sys.argv=['d', sys.argv[1]]; exec(open(sys.argv[0] if False else '$TMPDIR/v/drive.py').read())\" $TMPDIR/v 2>&1",
++        "description": "Drive sweep and run CLI offline with stub and fixed clock"
++      },
++      "tool_name": "Bash",
++      "tool_use_id": "toolu_014nREu8sSdiurP7PFycyQ8f"
++    },
++    {
++      "tool_input": {
++        "command": "python -I - /tmp/claude-1001 <<'EOF' 2>&1\nimport io, sys, contextlib, tempfile\nsys.path[:0] = [\".\", \"tests\"]\nfrom kucoin_stub import NOW, SPOT_1H, KuCoin, utc, HOUR_MS\nfrom app.data import loader, load_klines\nloader.utc_now = lambda: NOW\nfrom app.backtest.__main__ import main\nimport app.backtest as ab\n\ndef stub():\n    k = KuCoin(); k.add_spot(SPOT_1H); return k\n\ndef call(argv, k=None):\n    k = k or stub()\n    out, err = io.StringIO(), io.StringIO()\n    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):\n        try: code = main(argv, fetch=k)\n        except SystemExit as e: code = f\"SystemExit({e.code})\"\n    print(f\"$ {' '.join(a for a in argv if not a.startswith('/tmp'))}\\n  exit={code} calls={len(k.calls)}\")\n    for l in out.getvalue().splitlines(): print(\"  out| \" + l)\n    for l in err.getvalue().splitlines()[-2:]: print(\"  err| \" + l)\n    return k, out.getvalue()\n\ndef tmp(): return tempfile.mkdtemp(dir=sys.argv[1])\nD = [\"btc-usdt\", \"1h\", \"2026-10-01\", \"2026-10-01\"]\nprint(\"NOW\", NOW, \"__all__\", ab.__all__)\nk1, _ = call([\"sweep\", *D, \"--fast\", \"2,3,5\", \"--slow\", \"5,8,12,24\", \"--cache-dir\", tmp()])\nk2, _ = call([\"run\", *D, \"--fast\", \"2\", \"--slow\", \"8\", \"--cache-dir\", tmp()])\nprint(\"sweep calls == run calls:\", k1.calls == k2.calls)\ncall([\"sweep\", *D, \"--fast\", \"3,2,2,3\", \"--slow\", \"8,8\", \"--cache-dir\", tmp()])\ncall([\"sweep\", *D, \"--fast\", \"1\", \"--slow\", \"23\", \"--cache-dir\", tmp()])\ncall([\"sweep\", *D, \"--fast\", \"1\", \"--slow\", \"24\", \"--cache-dir\", tmp()])\nfor bad in ([\"--fast\", \"\"], [\"--fast\", \"5,,10\"], [\"--fast\", \"x\"], [\"--fast=-5,10\"], [\"--fast\", \"-5\"],\n            [\"--slow\", \"0\"], [\"--fast\", \"1.5\"], [\"--fast\", \"-5,10\"], [\"--fee\", \"abc\"], [\"--fee\", \"1.5\"],\n            [\"--fast\", \"50\", \"--slow\", \"10,20\"], [\"--market\", \"margin\"]):\n    call([\"sweep\", *D, *bad, \"--cache-dir\", tmp()])\ncall([\"sweep\", *D, \"--fast\", \",\".join(map(str, range(1, 22))), \"--slow\", \",\".join(map(str, range(22, 43))), \"--cache-dir\", tmp()])\ncall([\"sweep\", *D, \"--fast\", \",\".join(map(str, range(1, 21))), \"--slow\", \",\".join(map(str, range(21, 41))), \"--cache-dir\", tmp()])\ncall([\"sweep\", *D, \"--cache-dir\", tmp()])\ncall([\"sweep\", \"btc\", \"1h\", \"2026-10-01\", \"2026-10-01\", \"--cache-dir\", tmp()])\ncall([\"sweep\", \"btc-usdt\", \"7m\", \"2026-10-01\", \"2026-10-01\", \"--cache-dir\", tmp()])\ncall([\"sweep\", \"btc-usdt\", \"1h\", \"2026-10-05\", \"2026-10-05\", \"--cache-dir\", tmp()])\nk = KuCoin(); k.add_spot_synthetic(utc(2026, 9, 28), 120, HOUR_MS)\ncall([\"sweep\", \"btc-usdt\", \"1h\", \"2026-09-28\", \"2026-10-02\", \"--cache-dir\", tmp()], k)\ncall([\"run\", *D, \"--fast\", \"3\", \"--slow\", \"8\", \"--cache-dir\", tmp()])\ncall([\"run\", *D, \"--cache-dir\", tmp()])\ncall([\"run\", \"--help\"])\ncall([\"sweep\", \"--help\"])\nfrom datetime import date\nc = tmp(); k = stub()\nf1 = load_klines(\"BTC-USDT\", \"1h\", date(2026,10,1), date(2026,10,1), cache_dir=c, fetch=k); n = len(k.calls)\nf2 = load_klines(\"BTC-USDT\", \"1h\", date(2026,10,1), date(2026,10,1), cache_dir=c, fetch=k)\nprint(\"load_klines\", f1.shape, \"calls first\", n, \"after cached reload\", len(k.calls), \"equal\", f1.equals(f2))\nEOF",
++        "description": "Drive sweep and run CLI offline with stub and fixed clock"
++      },
++      "tool_name": "Bash",
++      "tool_use_id": "toolu_01Y2WoGt9szVC6ZJBCsshvBi"
++    },
++    {
++      "tool_input": {
++        "command": "for t in $(grep -o '^- test: [a-z_]*' changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md | cut -d' ' -f3); do grep -q \"def $t(\" tests/test_backtest_sweep.py && echo \"present $t\" || echo \"MISSING $t\"; done; git diff --quiet origin/main...HEAD -- tests/test_backtest_cli.py app/data app/backtest/__init__.py && echo \"untouched files unchanged\"",
++        "description": "Check proof test names exist in test file"
++      },
++      "tool_name": "Bash",
++      "tool_use_id": "toolu_019P3yAm9pxeJo1N36uoBZnr"
++    }
++  ],
++  "queued_turn_count": 0,
++  "result": "Gate (build) passed \u2192 `/sdlc-test 0006`.\n\n`python -m app.backtest sweep` is built, and the draft PR is open: [#30](https://github.com/luissiviero/crypto-backtester/pull/30). It carries no label because the gate didn't park.\n\n**What changed**\n- **`app/backtest/sweep.py`** (new, no I/O): `MAX_PAIRS = 400`; `count_pairs` counts the kept and skipped pairs without building the grid; `pairs`, `SweepRow`, and `sweep`, which sorts rows by `(-total_return, fast, slow)`. None of these names are added to `app.backtest.__all__`.\n- **`app/backtest/__main__.py`**: the lines `run` and `sweep` share moved into four helpers (`_add_range_arguments`, `_add_fee_arguments`, `_load`, `_hold_line`). `run --help` is byte-identical to `main`'s and its 23 existing tests pass unchanged. Then the `sweep` sub-command itself: parsing the lists, refusing an empty grid or one over the cap before any fetch, skipping pairs whose slow length isn't below the candle count, and printing the run line, aligned table, buy-and-hold line and warning.\n- **`tests/test_backtest_sweep.py`** (new): 30 tests, offline against the stub.\n\n**Results**\n- **Tests:** `python -m pytest -q` \u2192 `223 passed in 0.43s`.\n- **Lint:** `python -m ruff check .` \u2192 `All checks passed!`\n- **Build:** `python -m compileall -q .` exits 1 in this sandbox. Every error is a failed `__pycache__` write under the read-only `framework/` plugin checkout, not a syntax error. `python -m compileall -q app tests scripts` prints nothing. The runner runs the full build target again outside the sandbox after this session.\n\n**Reviews**\n- The simplifier proposed two edits. I applied the small test cleanup and skipped the optional helper extraction, which wasn't in the plan and saved little.\n- The verifier ran the sweep and its refusals offline, plus `run` and `load_klines`, and reported \"matches the plan\". Its report is in `evidence/verifier.md`.\n- The adversarial reviewer (on Opus) said continue, classified the change non-routine, and found no risk-list item.\n- No panel item was raised, and every gate check passed.\n\n**Departure from the plan:** I added one test the plan didn't name. The two-word `--fast -5,10` case is its own test, `test_sweep_refuses_two_word_negative_list`, because Python 3.10\u20133.13 refuses it in argparse while 3.14 passes it to the command. plan.md Proof now lists it, in the same commit.\n\n**Small things for you to look at**\n- With one pair, the run line reads \"1 pairs tried\". That's the spec's wording taken literally.\n- The test for a range where every pair is skipped doesn't check that the stub was called exactly once.\n- `status.yaml` (it now records PR #30) and `hook-log.jsonl` are modified but not committed. I left them for the runner's post-session commit, since nothing goes in after the gate evidence.",
++  "result_index": 0,
++  "safety_stops": 0,
++  "sdlc_run": {
++    "at": "2026-11-07T23:03:29Z",
++    "credential": "oauth",
++    "seconds": 514.8,
++    "timed_out": false
++  },
++  "session_id": "f9be61c5-6cd7-4241-b154-d7ecf3cb9983",
++  "stop_reason": "end_turn",
++  "subagent_stats": {
++    "by_type": {
++      "sdlc:adversarial-reviewer": 1,
++      "sdlc:code-simplifier": 1,
++      "sdlc:verifier": 1
++    },
++    "completed": 3,
++    "failed": 0,
++    "killed": {
++      "parent": 0,
++      "system": 0,
++      "user": 0
++    },
++    "max_depth": 1,
++    "refused": {
++      "budget": 0,
++      "concurrency_limit": 0,
++      "depth_limit": 0
++    },
++    "requested": {
++      "background": 0,
++      "foreground": 0,
++      "unset": 3
++    },
++    "spawned": 3,
++    "spawned_by_subagents": 0,
++    "started_in_background": 0
++  },
++  "subtype": "success",
++  "terminal_reason": "completed",
++  "time_to_request_ms": 87,
++  "total_cost_usd": 3.7233018000000007,
++  "ttft_ms": 2088,
++  "ttft_stream_ms": 1648,
++  "type": "result",
++  "usage": {
++    "cache_creation": {
++      "ephemeral_1h_input_tokens": 118820,
++      "ephemeral_5m_input_tokens": 0
++    },
++    "cache_creation_input_tokens": 118820,
++    "cache_read_input_tokens": 3854474,
++    "fallback_credit": null,
++    "inference_geo": "global",
++    "input_tokens": 96,
++    "iterations": [
++      {
++        "cache_creation": {
++          "ephemeral_1h_input_tokens": 254,
++          "ephemeral_5m_input_tokens": 0
++        },
++        "cache_creation_input_tokens": 254,
++        "cache_read_input_tokens": 118566,
++        "input_tokens": 2,
++        "output_tokens": 1165,
++        "type": "message"
++      }
++    ],
++    "output_tokens": 30163,
++    "output_tokens_details": {
++      "thinking_tokens": 4376
++    },
++    "server_tool_use": {
++      "web_fetch_requests": 0,
++      "web_search_requests": 0
++    },
++    "service_tier": "standard",
++    "speed": "standard"
++  },
++  "uuid": "8d056858-03aa-42ed-b5fc-d864fa024bae"
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/claude-build.stderr.txt b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/claude-build.stderr.txt
+new file mode 100644
+index 0000000..9586827
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/claude-build.stderr.txt
+@@ -0,0 +1 @@
++Ignoring 4 permissions.allow entries from .claude/settings.json: this workspace has not been trusted. Run Claude Code interactively here once and accept the trust dialog, or set projects["/home/runner/work/crypto-backtester/crypto-backtester"].hasTrustDialogAccepted: true in /home/runner/.claude.json.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/diff-build.patch b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/diff-build.patch
+new file mode 100644
+index 0000000..6b38201
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/diff-build.patch
+@@ -0,0 +1,825 @@
++ app/backtest/__main__.py                           | 163 +++++++++--
++ app/backtest/sweep.py                              |  49 ++++
++ .../evidence/hook-log.jsonl                        |  81 ++++++
++ .../evidence/run-build.json                        |   6 +
++ .../evidence/verifier.md                           |  64 +++++
++ .../plan.md                                        |   5 +-
++ .../status.yaml                                    |   4 +-
++ tests/test_backtest_sweep.py                       | 317 +++++++++++++++++++++
++ 8 files changed, 664 insertions(+), 25 deletions(-)
++
++diff --git a/app/backtest/__main__.py b/app/backtest/__main__.py
++index c611fd2..73a507b 100644
++--- a/app/backtest/__main__.py
+++++ b/app/backtest/__main__.py
++@@ -1,4 +1,4 @@
++-"""CLI: `python -m app.backtest run`, the SMA crossover on one symbol's KuCoin klines."""
+++"""CLI: `python -m app.backtest run | sweep`, the SMA crossover on one symbol's KuCoin klines."""
++ 
++ from __future__ import annotations
++ 
++@@ -6,14 +6,32 @@ import argparse
++ import sys
++ from collections.abc import Sequence
++ 
+++import polars as pl
+++
++ from app.backtest.engine import run_backtest
++ from app.backtest.inputs import DEFAULT_FEE, BacktestInputError, _check_fee
++ from app.backtest.strategy import STRATEGY_NAME, sma_cross_positions, validate_lengths
+++from app.backtest.sweep import MAX_PAIRS, SweepRow, count_pairs, pairs, sweep
++ from app.data import DownloadError, Fetch, KlineGapError, load_klines, loader
++-from app.data.params import MARKETS, InvalidRequestError, make_request
+++from app.data.params import MARKETS, InvalidRequestError, KlineRequest, make_request
++ 
++ SMA_NOTE = "SMAs count candles, not wall time: an interval without a candle is skipped, not filled."
++ RUN_HELP = "backtest the SMA crossover on a date range, loading missing days from KuCoin"
+++SWEEP_HELP = "backtest the SMA crossover for every pair of a grid of lengths, best first"
+++SWEEP_WARNING = (
+++    "The best pair on past data is often luck: check it on another date range before trusting it."
+++)
+++SWEEP_FAST = "5,10,20"
+++SWEEP_SLOW = "30,50,100"
+++SWEEP_HEADERS = (
+++    "fast",
+++    "slow",
+++    "total return",
+++    "max drawdown",
+++    "trades",
+++    "win rate",
+++    "time in market",
+++)
++ 
++ 
++ def main(argv: Sequence[str] | None = None, fetch: Fetch | None = None) -> int:
++@@ -36,43 +54,57 @@ def _parser() -> argparse.ArgumentParser:
++     commands = parser.add_subparsers(required=True, metavar="COMMAND")
++ 
++     run = commands.add_parser("run", help=RUN_HELP, epilog=SMA_NOTE)
++-    run.add_argument("symbol", metavar="SYMBOL")
++-    run.add_argument("interval", metavar="INTERVAL")
++-    run.add_argument("start", metavar="START", help="first day, YYYY-MM-DD (UTC)")
++-    run.add_argument("end", metavar="END", help="last day, YYYY-MM-DD (UTC), inclusive")
++-    run.add_argument("--market", choices=MARKETS, default="spot")
+++    _add_range_arguments(run)
++     run.add_argument("--fast", default="20", help="fast SMA length in candles (default 20)")
++     run.add_argument("--slow", default="50", help="slow SMA length in candles (default 50)")
++-    run.add_argument(
++-        "--fee", default=str(DEFAULT_FEE), help=f"proportional fee per fill (default {DEFAULT_FEE})"
++-    )
++-    run.add_argument("--cache-dir")
+++    _add_fee_arguments(run)
++     run.set_defaults(command=_run)
+++
+++    grid = commands.add_parser("sweep", help=SWEEP_HELP, epilog=SMA_NOTE)
+++    _add_range_arguments(grid)
+++    grid.add_argument(
+++        "--fast",
+++        default=SWEEP_FAST,
+++        help=f"comma-separated fast SMA lengths in candles (default {SWEEP_FAST})",
+++    )
+++    grid.add_argument(
+++        "--slow",
+++        default=SWEEP_SLOW,
+++        help=f"comma-separated slow SMA lengths in candles (default {SWEEP_SLOW})",
+++    )
+++    _add_fee_arguments(grid)
+++    grid.set_defaults(command=_sweep)
++     return parser
++ 
++ 
+++def _add_range_arguments(parser: argparse.ArgumentParser) -> None:
+++    parser.add_argument("symbol", metavar="SYMBOL")
+++    parser.add_argument("interval", metavar="INTERVAL")
+++    parser.add_argument("start", metavar="START", help="first day, YYYY-MM-DD (UTC)")
+++    parser.add_argument("end", metavar="END", help="last day, YYYY-MM-DD (UTC), inclusive")
+++    parser.add_argument("--market", choices=MARKETS, default="spot")
+++
+++
+++def _add_fee_arguments(parser: argparse.ArgumentParser) -> None:
+++    parser.add_argument(
+++        "--fee", default=str(DEFAULT_FEE), help=f"proportional fee per fill (default {DEFAULT_FEE})"
+++    )
+++    parser.add_argument("--cache-dir")
+++
+++
++ def _run(args: argparse.Namespace, fetch: Fetch | None) -> int:
++     today = loader.utc_now().date()
++     request = make_request(args.symbol, args.interval, args.start, args.end, args.market, today)
++     fast, slow = _length(args.fast, "fast"), _length(args.slow, "slow")
++     validate_lengths(fast, slow)
++     fee = _fee(args.fee)
++-    frame = load_klines(
++-        request.symbol,
++-        request.interval,
++-        request.start,
++-        request.end,
++-        market=request.market,
++-        cache_dir=args.cache_dir,
++-        fetch=fetch,
++-    )
+++    frame = _load(request, args, fetch)
++     if frame.height <= slow:
++         raise BacktestInputError(
++             f"the range has {frame.height} candles, not more than slow {slow}: the strategy "
++             "could never take a position; widen the dates or lower --slow"
++         )
++     result = run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee)
++-    hold = run_backtest(frame, [1] * frame.height, fee=fee)
++     print(
++         f"{request.symbol} {request.interval} {request.market}, "
++         f"{request.start} .. {request.end}: {frame.height} candles; "
++@@ -86,12 +118,99 @@ def _run(args: argparse.Namespace, fetch: Fetch | None) -> int:
++         ("trades", str(summary.trade_count)),
++         ("win rate", _percent(summary.win_rate)),
++         ("time in market", _percent(summary.time_in_market)),
++-        ("buy and hold", _percent(hold.summary.total_return)),
++     ):
++         print(f"{label:<14}{value:>8}")
+++    print(_hold_line(frame, fee))
++     return 0
++ 
++ 
+++def _sweep(args: argparse.Namespace, fetch: Fetch | None) -> int:
+++    today = loader.utc_now().date()
+++    request = make_request(args.symbol, args.interval, args.start, args.end, args.market, today)
+++    fasts = _lengths(args.fast, "fast", SWEEP_FAST)
+++    slows = _lengths(args.slow, "slow", SWEEP_SLOW)
+++    fee = _fee(args.fee)
+++    kept, skipped = count_pairs(fasts, slows)
+++    if kept == 0:
+++        raise BacktestInputError(
+++            "no pair has fast below slow: pass a --fast value below a --slow value"
+++        )
+++    if kept > MAX_PAIRS:
+++        raise BacktestInputError(
+++            f"the grid has {kept} pairs with fast below slow, more than {MAX_PAIRS}: "
+++            "pass shorter --fast or --slow lists"
+++        )
+++    frame = _load(request, args, fetch)
+++    grid = [(fast, slow) for fast, slow in pairs(fasts, slows) if slow < frame.height]
+++    skipped += kept - len(grid)
+++    if not grid:
+++        raise BacktestInputError(
+++            f"the range has {frame.height} candles, not more than any slow length with a smaller "
+++            "fast: no pair could take a position; widen the dates or lower --slow"
+++        )
+++    print(
+++        f"{request.symbol} {request.interval} {request.market}, "
+++        f"{request.start} .. {request.end}: {frame.height} candles; "
+++        f"{STRATEGY_NAME}, {len(grid)} pairs tried, {skipped} skipped; fee {_percent(fee)}"
+++    )
+++    print(SMA_NOTE, flush=True)
+++    for line in _table(sweep(frame, grid, fee)):
+++        print(line)
+++    print(_hold_line(frame, fee))
+++    print(SWEEP_WARNING)
+++    return 0
+++
+++
+++def _lengths(text: str, name: str, example: str) -> list[int]:
+++    if text.strip() == "":
+++        raise BacktestInputError(
+++            f"--{name} is empty: pass comma-separated whole numbers, for example {example}"
+++        )
+++    values = []
+++    for item in text.split(","):
+++        value = _length(item, name)
+++        if value < 1:
+++            raise BacktestInputError(f"{name} {value} is not a whole number of at least 1")
+++        values.append(value)
+++    return sorted(set(values))
+++
+++
+++def _table(rows: Sequence[SweepRow]) -> list[str]:
+++    lines = [SWEEP_HEADERS, *(_cells(row) for row in rows)]
+++    widths = [max(len(cell) for cell in column) for column in zip(*lines)]
+++    return ["  ".join(cell.rjust(width) for cell, width in zip(line, widths)) for line in lines]
+++
+++
+++def _cells(row: SweepRow) -> tuple[str, ...]:
+++    summary = row.summary
+++    return (
+++        str(row.fast),
+++        str(row.slow),
+++        _percent(summary.total_return),
+++        _percent(summary.max_drawdown),
+++        str(summary.trade_count),
+++        _percent(summary.win_rate),
+++        _percent(summary.time_in_market),
+++    )
+++
+++
+++def _load(request: KlineRequest, args: argparse.Namespace, fetch: Fetch | None) -> pl.DataFrame:
+++    return load_klines(
+++        request.symbol,
+++        request.interval,
+++        request.start,
+++        request.end,
+++        market=request.market,
+++        cache_dir=args.cache_dir,
+++        fetch=fetch,
+++    )
+++
+++
+++def _hold_line(frame: pl.DataFrame, fee: float) -> str:
+++    hold = run_backtest(frame, [1] * frame.height, fee=fee)
+++    return f"{'buy and hold':<14}{_percent(hold.summary.total_return):>8}"
+++
+++
++ def _length(text: str, name: str) -> int:
++     try:
++         return int(text)
++diff --git a/app/backtest/sweep.py b/app/backtest/sweep.py
++new file mode 100644
++index 0000000..27bad21
++--- /dev/null
+++++ b/app/backtest/sweep.py
++@@ -0,0 +1,49 @@
+++"""The SMA crossover sweep: count, build and backtest a grid of fast and slow lengths. No I/O."""
+++
+++from __future__ import annotations
+++
+++from bisect import bisect_right
+++from collections.abc import Sequence
+++from dataclasses import dataclass
+++
+++import polars as pl
+++
+++from app.backtest.engine import run_backtest
+++from app.backtest.strategy import sma_cross_positions
+++from app.backtest.summary import Summary
+++
+++MAX_PAIRS = 400
+++
+++
+++@dataclass(frozen=True)
+++class SweepRow:
+++    """One pair of lengths and the summary of its backtest."""
+++
+++    fast: int
+++    slow: int
+++    summary: Summary
+++
+++
+++def count_pairs(fasts: Sequence[int], slows: Sequence[int]) -> tuple[int, int]:
+++    """(kept, skipped) for sorted distinct lengths: kept pairs have fast below slow.
+++
+++    Counts without building the grid, so a long list costs nothing before the cap check.
+++    """
+++    kept = sum(len(slows) - bisect_right(slows, fast) for fast in fasts)
+++    return kept, len(fasts) * len(slows) - kept
+++
+++
+++def pairs(fasts: Sequence[int], slows: Sequence[int]) -> list[tuple[int, int]]:
+++    """The pairs with fast below slow, fast-major, for sorted distinct lengths."""
+++    return [(fast, slow) for fast in fasts for slow in slows[bisect_right(slows, fast) :]]
+++
+++
+++def sweep(frame: pl.DataFrame, pairs: Sequence[tuple[int, int]], fee: float) -> list[SweepRow]:
+++    """One backtest per pair, sorted by total return, highest first; ties by fast, then slow."""
+++    rows = [
+++        SweepRow(
+++            fast, slow, run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee).summary
+++        )
+++        for fast, slow in pairs
+++    ]
+++    return sorted(rows, key=lambda row: (-row.summary.total_return, row.fast, row.slow))
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
++index 73b9565..0d3cbb4 100644
++--- a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
++@@ -49,3 +49,84 @@
++ {"at": "2026-11-07T22:39:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++ {"at": "2026-11-07T22:39:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++ {"at": "2026-11-07T22:39:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:33Z", "commands": [{"command": "ruff check --fix --quiet sweep.py", "exit_code": 0}, {"command": "ruff format sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:42Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:55:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "shell_guard", "reason": "Shell guard: the write target `$TMPDIR/run-help-before.txt` is not a literal path (a variable, command substitution, backtick, `~`, a glob, a brace expansion or a git pathspec-magic prefix), or the working directory it would resolve against is not tracked (`cd -`, a bare `cd`, `popd`/`Pop-Location`); write the literal path, from a tracked directory, so the guard can check it.", "tool": "Bash", "verdict": "block"}
+++{"at": "2026-11-07T22:56:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:06Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 1}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "ruff reports remaining problems in __main__.py after auto-fix; fix them before moving on:\napp/backtest/__main__.py:68:13: F821 Undefined name `_load`\napp/backtest/__main__.py:88:35: F821 Undefined name `hold`\nFound 2 errors.", "tool": "Edit", "verdict": "block"}
+++{"at": "2026-11-07T22:56:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:09Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 1}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "ruff reports remaining problems in __main__.py after auto-fix; fix them before moving on:\napp/backtest/__main__.py:94:20: F821 Undefined name `KlineRequest`\napp/backtest/__main__.py:94:84: F821 Undefined name `pl`\napp/backtest/__main__.py:95:12: F821 Undefined name `load_klines`\napp/backtest/__main__.py:106:23: F821 Undefined name `pl`\nFound 4 errors.", "tool": "Edit", "verdict": "block"}
+++{"at": "2026-11-07T22:56:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:17Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:41Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:45Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:48Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 1}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "ruff reports remaining problems in __main__.py after auto-fix; fix them before moving on:\napp/backtest/__main__.py:75:31: F821 Undefined name `_sweep`\nFound 1 error.", "tool": "Edit", "verdict": "block"}
+++{"at": "2026-11-07T22:56:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:56:56Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 1}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "ruff reports remaining problems in __main__.py after auto-fix; fix them before moving on:\napp/backtest/__main__.py:132:21: F821 Undefined name `count_pairs`\napp/backtest/__main__.py:137:15: F821 Undefined name `MAX_PAIRS`\napp/backtest/__main__.py:139:74: F821 Undefined name `MAX_PAIRS`\napp/backtest/__main__.py:143:44: F821 Undefined name `pairs`\napp/backtest/__main__.py:156:24: F821 Undefined name `sweep`\napp/backtest/__main__.py:177:27: F821 Undefined name `SweepRow`\napp/backtest/__main__.py:183:17: F821 Undefined name `SweepRow`\nFound 7 errors.", "tool": "Edit", "verdict": "block"}
+++{"at": "2026-11-07T22:57:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:01Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:21Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:57:54Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 1}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "ruff reports remaining problems in test_backtest_sweep.py after auto-fix; fix them before moving on:\ntests/test_backtest_sweep.py:52:19: F821 Undefined name `KuCoin`\ntests/test_backtest_sweep.py:53:14: F821 Undefined name `KuCoin`\ntests/test_backtest_sweep.py:54:21: F821 Undefined name `SPOT_1H`\ntests/test_backtest_sweep.py:58:23: F821 Undefined name `KuCoin`\ntests/test_backtest_sweep.py:58:37: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:60:12: F821 Undefined name `main`\ntests/test_backtest_sweep.py:64:13: F821 Undefined name `load_klines`\ntests/test_backtest_sweep.py:93:9: F821 Undefined name `SMA_NOTE`\ntests/test_backtest_sweep.py:96:9: F821 Undefined name `SWEEP_WARNING`\ntests/test_backtest_sweep.py:104:28: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:117:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:118:39: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:118:53: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:130:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:131:49: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:131:63: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:139:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:140:45: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:140:59: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:148:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:150:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:150:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:150:70: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:156:16: F821 Undefined name `load_klines`\ntests/test_backtest_sweep.py:158:25: F821 Undefined name `cli`\ntests/test_backtest_sweep.py:164:12: F821 Undefined name `main`\ntests/test_backtest_sweep.py:168:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:169:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:180:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:180:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:183:12: F821 Undefined name `main`\ntests/test_backtest_sweep.py:188:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:189:45: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:189:59: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:191:10: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:198:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:199:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:220:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:220:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:228:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:230:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:230:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:243:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:244:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:252:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:252:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:260:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:261:45: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:261:59: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:268:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:269:48: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:269:62: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:282:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:284:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:284:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:294:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:295:51: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:295:65: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:296:14: F821 Undefined name `KuCoin`\ntests/test_backtest_sweep.py:297:31: F821 Undefined name `utc`\ntests/test_backtest_sweep.py:297:54: F821 Undefined name `HOUR_MS`\ntests/test_backtest_sweep.py:304:46: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:305:10: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:306:9: F821 Undefined name `main`\ntests/test_backtest_sweep.py:308:15: F821 Undefined name `re`\ntests/test_backtest_sweep.py:308:76: F821 Undefined name `re`\nFound 66 errors.", "tool": "Edit", "verdict": "block"}
+++{"at": "2026-11-07T22:58:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:01Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:58:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:59:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:59:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:59:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:59:00Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
+++{"at": "2026-11-07T22:59:16Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:59:23Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:59:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:59:44Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T22:59:44Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "shell_guard", "reason": "Shell guard: the write target `$TMPDIR/v/drive.py` is not a literal path (a variable, command substitution, backtick, `~`, a glob, a brace expansion or a git pathspec-magic prefix), or the working directory it would resolve against is not tracked (`cd -`, a bare `cd`, `popd`/`Pop-Location`); write the literal path, from a tracked directory, so the guard can check it.", "tool": "Bash", "verdict": "block"}
+++{"at": "2026-11-07T23:00:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T23:00:44Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
+++{"at": "2026-11-07T23:01:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T23:01:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T23:01:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+++{"at": "2026-11-07T23:01:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-build.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-build.json
++new file mode 100644
++index 0000000..e423ed2
++--- /dev/null
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-build.json
++@@ -0,0 +1,6 @@
+++{
+++  "phase": "build",
+++  "run": "build",
+++  "spend_usd": null,
+++  "started_at": "2026-11-07T22:55:04Z"
+++}
++\ No newline at end of file
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md
++new file mode 100644
++index 0000000..f6faa9e
++--- /dev/null
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md
++@@ -0,0 +1,64 @@
+++The sweep matches plan.md and spec.md. Every acceptance case I called offline behaved as specified, and the design gate's `commands` record is green. That record was taken on the design tree, so it doesn't stand in for the runner's run on the final tree.
+++
+++**Commands run** (read, not run: this is a CI session)
+++
+++I read `evidence/gate-design.json`, the runner's run on commit `44ea2daa9018050097cce32db232dd4d2dcec1e0` of 2026-11-07T22:39:20Z (`details.ran_by: runner`, not deferred). That is the tree this phase started from, not the final one. The final tree's result comes from the runner, which runs the three targets once after this session and shows it in the check run `sdlc/test`; a red target there starts the next fix round by itself.
+++- `python -m compileall -q .`: exit 0, output `""`
+++- `python -m pytest`: exit 0, `193 passed in 0.71s` (Python 3.14.4, pytest-9.2.0)
+++- `python -m ruff check .`: exit 0, `All checks passed!`
+++- There are no `test.log`, `build.log` or `lint.log` under `evidence/` yet; none are expected before the runner's test gate.
+++
+++**Behavior exercised**
+++
+++One `python -c` call, with `loader.utc_now` set to `NOW` (2026-10-03 12:00 UTC), driving `main(argv, fetch=KuCoin stub)` with a fresh `--cache-dir` for each call. I did not start pytest, since this is a CI session.
+++- **Main success case:** `sweep btc-usdt 1h 2026-10-01 2026-10-01 --fast 2,3,5 --slow 5,8,12,24` exited 0 with 1 stub call. The run line read `... 24 candles; sma-cross, 8 pairs tried, 4 skipped; fee 0.10%`, followed by `SMA_NOTE`, an aligned header and 8 rows sorted by total return (`5 8 1.37%` first, `2 5 -0.81%` last), then `buy and hold     1.45%` and the warning.
+++- **Rows equal `run` (R9):** the 2/8 row (`0.48% 0.50% 3 33.33% 50.00%`) and the 3/8 row (`1.12% 0.41% 2 50.00% 50.00%`) are the same as `run --fast 2 --slow 8` and `run --fast 3 --slow 8`. The buy-and-hold line is the same character for character.
+++- **Same requests as `run` (R7):** `sweep calls == run calls: True`.
+++- **Repeats tried once (R3):** `--fast 3,2,2,3 --slow 8,8` gave `2 pairs tried, 0 skipped`.
+++- **Candle-count boundary (R8):** `--fast 1 --slow 23` worked (`1 pairs tried`). Just outside it, `--slow 24` on 24 candles exited 2 with the R8 message after 1 call.
+++- **Cap boundary (R6):**
+++  - Exactly 400 pairs (fasts 1..20, slows 21..40) is accepted: `60 pairs tried, 340 skipped`. Equal returns sort by fast, then slow.
+++  - 441 pairs gives `error: the grid has 441 pairs with fast below slow, more than 400: ...` with 0 calls.
+++- **Refusals with exit 2, one `error:` line, empty stdout and 0 calls:**
+++  - `--fast ""` → `--fast is empty: ... 5,10,20`
+++  - `5,,10` → `fast '' is not a whole number of at least 1`
+++  - `x` → `fast 'x' ...`
+++  - `--fast=-5,10` and two-word `-5` → `fast -5 ...`
+++  - `--slow 0` → `slow 0 ...`
+++  - `1.5` → `fast '1.5' ...`
+++  - `--fee abc` and `--fee 1.5` → the same messages as `run`
+++  - `--fast 50 --slow 10,20` → `no pair has fast below slow: ...`
+++  - interval `7m` and end date 2026-10-05 → `make_request`'s messages
+++  - `--market margin` → `SystemExit(2)` from argparse
+++- **Two-word `--fast -5,10`:** on this Python (3.14) it reaches the command and gets the R4 message, which is what plan.md expects for 3.14.
+++- **Default grid with no lengths given:**
+++  - On the 24-candle day: exit 2 with the R8 message after 1 call.
+++  - On a 120-candle synthetic range (2026-09-28 .. 2026-10-02): `9 pairs tried, 0 skipped`, 9 rows.
+++- **Neighbour 1, `run`:** `run --help` is byte-identical to origin/main's (`run --help identical: True`). `run` output is as above; `run` with its defaults on the 24-candle day exits 2 with its old message. The top-level help differs only because it now lists `sweep`, which is expected.
+++- **Neighbour 2, data layer:** `load_klines` returned a `(24, 8)` frame. The first call made 1 fetch, the cached reload made none, and the two frames are equal.
+++- **Static checks:** `app.backtest.__all__` is unchanged. `git diff --stat origin/main...HEAD` is empty for `app/data`, `__init__.py`, `inputs`, `engine`, `summary`, `strategy`, `pyproject.toml`, `app/__init__.py`, `tests/test_backtest_cli.py`, `conftest.py` and `kucoin_stub.py`. All 17 Proof test names exist in `tests/test_backtest_sweep.py`.
+++
+++**Not exercised**
+++- The three targets on the final tree; that result is the runner's.
+++- The new test file; I did not run pytest here.
+++- The `--market futures` sweep.
+++- The `OSError` hint for an unwritable `--cache-dir`.
+++- `DownloadError` and `KlineGapError` during a sweep.
+++- Two-word `--fast -5,10` on Python 3.10–3.13, where argparse refuses it itself.
+++- Windows and macOS.
+++- Large real ranges (speed of 400 pairs on 1m candles).
+++- A bad symbol: `btc` is accepted by `make_request` (`KlineRequest(symbol='BTC', ...)`), so I never hit a symbol refusal.
+++
+++**Mismatches with plan.md / spec.md**
+++
+++None. Two small notes that are not mismatches:
+++- With one pair the run line reads `1 pairs tried`, which is the spec's format taken literally.
+++- `_run` now computes buy and hold after printing its rows, not before. Its output is unchanged.
+++
+++**Blocked actions**
+++- The guard denied a heredoc to `python -` (an unverifiable redirect) and a `for` loop over a shell variable. I re-ran both checks without them, so nothing went unchecked.
+++- `python -I` couldn't import polars, so the script ran with plain `python` from the repository root.
+++
+++**Verdict:** matches the plan
+++
+++Files: `/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py`, `/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py`, `/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py`, `/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/gate-design.json`
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
++index 129b18a..ac4f539 100644
++--- a/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
++@@ -157,6 +157,7 @@ Interrogation answers:
++ - test: test_sweep_refuses_bad_request
++ - test: test_sweep_refuses_bad_market
++ - test: test_sweep_refuses_bad_lengths
+++- test: test_sweep_refuses_two_word_negative_list
++ - test: test_sweep_refuses_bad_fee
++ - test: test_sweep_refuses_empty_grid
++ - test: test_sweep_refuses_grid_over_cap
++@@ -170,7 +171,9 @@ Interrogation answers:
++   the every-pair-skipped one) `kucoin.calls == []`. Cases: bad symbol, interval and dates;
++   `--fast ""`, `--fast 5,,10`, `--fast x`, `--fast=-5,10`, two-word `--fast -5` (the R4 message), `--slow 0`,
++   `--fast 1.5`; two-word `--fast -5,10` (exit 2, empty stdout and no stub call only, since
++-  argparse or the command refuses it depending on the Python version, panel #1); `--fee
+++  argparse or the command refuses it depending on the Python version, panel #1; in the build
+++  it is its own test, `test_sweep_refuses_two_word_negative_list`, because it accepts either a
+++  `SystemExit` or a return code and asserts less than the parametrized cases); `--fee
++   abc`, `--fee 1.5`; `--fast 50 --slow 10,20` (no pair); 21 fasts `1..21` by 21 slows
++   `22..42` (441 pairs, over the cap); the default grid on the 24-candle day (every pair
++   skipped by the candle count). A bad `--market` raises `SystemExit` with code 2.
++diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml b/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
++index c49f42e..c3da939 100644
++--- a/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
+++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
++@@ -1,7 +1,7 @@
++ id: "0006"
++ slug: sweep-sma-crossover-lengths-on-one-range
++ title: Sweep SMA crossover lengths on one range
++-phase: design
+++phase: build
++ entry_route: idea
++ change_type: feature
++ gate:
++@@ -30,5 +30,5 @@ fast_lane:
++     sha: "32db462ad4d611dc3237780f0afcfc37f553c279"
++     pr: 27
++ created_at: "2026-11-07T22:16:39Z"
++-updated_at: "2026-11-07T22:39:42Z"
+++updated_at: "2026-11-07T22:55:07Z"
++ schema_version: 1
++diff --git a/tests/test_backtest_sweep.py b/tests/test_backtest_sweep.py
++new file mode 100644
++index 0000000..08a2d5f
++--- /dev/null
+++++ b/tests/test_backtest_sweep.py
++@@ -0,0 +1,317 @@
+++"""Tests for the SMA crossover sweep: the module on frames built by hand, and
+++`python -m app.backtest sweep` offline, driven through main(argv, fetch=stub)."""
+++
+++from __future__ import annotations
+++
+++import re
+++from collections.abc import Sequence
+++from pathlib import Path
+++
+++import polars as pl
+++import pytest
+++from kucoin_stub import HOUR_MS, SPOT_1H, KuCoin, utc
+++
+++import app.backtest.__main__ as cli
+++from app.backtest.__main__ import SMA_NOTE, SWEEP_WARNING, main
+++from app.backtest.engine import run_backtest
+++from app.backtest.strategy import sma_cross_positions
+++from app.backtest.sweep import count_pairs, pairs, sweep
+++from app.data import load_klines
+++
+++DAY = "2026-10-01"
+++HEADERS = ("fast", "slow", "total return", "max drawdown", "trades", "win rate", "time in market")
+++VARYING = [10, 12, 11, 14, 13, 9, 8, 12, 15, 14, 16, 11, 10, 13, 17, 18, 14, 12, 15, 19]
+++
+++
+++def _frame(closes: Sequence[float]) -> pl.DataFrame:
+++    prices = pl.Series(closes, dtype=pl.Float64)
+++    return pl.DataFrame({"open_time": list(range(len(closes))), "open": prices, "close": prices})
+++
+++
+++def test_count_pairs_counts_kept_and_skipped() -> None:
+++    assert count_pairs([5, 10, 20], [30, 50, 100]) == (9, 0)
+++    assert count_pairs([5, 50], [10, 50]) == (2, 2)
+++    assert pairs([5, 50], [10, 50]) == [(5, 10), (5, 50)]
+++    assert pairs([2, 3, 5], [5, 8]) == [(2, 5), (2, 8), (3, 5), (3, 8), (5, 8)]
+++    assert count_pairs([2, 3, 5], [5, 8]) == (5, 1)
+++
+++
+++def test_sweep_rows_match_run_backtest() -> None:
+++    frame = _frame(VARYING)
+++    grid = pairs([2, 3, 4], [5, 6, 8])
+++    rows = sweep(frame, grid, 0.001)
+++    assert sorted((row.fast, row.slow) for row in rows) == sorted(grid)
+++    for row in rows:
+++        positions = sma_cross_positions(frame, row.fast, row.slow)
+++        assert row.summary == run_backtest(frame, positions, fee=0.001).summary
+++    returns = [row.summary.total_return for row in rows]
+++    assert returns == sorted(returns, reverse=True)
+++    assert len(set(returns)) > 1
+++
+++
+++def test_sweep_ties_sort_by_fast_then_slow() -> None:
+++    frame = _frame([5.0] * 12)
+++    rows = sweep(frame, [(3, 8), (2, 8), (3, 5), (2, 5)], 0.001)
+++    assert [(row.fast, row.slow) for row in rows] == [(2, 5), (2, 8), (3, 5), (3, 8)]
+++    assert all(row.summary.total_return == 0.0 for row in rows)
+++
+++
+++def spot_day() -> KuCoin:
+++    kucoin = KuCoin()
+++    kucoin.add_spot(SPOT_1H)
+++    return kucoin
+++
+++
+++def run_sweep(kucoin: KuCoin, root: Path, *extra: str, days: tuple[str, str] = (DAY, DAY)) -> int:
+++    argv = ["sweep", "btc-usdt", "1h", *days, "--cache-dir", str(root), *extra]
+++    return main(argv, fetch=kucoin)
+++
+++
+++def expected_lines(grid: list[tuple[int, int]], skipped: int, fee: float) -> list[str]:
+++    frame = load_klines("BTC-USDT", "1h", DAY, DAY, cache=False, fetch=spot_day())
+++    rows = []
+++    for fast, slow in grid:
+++        summary = run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee).summary
+++        rows.append((-summary.total_return, fast, slow, summary))
+++    rows.sort(key=lambda row: row[:3])
+++    cells = [
+++        (
+++            str(fast),
+++            str(slow),
+++            f"{summary.total_return:.2%}",
+++            f"{summary.max_drawdown:.2%}",
+++            str(summary.trade_count),
+++            f"{summary.win_rate:.2%}",
+++            f"{summary.time_in_market:.2%}",
+++        )
+++        for _, fast, slow, summary in rows
+++    ]
+++    widths = [max(len(cell) for cell in column) for column in zip(HEADERS, *cells)]
+++    table = [
+++        "  ".join(cell.rjust(width) for cell, width in zip(line, widths))
+++        for line in (HEADERS, *cells)
+++    ]
+++    hold = run_backtest(frame, [1] * frame.height, fee=fee).summary
+++    return [
+++        (
+++            f"BTC-USDT 1h spot, {DAY} .. {DAY}: {frame.height} candles; "
+++            f"sma-cross, {len(grid)} pairs tried, {skipped} skipped; fee {fee:.2%}"
+++        ),
+++        SMA_NOTE,
+++        *table,
+++        f"{'buy and hold':<14}{hold.total_return:>8.2%}",
+++        SWEEP_WARNING,
+++    ]
+++
+++
+++def table_pairs(lines: list[str]) -> list[tuple[int, int]]:
+++    rows = [line.split() for line in lines[3:-2]]
+++    return [(int(fast), int(slow)) for fast, slow, *_ in rows]
+++
+++
+++def assert_refused(capsys: pytest.CaptureFixture[str], message: str) -> None:
+++    captured = capsys.readouterr()
+++    assert captured.out == ""
+++    assert captured.err.startswith(f"error: {message}")
+++    assert len(captured.err.splitlines()) == 1
+++
+++
+++# fasts 2, 3, 5 by slows 5, 8, 12, 24 on 24 candles: (5, 5) is skipped by the order rule and
+++# the three pairs with slow 24 by the candle count, so eight pairs are tried and four skipped.
+++GRID = [(2, 5), (2, 8), (2, 12), (3, 5), (3, 8), (3, 12), (5, 8), (5, 12)]
+++LISTS = ("--fast", "2,3,5", "--slow", "5,8,12,24")
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_prints_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+++    assert run_sweep(spot_day(), tmp_path, *LISTS) == 0
+++    lines = capsys.readouterr().out.splitlines()
+++    assert lines == expected_lines(GRID, 4, 0.001)
+++    assert lines[2] == "fast  slow  total return  max drawdown  trades  win rate  time in market"
+++    assert all(len(line) == len(lines[2]) for line in lines[3:-2])
+++    assert lines[-1] == (
+++        "The best pair on past data is often luck: check it on another date range before "
+++        "trusting it."
+++    )
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_skips_and_counts_pairs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+++    assert run_sweep(spot_day(), tmp_path, *LISTS, "--fee", "0") == 0
+++    lines = capsys.readouterr().out.splitlines()
+++    assert lines[0].endswith("24 candles; sma-cross, 8 pairs tried, 4 skipped; fee 0.00%")
+++    assert sorted(table_pairs(lines)) == GRID
+++    assert lines == expected_lines(GRID, 4, 0.0)
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_tries_repeats_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+++    assert run_sweep(spot_day(), tmp_path, "--fast", "3,2,3,2", "--slow", "8,5,8") == 0
+++    repeated = capsys.readouterr().out
+++    assert run_sweep(spot_day(), tmp_path, "--fast", "2,3", "--slow", "5,8") == 0
+++    assert repeated == capsys.readouterr().out
+++    assert repeated.splitlines() == expected_lines([(2, 5), (2, 8), (3, 5), (3, 8)], 0, 0.001)
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_loads_klines_once(
+++    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+++) -> None:
+++    loads: list[tuple[object, ...]] = []
+++
+++    def counting_load(*args: object, **kwargs: object) -> pl.DataFrame:
+++        loads.append(args)
+++        return load_klines(*args, **kwargs)
+++
+++    monkeypatch.setattr(cli, "load_klines", counting_load)
+++    swept = spot_day()
+++    assert run_sweep(swept, tmp_path / "sweep", *LISTS) == 0
+++    assert len(loads) == 1
+++    single = spot_day()
+++    argv = ["run", "btc-usdt", "1h", DAY, DAY, "--cache-dir", str(tmp_path / "run")]
+++    assert main([*argv, "--fast", "3", "--slow", "5"], fetch=single) == 0
+++    assert swept.calls == single.calls != []
+++
+++
+++@pytest.mark.usefixtures("clock")
+++@pytest.mark.parametrize(
+++    ("argv", "message"),
+++    [
+++        (["BTC/USDT", "1h", DAY, DAY], "invalid spot symbol"),
+++        (["BTC-USDT", "7m", DAY, DAY], "unknown interval"),
+++        (["BTC-USDT", "1h", "2026-10-04", "2026-10-04"], "end 2026-10-04 is in the future"),
+++        (["BTC-USDT", "1h", "2026-10-02", DAY], "start 2026-10-02 is after end 2026-10-01"),
+++        (["BTC-USDT", "1h", "2026-30-09", DAY], "invalid start date"),
+++    ],
+++)
+++def test_sweep_refuses_bad_request(
+++    tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str], message: str
+++) -> None:
+++    kucoin = spot_day()
+++    assert main(["sweep", *argv, "--cache-dir", str(tmp_path)], fetch=kucoin) == 2
+++    assert_refused(capsys, message)
+++    assert kucoin.calls == []
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_refuses_bad_market(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+++    kucoin = spot_day()
+++    with pytest.raises(SystemExit) as exited:
+++        run_sweep(kucoin, tmp_path, "--market", "margin")
+++    assert exited.value.code == 2
+++    assert "argument --market: invalid choice: 'margin'" in capsys.readouterr().err
+++    assert kucoin.calls == []
+++
+++
+++@pytest.mark.usefixtures("clock")
+++@pytest.mark.parametrize(
+++    ("extra", "message"),
+++    [
+++        (
+++            ["--fast", ""],
+++            "--fast is empty: pass comma-separated whole numbers, for example 5,10,20",
+++        ),
+++        (
+++            ["--slow", " "],
+++            "--slow is empty: pass comma-separated whole numbers, for example 30,50,100",
+++        ),
+++        (["--fast", "5,,10"], "fast '' is not a whole number of at least 1"),
+++        (["--fast", "x"], "fast 'x' is not a whole number of at least 1"),
+++        (["--fast", "1.5"], "fast '1.5' is not a whole number of at least 1"),
+++        (["--fast=-5,10"], "fast -5 is not a whole number of at least 1"),
+++        (["--fast", "-5"], "fast -5 is not a whole number of at least 1"),
+++        (["--slow", "0"], "slow 0 is not a whole number of at least 1"),
+++        (["--slow", "30,x,50"], "slow 'x' is not a whole number of at least 1"),
+++    ],
+++)
+++def test_sweep_refuses_bad_lengths(
+++    tmp_path: Path, capsys: pytest.CaptureFixture[str], extra: list[str], message: str
+++) -> None:
+++    kucoin = spot_day()
+++    assert run_sweep(kucoin, tmp_path, *extra) == 2
+++    assert_refused(capsys, message)
+++    assert kucoin.calls == []
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_refuses_two_word_negative_list(
+++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+++) -> None:
+++    # argparse refuses `--fast -5,10` itself on Python 3.10 to 3.13; on 3.14 the command does.
+++    kucoin = spot_day()
+++    try:
+++        code = run_sweep(kucoin, tmp_path, "--fast", "-5,10")
+++    except SystemExit as exited:
+++        code = exited.code
+++    assert code == 2
+++    assert capsys.readouterr().out == ""
+++    assert kucoin.calls == []
+++
+++
+++@pytest.mark.usefixtures("clock")
+++@pytest.mark.parametrize(
+++    ("fee", "message"),
+++    [
+++        ("abc", "fee 'abc' is not a number: pass a proportional fee, for example 0.001"),
+++        ("1.5", "fee 1.5 is out of range: it must be at least 0 and below 1"),
+++    ],
+++)
+++def test_sweep_refuses_bad_fee(
+++    tmp_path: Path, capsys: pytest.CaptureFixture[str], fee: str, message: str
+++) -> None:
+++    kucoin = spot_day()
+++    assert run_sweep(kucoin, tmp_path, "--fee", fee) == 2
+++    assert_refused(capsys, message)
+++    assert kucoin.calls == []
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_refuses_empty_grid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+++    kucoin = spot_day()
+++    assert run_sweep(kucoin, tmp_path, "--fast", "50", "--slow", "10,20") == 2
+++    assert_refused(capsys, "no pair has fast below slow: pass a --fast value below a --slow value")
+++    assert kucoin.calls == []
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_refuses_grid_over_cap(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+++    kucoin = spot_day()
+++    fasts = ",".join(str(length) for length in range(1, 22))
+++    slows = ",".join(str(length) for length in range(22, 43))
+++    assert run_sweep(kucoin, tmp_path, "--fast", fasts, "--slow", slows) == 2
+++    assert_refused(
+++        capsys,
+++        "the grid has 441 pairs with fast below slow, more than 400: "
+++        "pass shorter --fast or --slow lists",
+++    )
+++    assert kucoin.calls == []
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_refuses_range_with_every_pair_skipped(
+++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+++) -> None:
+++    assert run_sweep(spot_day(), tmp_path) == 2
+++    assert_refused(
+++        capsys,
+++        "the range has 24 candles, not more than any slow length with a smaller fast: no pair "
+++        "could take a position; widen the dates or lower --slow",
+++    )
+++
+++
+++@pytest.mark.usefixtures("clock")
+++def test_sweep_defaults_give_nine_pairs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+++    kucoin = KuCoin()
+++    kucoin.add_spot_synthetic(utc(2026, 9, 28), 120, HOUR_MS)
+++    assert run_sweep(kucoin, tmp_path, days=("2026-09-28", "2026-10-02")) == 0
+++    lines = capsys.readouterr().out.splitlines()
+++    assert lines[0].endswith("120 candles; sma-cross, 9 pairs tried, 0 skipped; fee 0.10%")
+++    assert sorted(table_pairs(lines)) == [(f, s) for f in (5, 10, 20) for s in (30, 50, 100)]
+++
+++
+++def test_run_help_keeps_option_order(capsys: pytest.CaptureFixture[str]) -> None:
+++    with pytest.raises(SystemExit) as exited:
+++        main(["run", "--help"])
+++    assert exited.value.code == 0
+++    options = re.findall(r"^  (--[a-z-]+)", capsys.readouterr().out, flags=re.MULTILINE)
+++    assert options == ["--market", "--fast", "--slow", "--fee", "--cache-dir"]
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/gate-build.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/gate-build.json
+new file mode 100644
+index 0000000..2835414
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/gate-build.json
+@@ -0,0 +1,204 @@
++{
++  "schema_version": 1,
++  "change_id": "0006",
++  "slug": "sweep-sma-crossover-lengths-on-one-range",
++  "phase": "build",
++  "human_gate": false,
++  "result": "continue",
++  "label": null,
++  "head": "3cd37833ead07abd2601ea03abfb438afce48140",
++  "at": "2026-11-07T23:03:05Z",
++  "dry_run": false,
++  "reason": "",
++  "config_note": "",
++  "checks": [
++    {
++      "name": "limits",
++      "ok": true,
++      "reason": "within the run limits",
++      "need": "",
++      "details": {
++        "iterations": 0,
++        "cap": 2,
++        "classification": "non-routine",
++        "panel_calls": 2,
++        "panel_cap": 4,
++        "elapsed_minutes": 8.0,
++        "spend_usd": null,
++        "spend_usd_total": 5.290425,
++        "spend_entries": 1,
++        "max_budget_usd": 150.0
++      }
++    },
++    {
++      "name": "clean_tree",
++      "ok": true,
++      "reason": "no uncommitted change outside the change folder",
++      "need": "",
++      "details": {
++        "ignored": [
++          "CLAUDE.local.md"
++        ]
++      }
++    },
++    {
++      "name": "artifacts",
++      "ok": true,
++      "reason": "every required artifact exists and has its template sections",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "evidence_links",
++      "ok": true,
++      "reason": "no symbolic link under the change folder",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "open_concerns",
++      "ok": true,
++      "reason": "no open flagged concern",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "panel",
++      "ok": true,
++      "reason": "0 panel decision(s) recorded",
++      "need": "",
++      "details": {
++        "decisions": [],
++        "cost_usd": 0.0
++      }
++    },
++    {
++      "name": "commands",
++      "ok": true,
++      "reason": "build, test and lint exit 0",
++      "need": "",
++      "details": {
++        "runs": {
++          "build": {
++            "command": "python -m compileall -q .",
++            "exit_code": 0,
++            "output": ""
++          },
++          "test": {
++            "command": "python -m pytest",
++            "exit_code": 0,
++            "output": "============================= test session starts ==============================\nplatform linux -- Python 3.14.4, pytest-9.2.0, pluggy-1.7.0\nrootdir: /home/runner/work/crypto-backtester/crypto-backtester\nconfigfile: pyproject.toml\ntestpaths: tests\nplugins: platformdirs-4.14.3, typeguard-4.4.4\ncollected 223 items\n\ntests/test_backtest.py ...............................................   [ 21%]\ntests/test_backtest_cli.py .......................                       [ 31%]\ntests/test_backtest_sweep.py ..............................              [ 44%]\ntests/test_data.py ..................................................... [ 68%]\n.............                                                            [ 74%]\ntests/test_data_cache.py ......                                          [ 77%]\ntests/test_data_cli.py ..........                                        [ 81%]\ntests/test_data_rest.py ......................                           [ 91%]\ntests/test_smoke.py .                                                    [ 91%]\ntests/test_strategies.py ..................                              [100%]\n\n============================= 223 passed in 0.48s ==============================\n"
++          },
++          "lint": {
++            "command": "python -m ruff check .",
++            "exit_code": 0,
++            "output": "All checks passed!\n"
++          }
++        },
++        "ran_by": "runner"
++      }
++    },
++    {
++      "name": "evidence",
++      "ok": true,
++      "reason": "evidence present: verifier.md",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "proof",
++      "ok": true,
++      "reason": "no drive target: nothing to compare",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "findings",
++      "ok": true,
++      "reason": "no review findings yet (the review pass runs in the deploy phase)",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "plan_sync",
++      "ok": true,
++      "reason": "every committed source file is in plan.md",
++      "need": "",
++      "details": {
++        "planned_but_unchanged": [
++          "Opening"
++        ],
++        "plan_growth": {
++          "added": [],
++          "removed": []
++        }
++      }
++    },
++    {
++      "name": "guardrails",
++      "ok": true,
++      "reason": "the diff does not touch a guardrail file",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "risk_list",
++      "ok": true,
++      "reason": "no risk-list item touched",
++      "need": "",
++      "details": {
++        "hits": {},
++        "accepted": []
++      }
++    },
++    {
++      "name": "owner_actions",
++      "ok": true,
++      "reason": "risk acceptances, iteration and panel-call resets and test-lock lifts, if any, were committed by the owner or applied by the owner's label",
++      "need": "",
++      "details": {
++        "risk_accepted": [],
++        "label_actors": {}
++      }
++    },
++    {
++      "name": "test_lock",
++      "ok": true,
++      "reason": "not a fix-type change: no test-file lock",
++      "need": "",
++      "details": {}
++    },
++    {
++      "name": "ratchets",
++      "ok": true,
++      "reason": "no undeclared test file or eval case drop",
++      "need": "",
++      "details": {
++        "hits": {},
++        "declared": [],
++        "skip_markers": [],
++        "accepted": []
++      }
++    },
++    {
++      "name": "adversarial_review",
++      "ok": true,
++      "reason": "adversarial reviewer says continue",
++      "need": "",
++      "details": {
++        "classification": "non-routine",
++        "reasons": []
++      }
++    },
++    {
++      "name": "reviewer_model",
++      "ok": true,
++      "reason": "the adversarial reviewer ran on claude-opus-5-5",
++      "need": "",
++      "details": {
++        "wanted": "claude-opus-5-5"
++      }
++    }
++  ],
++  "what_i_need": ""
++}
+\ No newline at end of file
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
+index 73b9565..7795902 100644
+--- a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/hook-log.jsonl
+@@ -49,3 +49,106 @@
+ {"at": "2026-11-07T22:39:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-11-07T22:39:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
+ {"at": "2026-11-07T22:39:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-design.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:55:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:55:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:55:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:55:15Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:55:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:55:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:55:32Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:55:33Z", "commands": [{"command": "ruff check --fix --quiet sweep.py", "exit_code": 0}, {"command": "ruff format sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:55:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:55:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:55:42Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:55:42Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T22:55:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:55:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "shell_guard", "reason": "Shell guard: the write target `$TMPDIR/run-help-before.txt` is not a literal path (a variable, command substitution, backtick, `~`, a glob, a brace expansion or a git pathspec-magic prefix), or the working directory it would resolve against is not tracked (`cd -`, a bare `cd`, `popd`/`Pop-Location`); write the literal path, from a tracked directory, so the guard can check it.", "tool": "Bash", "verdict": "block"}
++{"at": "2026-11-07T22:56:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:06Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:06Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 1}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "ruff reports remaining problems in __main__.py after auto-fix; fix them before moving on:\napp/backtest/__main__.py:68:13: F821 Undefined name `_load`\napp/backtest/__main__.py:88:35: F821 Undefined name `hold`\nFound 2 errors.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-07T22:56:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:09Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 1}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "ruff reports remaining problems in __main__.py after auto-fix; fix them before moving on:\napp/backtest/__main__.py:94:20: F821 Undefined name `KlineRequest`\napp/backtest/__main__.py:94:84: F821 Undefined name `pl`\napp/backtest/__main__.py:95:12: F821 Undefined name `load_klines`\napp/backtest/__main__.py:106:23: F821 Undefined name `pl`\nFound 4 errors.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-07T22:56:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:17Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:41Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:41Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:45Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:45Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:48Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 1}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "ruff reports remaining problems in __main__.py after auto-fix; fix them before moving on:\napp/backtest/__main__.py:75:31: F821 Undefined name `_sweep`\nFound 1 error.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-07T22:56:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:56:56Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 1}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "ruff reports remaining problems in __main__.py after auto-fix; fix them before moving on:\napp/backtest/__main__.py:132:21: F821 Undefined name `count_pairs`\napp/backtest/__main__.py:137:15: F821 Undefined name `MAX_PAIRS`\napp/backtest/__main__.py:139:74: F821 Undefined name `MAX_PAIRS`\napp/backtest/__main__.py:143:44: F821 Undefined name `pairs`\napp/backtest/__main__.py:156:24: F821 Undefined name `sweep`\napp/backtest/__main__.py:177:27: F821 Undefined name `SweepRow`\napp/backtest/__main__.py:183:17: F821 Undefined name `SweepRow`\nFound 7 errors.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-07T22:57:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:01Z", "commands": [{"command": "ruff check --fix --quiet __main__.py", "exit_code": 0}, {"command": "ruff format __main__.py", "exit_code": 0}, {"command": "ruff check --output-format concise __main__.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/app/backtest/__main__.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:21Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:21Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:54Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:57:54Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 1}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 1}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "ruff reports remaining problems in test_backtest_sweep.py after auto-fix; fix them before moving on:\ntests/test_backtest_sweep.py:52:19: F821 Undefined name `KuCoin`\ntests/test_backtest_sweep.py:53:14: F821 Undefined name `KuCoin`\ntests/test_backtest_sweep.py:54:21: F821 Undefined name `SPOT_1H`\ntests/test_backtest_sweep.py:58:23: F821 Undefined name `KuCoin`\ntests/test_backtest_sweep.py:58:37: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:60:12: F821 Undefined name `main`\ntests/test_backtest_sweep.py:64:13: F821 Undefined name `load_klines`\ntests/test_backtest_sweep.py:93:9: F821 Undefined name `SMA_NOTE`\ntests/test_backtest_sweep.py:96:9: F821 Undefined name `SWEEP_WARNING`\ntests/test_backtest_sweep.py:104:28: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:117:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:118:39: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:118:53: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:130:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:131:49: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:131:63: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:139:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:140:45: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:140:59: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:148:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:150:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:150:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:150:70: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:156:16: F821 Undefined name `load_klines`\ntests/test_backtest_sweep.py:158:25: F821 Undefined name `cli`\ntests/test_backtest_sweep.py:164:12: F821 Undefined name `main`\ntests/test_backtest_sweep.py:168:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:169:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:180:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:180:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:183:12: F821 Undefined name `main`\ntests/test_backtest_sweep.py:188:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:189:45: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:189:59: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:191:10: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:198:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:199:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:220:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:220:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:228:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:230:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:230:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:243:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:244:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:252:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:252:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:260:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:261:45: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:261:59: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:268:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:269:48: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:269:62: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:282:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:284:15: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:284:29: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:294:2: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:295:51: F821 Undefined name `Path`\ntests/test_backtest_sweep.py:295:65: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:296:14: F821 Undefined name `KuCoin`\ntests/test_backtest_sweep.py:297:31: F821 Undefined name `utc`\ntests/test_backtest_sweep.py:297:54: F821 Undefined name `HOUR_MS`\ntests/test_backtest_sweep.py:304:46: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:305:10: F821 Undefined name `pytest`\ntests/test_backtest_sweep.py:306:9: F821 Undefined name `main`\ntests/test_backtest_sweep.py:308:15: F821 Undefined name `re`\ntests/test_backtest_sweep.py:308:76: F821 Undefined name `re`\nFound 66 errors.", "tool": "Edit", "verdict": "block"}
++{"at": "2026-11-07T22:58:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:01Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:01Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:08Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:09Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:58:11Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:59:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:59:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:59:00Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:59:00Z", "commands": [{"command": "ruff check --fix --quiet test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff format test_backtest_sweep.py", "exit_code": 0}, {"command": "ruff check --output-format concise test_backtest_sweep.py", "exit_code": 0}], "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/tests/test_backtest_sweep.py"], "reason": "", "tool": "Edit", "verdict": "allow"}
++{"at": "2026-11-07T22:59:16Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:59:23Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:59:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:59:44Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T22:59:44Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "shell_guard", "reason": "Shell guard: the write target `$TMPDIR/v/drive.py` is not a literal path (a variable, command substitution, backtick, `~`, a glob, a brace expansion or a git pathspec-magic prefix), or the working directory it would resolve against is not tracked (`cd -`, a bare `cd`, `popd`/`Pop-Location`); write the literal path, from a tracked directory, so the guard can check it.", "tool": "Bash", "verdict": "block"}
++{"at": "2026-11-07T23:00:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:00:44Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:01:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:01:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:01:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:01:28Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:01:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:01:38Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:01:39Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:02:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:02:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:02:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:02:48Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/adversarial-review-build.json"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:03:17Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:04:33Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:04:34Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:04:49Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:04:51Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:04:52Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:04:56Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:05:02Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:05:04Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:05:07Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:05:20Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "plan_sync", "paths": [], "reason": "", "tool": "Bash", "verdict": "allow"}
++{"at": "2026-11-07T23:06:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "secrets_check", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:06:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "protected_paths", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:06:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PreToolUse", "hook": "test_file_lock", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
++{"at": "2026-11-07T23:06:36Z", "cwd": "/home/runner/work/crypto-backtester/crypto-backtester", "event": "PostToolUse", "hook": "format_on_edit", "paths": ["/home/runner/work/crypto-backtester/crypto-backtester/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md"], "reason": "", "tool": "Write", "verdict": "allow"}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/lint.log b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/lint.log
+new file mode 100644
+index 0000000..05ff2cf
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/lint.log
+@@ -0,0 +1,2 @@
++# python -m ruff check . — deferred to the runner — 2026-11-07T23:04:39Z
++The target did not run inside the model's session: build, test and lint run after the session, outside its sandbox (issue #91), and the runner replaces this file with the target's own output. A file still reading this line was never replaced: the targets did not run, and the gate does not pass on it.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/build-items.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/build-items.json
+new file mode 100644
+index 0000000..165f67b
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/panel/build-items.json
+@@ -0,0 +1,18 @@
++{
++  "decided": 0,
++  "gate": "continue",
++  "items": [],
++  "iterations": {
++    "cap": 2,
++    "left": 2,
++    "used": 0
++  },
++  "panel_calls": {
++    "cap": 4,
++    "left": 2,
++    "used": 2
++  },
++  "parks": [],
++  "pending": [],
++  "phase": "build"
++}
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-build.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-build.json
+new file mode 100644
+index 0000000..cd0abf9
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-build.json
+@@ -0,0 +1,11 @@
++{
++  "github_run": {
++    "attempt": "1",
++    "id": "42422744943",
++    "url": "https://github.com/luissiviero/crypto-backtester/actions/runs/42422744943"
++  },
++  "phase": "build",
++  "run": "build",
++  "spend_usd": 3.7233018000000007,
++  "started_at": "2026-11-07T22:55:04Z"
++}
+\ No newline at end of file
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-test.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-test.json
+new file mode 100644
+index 0000000..4ccb526
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/run-test.json
+@@ -0,0 +1,5 @@
++{
++  "phase": "test",
++  "spend_usd": null,
++  "started_at": "2026-11-07T23:04:36Z"
++}
+\ No newline at end of file
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/screenshots/.gitkeep b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/screenshots/.gitkeep
+new file mode 100644
+index 0000000..e69de29
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/spend.json b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/spend.json
+index 1f05461..45efd1c 100644
+--- a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/spend.json
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/spend.json
+@@ -5,7 +5,13 @@
+       "run": "design",
+       "source": "claude-design.json",
+       "usd": 5.2904247500000015
++    },
++    {
++      "at": "2026-11-07T23:03:29Z",
++      "run": "build",
++      "source": "claude-build.json",
++      "usd": 3.7233018000000007
+     }
+   ],
+-  "total_usd": 5.290425
++  "total_usd": 9.013727
+ }
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/test.log b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/test.log
+new file mode 100644
+index 0000000..a034397
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/test.log
+@@ -0,0 +1,2 @@
++# python -m pytest — deferred to the runner — 2026-11-07T23:04:39Z
++The target did not run inside the model's session: build, test and lint run after the session, outside its sandbox (issue #91), and the runner replaces this file with the target's own output. A file still reading this line was never replaced: the targets did not run, and the gate does not pass on it.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md
+new file mode 100644
+index 0000000..45c7a97
+--- /dev/null
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/evidence/verifier.md
+@@ -0,0 +1,88 @@
++# Verifier report: change 0006, sweep SMA crossover lengths on one range (test phase)
++
++## Commands run
++
++This is a CI session (`SDLC_GATE_COMMANDS=runner`), so I did not run the three targets. I read the build phase's gate record, which is the runner's run on **commit 3cd37833ea of 2026-11-07T23:03:05Z**. That is the tree this phase started from, not the final tree. The final tree's result comes from the runner, which runs the three targets once after this session and shows the result in the check run `sdlc/test` and in this phase's own gate record. Nothing in this report stands in for that run.
++
++`git diff --stat 3cd3783 HEAD` touches only files under `changes/0006-.../evidence/` and `status.yaml`. So `app/` and `tests/` at HEAD (55d7200) are the same as on the tree the record judged.
++
++From `evidence/gate-build.json`, check `commands`: `ok: true`, `"reason": "build, test and lint exit 0"`, `ran_by: runner`. No `deferred` flag is set on `commands` or `evidence`.
++
++- `python -m compileall -q .`: exit 0, output `""`. Read, not run.
++- `python -m pytest`: exit 0. Read, not run. Tail of the output:
++  ```
++  tests/test_backtest_cli.py .......................                       [ 31%]
++  tests/test_backtest_sweep.py ..............................              [ 44%]
++  ...
++  ============================= 223 passed in 0.48s ==============================
++  ```
++- `python -m ruff check .`: exit 0, output `All checks passed!`. Read, not run.
++
++First line of each log in `evidence/`. Each one is this session's deferred placeholder, which the runner replaces. They are not failures.
++- `test.log`: `# python -m pytest — deferred to the runner — 2026-11-07T23:04:39Z`
++- `build.log`: `# python -m compileall -q . — deferred to the runner — 2026-11-07T23:04:39Z`
++- `lint.log`: `# python -m ruff check . — deferred to the runner — 2026-11-07T23:04:39Z`
++
++## Behavior exercised
++
++I called the code directly: the CLI, and `main(argv, fetch=KuCoin stub)` with `loader.utc_now` patched to the stub's `NOW` and a temporary cache directory. These calls read no `.env*`. I did not start pytest. Python is 3.14.4.
++
++**Sub-command help**
++- `python -m app.backtest sweep --help` lists the arguments in `run`'s order: positionals, `--market {spot,futures}`, `--fast` (default 5,10,20), `--slow` (default 30,50,100), `--fee` (default 0.001), `--cache-dir`. The epilog is `SMA_NOTE`. This matches R1 and R3.
++- `python -m app.backtest run --help` shows the same options, help strings and epilog as `main:app/backtest/__main__.py`. This matches R13.
++
++**Refusals made before any load, through the real CLI** (each exits 2, prints one `error:` line on stderr and nothing on stdout)
++- `--fast 5,,10` → `error: fast '' is not a whole number of at least 1` (R4).
++- 21 fasts `1..21` × 21 slows `22..42` → `error: the grid has 441 pairs with fast below slow, more than 400: pass shorter --fast or --slow lists` (R6).
++- `--fast 50 --slow 10,20,50` → `error: no pair has fast below slow: pass a --fast value below a --slow value` (R6).
++- `--fee 2` → `error: fee 2.0 is out of range: it must be at least 0 and below 1, for example 0.001` (R2). The fee is checked before the pair count, as Design step 3 orders.
++
++**The cap, from inside the limit**
++- A grid of exactly 400 pairs (fasts `1..20`, slows `21..40`) on 120 synthetic candles: exit 0. Run line `... 120 candles; sma-cross, 400 pairs tried, 0 skipped; fee 0.10%`, 400 table rows, 1 stub call.
++
++**Defaults**
++- No `--fast` or `--slow` on 120 synthetic candles: exit 0, `9 pairs tried, 0 skipped`, nine rows.
++- Rows are sorted by total return, highest first: 0.00%, -0.19%, -0.20%, ... -0.26%.
++- Ties are broken by fast: `20 50`, `10 50`, `5 50` read -0.25%, -0.26%, -0.26%, and the two at -0.26% are ordered 10 before 5 only because their rounded value hides a difference in the raw return.
++- Then come the `buy and hold    -0.18%` line and the warning line (R10, R11).
++
++**Skip counting**
++- `--fast 2 --slow 23,24` on the 24-candle day: `1 pairs tried, 1 skipped`, one row `2 23 -0.03% 0.03% 1 0.00% 4.17%`, `buy and hold 1.45%` (R8).
++
++**Neighbouring flow: `run`**
++- `run ... --fast 2 --slow 23` on the same day prints `total return -0.03%`, `max drawdown 0.03%`, `trades 1`, `win rate 0.00%`, `time in market 4.17%`, `buy and hold 1.45%`. Every number equals the sweep row (R9).
++
++**Two-word negative list**
++- `--fast -5,10` written as two words, on Python 3.14: `(2, '', 'error: fast -5 is not a whole number of at least 1\n')`, and the stub made no call. This is the 3.14 path described in the spec's flagged concern.
++
++**Static review against spec and plan**
++- All 17 `test:` Proof items exist with those names in `tests/test_backtest_sweep.py`. The refusal cases listed in Proof are all there, including `--fast=-5,10`, two-word `--fast -5`, and two-word `--fast -5,10` as its own test.
++- `count_pairs` counts by bisecting and never builds the grid.
++- `_sweep` follows Design steps 1 to 9 in order. The note is printed with `flush=True` before the backtests run.
++- `main` is unchanged.
++- `git diff --stat main...HEAD` on these paths is empty: `app/backtest/__init__.py`, `inputs.py`, `engine.py`, `summary.py`, `strategy.py`, `app/data/`, `app/__init__.py`, `pyproject.toml`, `tests/test_backtest_cli.py`, `tests/conftest.py`, `tests/kucoin_stub.py`, `.github/`. This covers R13, R14 and R15.
++- The one change to `plan.md` records that the two-word negative list became its own Proof test. That is a declared departure, not a mismatch.
++
++## Not exercised
++
++- The three targets on the final tree. That result comes from the runner (check run `sdlc/test`).
++- The pytest suite in this session (not run in CI). My first attempts at multi-step shell commands were refused by the permission system (no approval surface). I then used single commands only.
++- `--market futures` on a successful sweep, and the `OSError` hint for a bad cache directory on `sweep`. These are not called, and not covered by the sweep tests either.
++- A real KuCoin fetch. Every load went through the stub.
++- Windows and macOS. I ran on Linux only.
++- Python 3.10 to 3.13, where argparse itself refuses the two-word `--fast -5,10`. I ran on 3.14 only.
++- Large real ranges, such as a year of 1m candles with 400 pairs. Neither run time nor memory was measured.
++
++## Screenshots
++
++None. spec.md says "Mock: none"; the change is CLI text output only.
++
++## Mismatches with plan.md / spec.md
++
++None.
++
++A wording note, not a mismatch: when one pair is tried, the run line reads `1 pairs tried`. That follows the spec's literal format `{tried} pairs tried` (spec.md, Design, "Output").
++
++## Verdict
++
++matches the plan
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md b/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
+index 129b18a..ac4f539 100644
+--- a/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/plan.md
+@@ -157,6 +157,7 @@ Interrogation answers:
+ - test: test_sweep_refuses_bad_request
+ - test: test_sweep_refuses_bad_market
+ - test: test_sweep_refuses_bad_lengths
++- test: test_sweep_refuses_two_word_negative_list
+ - test: test_sweep_refuses_bad_fee
+ - test: test_sweep_refuses_empty_grid
+ - test: test_sweep_refuses_grid_over_cap
+@@ -170,7 +171,9 @@ Interrogation answers:
+   the every-pair-skipped one) `kucoin.calls == []`. Cases: bad symbol, interval and dates;
+   `--fast ""`, `--fast 5,,10`, `--fast x`, `--fast=-5,10`, two-word `--fast -5` (the R4 message), `--slow 0`,
+   `--fast 1.5`; two-word `--fast -5,10` (exit 2, empty stdout and no stub call only, since
+-  argparse or the command refuses it depending on the Python version, panel #1); `--fee
++  argparse or the command refuses it depending on the Python version, panel #1; in the build
++  it is its own test, `test_sweep_refuses_two_word_negative_list`, because it accepts either a
++  `SystemExit` or a return code and asserts less than the parametrized cases); `--fee
+   abc`, `--fee 1.5`; `--fast 50 --slow 10,20` (no pair); 21 fasts `1..21` by 21 slows
+   `22..42` (441 pairs, over the cap); the default grid on the 24-candle day (every pair
+   skipped by the candle count). A bad `--market` raises `SystemExit` with code 2.
+diff --git a/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml b/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
+index c49f42e..f24c197 100644
+--- a/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
++++ b/changes/0006-sweep-sma-crossover-lengths-on-one-range/status.yaml
+@@ -1,14 +1,14 @@
+ id: "0006"
+ slug: sweep-sma-crossover-lengths-on-one-range
+ title: Sweep SMA crossover lengths on one range
+-phase: design
++phase: test
+ entry_route: idea
+ change_type: feature
+ gate:
+-  phase: design
++  phase: build
+   result: passed
+-  reason: waiting for the owner at gate (design)
+-  at: "2026-11-07T22:39:42Z"
++  reason: null
++  at: "2026-11-07T23:03:31Z"
+ parked_reason: null
+ iterations: 0
+ panel_calls: 2
+@@ -21,7 +21,7 @@ iterations_reset_at: null
+ tests_unlocked_by: null
+ runbook_authorized_by: null
+ abandoned_reason: null
+-build_pr: null
++build_pr: 30
+ released_at: null
+ released_sha: null
+ released_pr: null
+@@ -30,5 +30,5 @@ fast_lane:
+     sha: "32db462ad4d611dc3237780f0afcfc37f553c279"
+     pr: 27
+ created_at: "2026-11-07T22:16:39Z"
+-updated_at: "2026-11-07T22:39:42Z"
++updated_at: "2026-11-07T23:04:37Z"
+ schema_version: 1
+diff --git a/tests/test_backtest_sweep.py b/tests/test_backtest_sweep.py
+new file mode 100644
+index 0000000..08a2d5f
+--- /dev/null
++++ b/tests/test_backtest_sweep.py
+@@ -0,0 +1,317 @@
++"""Tests for the SMA crossover sweep: the module on frames built by hand, and
++`python -m app.backtest sweep` offline, driven through main(argv, fetch=stub)."""
++
++from __future__ import annotations
++
++import re
++from collections.abc import Sequence
++from pathlib import Path
++
++import polars as pl
++import pytest
++from kucoin_stub import HOUR_MS, SPOT_1H, KuCoin, utc
++
++import app.backtest.__main__ as cli
++from app.backtest.__main__ import SMA_NOTE, SWEEP_WARNING, main
++from app.backtest.engine import run_backtest
++from app.backtest.strategy import sma_cross_positions
++from app.backtest.sweep import count_pairs, pairs, sweep
++from app.data import load_klines
++
++DAY = "2026-10-01"
++HEADERS = ("fast", "slow", "total return", "max drawdown", "trades", "win rate", "time in market")
++VARYING = [10, 12, 11, 14, 13, 9, 8, 12, 15, 14, 16, 11, 10, 13, 17, 18, 14, 12, 15, 19]
++
++
++def _frame(closes: Sequence[float]) -> pl.DataFrame:
++    prices = pl.Series(closes, dtype=pl.Float64)
++    return pl.DataFrame({"open_time": list(range(len(closes))), "open": prices, "close": prices})
++
++
++def test_count_pairs_counts_kept_and_skipped() -> None:
++    assert count_pairs([5, 10, 20], [30, 50, 100]) == (9, 0)
++    assert count_pairs([5, 50], [10, 50]) == (2, 2)
++    assert pairs([5, 50], [10, 50]) == [(5, 10), (5, 50)]
++    assert pairs([2, 3, 5], [5, 8]) == [(2, 5), (2, 8), (3, 5), (3, 8), (5, 8)]
++    assert count_pairs([2, 3, 5], [5, 8]) == (5, 1)
++
++
++def test_sweep_rows_match_run_backtest() -> None:
++    frame = _frame(VARYING)
++    grid = pairs([2, 3, 4], [5, 6, 8])
++    rows = sweep(frame, grid, 0.001)
++    assert sorted((row.fast, row.slow) for row in rows) == sorted(grid)
++    for row in rows:
++        positions = sma_cross_positions(frame, row.fast, row.slow)
++        assert row.summary == run_backtest(frame, positions, fee=0.001).summary
++    returns = [row.summary.total_return for row in rows]
++    assert returns == sorted(returns, reverse=True)
++    assert len(set(returns)) > 1
++
++
++def test_sweep_ties_sort_by_fast_then_slow() -> None:
++    frame = _frame([5.0] * 12)
++    rows = sweep(frame, [(3, 8), (2, 8), (3, 5), (2, 5)], 0.001)
++    assert [(row.fast, row.slow) for row in rows] == [(2, 5), (2, 8), (3, 5), (3, 8)]
++    assert all(row.summary.total_return == 0.0 for row in rows)
++
++
++def spot_day() -> KuCoin:
++    kucoin = KuCoin()
++    kucoin.add_spot(SPOT_1H)
++    return kucoin
++
++
++def run_sweep(kucoin: KuCoin, root: Path, *extra: str, days: tuple[str, str] = (DAY, DAY)) -> int:
++    argv = ["sweep", "btc-usdt", "1h", *days, "--cache-dir", str(root), *extra]
++    return main(argv, fetch=kucoin)
++
++
++def expected_lines(grid: list[tuple[int, int]], skipped: int, fee: float) -> list[str]:
++    frame = load_klines("BTC-USDT", "1h", DAY, DAY, cache=False, fetch=spot_day())
++    rows = []
++    for fast, slow in grid:
++        summary = run_backtest(frame, sma_cross_positions(frame, fast, slow), fee=fee).summary
++        rows.append((-summary.total_return, fast, slow, summary))
++    rows.sort(key=lambda row: row[:3])
++    cells = [
++        (
++            str(fast),
++            str(slow),
++            f"{summary.total_return:.2%}",
++            f"{summary.max_drawdown:.2%}",
++            str(summary.trade_count),
++            f"{summary.win_rate:.2%}",
++            f"{summary.time_in_market:.2%}",
++        )
++        for _, fast, slow, summary in rows
++    ]
++    widths = [max(len(cell) for cell in column) for column in zip(HEADERS, *cells)]
++    table = [
++        "  ".join(cell.rjust(width) for cell, width in zip(line, widths))
++        for line in (HEADERS, *cells)
++    ]
++    hold = run_backtest(frame, [1] * frame.height, fee=fee).summary
++    return [
++        (
++            f"BTC-USDT 1h spot, {DAY} .. {DAY}: {frame.height} candles; "
++            f"sma-cross, {len(grid)} pairs tried, {skipped} skipped; fee {fee:.2%}"
++        ),
++        SMA_NOTE,
++        *table,
++        f"{'buy and hold':<14}{hold.total_return:>8.2%}",
++        SWEEP_WARNING,
++    ]
++
++
++def table_pairs(lines: list[str]) -> list[tuple[int, int]]:
++    rows = [line.split() for line in lines[3:-2]]
++    return [(int(fast), int(slow)) for fast, slow, *_ in rows]
++
++
++def assert_refused(capsys: pytest.CaptureFixture[str], message: str) -> None:
++    captured = capsys.readouterr()
++    assert captured.out == ""
++    assert captured.err.startswith(f"error: {message}")
++    assert len(captured.err.splitlines()) == 1
++
++
++# fasts 2, 3, 5 by slows 5, 8, 12, 24 on 24 candles: (5, 5) is skipped by the order rule and
++# the three pairs with slow 24 by the candle count, so eight pairs are tried and four skipped.
++GRID = [(2, 5), (2, 8), (2, 12), (3, 5), (3, 8), (3, 12), (5, 8), (5, 12)]
++LISTS = ("--fast", "2,3,5", "--slow", "5,8,12,24")
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_prints_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    assert run_sweep(spot_day(), tmp_path, *LISTS) == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert lines == expected_lines(GRID, 4, 0.001)
++    assert lines[2] == "fast  slow  total return  max drawdown  trades  win rate  time in market"
++    assert all(len(line) == len(lines[2]) for line in lines[3:-2])
++    assert lines[-1] == (
++        "The best pair on past data is often luck: check it on another date range before "
++        "trusting it."
++    )
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_skips_and_counts_pairs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    assert run_sweep(spot_day(), tmp_path, *LISTS, "--fee", "0") == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert lines[0].endswith("24 candles; sma-cross, 8 pairs tried, 4 skipped; fee 0.00%")
++    assert sorted(table_pairs(lines)) == GRID
++    assert lines == expected_lines(GRID, 4, 0.0)
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_tries_repeats_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    assert run_sweep(spot_day(), tmp_path, "--fast", "3,2,3,2", "--slow", "8,5,8") == 0
++    repeated = capsys.readouterr().out
++    assert run_sweep(spot_day(), tmp_path, "--fast", "2,3", "--slow", "5,8") == 0
++    assert repeated == capsys.readouterr().out
++    assert repeated.splitlines() == expected_lines([(2, 5), (2, 8), (3, 5), (3, 8)], 0, 0.001)
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_loads_klines_once(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
++) -> None:
++    loads: list[tuple[object, ...]] = []
++
++    def counting_load(*args: object, **kwargs: object) -> pl.DataFrame:
++        loads.append(args)
++        return load_klines(*args, **kwargs)
++
++    monkeypatch.setattr(cli, "load_klines", counting_load)
++    swept = spot_day()
++    assert run_sweep(swept, tmp_path / "sweep", *LISTS) == 0
++    assert len(loads) == 1
++    single = spot_day()
++    argv = ["run", "btc-usdt", "1h", DAY, DAY, "--cache-dir", str(tmp_path / "run")]
++    assert main([*argv, "--fast", "3", "--slow", "5"], fetch=single) == 0
++    assert swept.calls == single.calls != []
++
++
++@pytest.mark.usefixtures("clock")
++@pytest.mark.parametrize(
++    ("argv", "message"),
++    [
++        (["BTC/USDT", "1h", DAY, DAY], "invalid spot symbol"),
++        (["BTC-USDT", "7m", DAY, DAY], "unknown interval"),
++        (["BTC-USDT", "1h", "2026-10-04", "2026-10-04"], "end 2026-10-04 is in the future"),
++        (["BTC-USDT", "1h", "2026-10-02", DAY], "start 2026-10-02 is after end 2026-10-01"),
++        (["BTC-USDT", "1h", "2026-30-09", DAY], "invalid start date"),
++    ],
++)
++def test_sweep_refuses_bad_request(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str], message: str
++) -> None:
++    kucoin = spot_day()
++    assert main(["sweep", *argv, "--cache-dir", str(tmp_path)], fetch=kucoin) == 2
++    assert_refused(capsys, message)
++    assert kucoin.calls == []
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_refuses_bad_market(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    kucoin = spot_day()
++    with pytest.raises(SystemExit) as exited:
++        run_sweep(kucoin, tmp_path, "--market", "margin")
++    assert exited.value.code == 2
++    assert "argument --market: invalid choice: 'margin'" in capsys.readouterr().err
++    assert kucoin.calls == []
++
++
++@pytest.mark.usefixtures("clock")
++@pytest.mark.parametrize(
++    ("extra", "message"),
++    [
++        (
++            ["--fast", ""],
++            "--fast is empty: pass comma-separated whole numbers, for example 5,10,20",
++        ),
++        (
++            ["--slow", " "],
++            "--slow is empty: pass comma-separated whole numbers, for example 30,50,100",
++        ),
++        (["--fast", "5,,10"], "fast '' is not a whole number of at least 1"),
++        (["--fast", "x"], "fast 'x' is not a whole number of at least 1"),
++        (["--fast", "1.5"], "fast '1.5' is not a whole number of at least 1"),
++        (["--fast=-5,10"], "fast -5 is not a whole number of at least 1"),
++        (["--fast", "-5"], "fast -5 is not a whole number of at least 1"),
++        (["--slow", "0"], "slow 0 is not a whole number of at least 1"),
++        (["--slow", "30,x,50"], "slow 'x' is not a whole number of at least 1"),
++    ],
++)
++def test_sweep_refuses_bad_lengths(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str], extra: list[str], message: str
++) -> None:
++    kucoin = spot_day()
++    assert run_sweep(kucoin, tmp_path, *extra) == 2
++    assert_refused(capsys, message)
++    assert kucoin.calls == []
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_refuses_two_word_negative_list(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    # argparse refuses `--fast -5,10` itself on Python 3.10 to 3.13; on 3.14 the command does.
++    kucoin = spot_day()
++    try:
++        code = run_sweep(kucoin, tmp_path, "--fast", "-5,10")
++    except SystemExit as exited:
++        code = exited.code
++    assert code == 2
++    assert capsys.readouterr().out == ""
++    assert kucoin.calls == []
++
++
++@pytest.mark.usefixtures("clock")
++@pytest.mark.parametrize(
++    ("fee", "message"),
++    [
++        ("abc", "fee 'abc' is not a number: pass a proportional fee, for example 0.001"),
++        ("1.5", "fee 1.5 is out of range: it must be at least 0 and below 1"),
++    ],
++)
++def test_sweep_refuses_bad_fee(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str], fee: str, message: str
++) -> None:
++    kucoin = spot_day()
++    assert run_sweep(kucoin, tmp_path, "--fee", fee) == 2
++    assert_refused(capsys, message)
++    assert kucoin.calls == []
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_refuses_empty_grid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    kucoin = spot_day()
++    assert run_sweep(kucoin, tmp_path, "--fast", "50", "--slow", "10,20") == 2
++    assert_refused(capsys, "no pair has fast below slow: pass a --fast value below a --slow value")
++    assert kucoin.calls == []
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_refuses_grid_over_cap(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    kucoin = spot_day()
++    fasts = ",".join(str(length) for length in range(1, 22))
++    slows = ",".join(str(length) for length in range(22, 43))
++    assert run_sweep(kucoin, tmp_path, "--fast", fasts, "--slow", slows) == 2
++    assert_refused(
++        capsys,
++        "the grid has 441 pairs with fast below slow, more than 400: "
++        "pass shorter --fast or --slow lists",
++    )
++    assert kucoin.calls == []
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_refuses_range_with_every_pair_skipped(
++    tmp_path: Path, capsys: pytest.CaptureFixture[str]
++) -> None:
++    assert run_sweep(spot_day(), tmp_path) == 2
++    assert_refused(
++        capsys,
++        "the range has 24 candles, not more than any slow length with a smaller fast: no pair "
++        "could take a position; widen the dates or lower --slow",
++    )
++
++
++@pytest.mark.usefixtures("clock")
++def test_sweep_defaults_give_nine_pairs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
++    kucoin = KuCoin()
++    kucoin.add_spot_synthetic(utc(2026, 9, 28), 120, HOUR_MS)
++    assert run_sweep(kucoin, tmp_path, days=("2026-09-28", "2026-10-02")) == 0
++    lines = capsys.readouterr().out.splitlines()
++    assert lines[0].endswith("120 candles; sma-cross, 9 pairs tried, 0 skipped; fee 0.10%")
++    assert sorted(table_pairs(lines)) == [(f, s) for f in (5, 10, 20) for s in (30, 50, 100)]
++
++
++def test_run_help_keeps_option_order(capsys: pytest.CaptureFixture[str]) -> None:
++    with pytest.raises(SystemExit) as exited:
++        main(["run", "--help"])
++    assert exited.value.code == 0
++    options = re.findall(r"^  (--[a-z-]+)", capsys.readouterr().out, flags=re.MULTILINE)
++    assert options == ["--market", "--fast", "--slow", "--fee", "--cache-dir"]

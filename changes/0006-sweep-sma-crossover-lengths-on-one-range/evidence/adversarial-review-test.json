@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "phase": "test",
+  "head": "ca6b724f94bb532e3adac28c5c89560ae088515d",
+  "verdict": "continue",
+  "reasons": [],
+  "classification": "non-routine",
+  "classification_reasons": [
+    "Spec is tight: the one flagged concern (two-word negative list) is closed by panel #1, every message and the output layout are fixed, and acceptance is measurable.",
+    "Blast radius is moderate: a new module (app/backtest/sweep.py), a new CLI sub-command, and a refactor of the existing `run` command's argument, load and buy-and-hold code into shared helpers. No risk-list item, no schema or contract change, and __all__ is unchanged.",
+    "Existing tests do not cover the new behaviour. Only the new tests/test_backtest_sweep.py covers it. The run refactor is pinned by the unchanged tests/test_backtest_cli.py and by the new help-order test."
+  ],
+  "attempted": [
+    "Scope of this phase: the source in the diff (app/backtest/__main__.py, app/backtest/sweep.py, tests/test_backtest_sweep.py) is the same as the tree the build gate judged (3cd3783). The commits since then touch only the change folder. The plan.md hunk records the two-word negative list as its own Proof test, which is a declared departure.",
+    "Intent: the sweep takes SYMBOL INTERVAL START END, --market, the --fast/--slow comma lists (defaults 5,10,20 / 30,50,100), --fee and --cache-dir. It deduplicates the lists. It skips and counts fast>=slow pairs and slow>=height pairs. It sorts by (-total_return, fast, slow). It prints the run line, SMA_NOTE, the aligned table, run's buy-and-hold line and the warning. This matches every bullet of intent.md. The wording 'N pairs tried, M skipped' is a decision recorded in the spec, and the intent left the layout to the design.",
+    "Spec R1-R15 against the code: _sweep runs the checks in the Design order (make_request, then fast and slow lists, then fee, then count_pairs with the kept==0 and kept>400 refusals before _load, then the candle-count filter, then the empty-grid refusal, then the prints, with the note flushed). Each message matches R4, R6 and R8 word for word. Every refusal is a BacktestInputError or an existing exception, and main is unchanged, so each one becomes a single error line and exit 2.",
+    "Claims against today's code: _length, validate_lengths' wording, _check_fee, make_request's messages, Summary's fields, KlineRequest in app.data.params, and the stub names KuCoin, add_spot_synthetic, HOUR_MS, SPOT_1H and utc are all consistent with how they are used. The runner's run of 223 passed (gate-build.json) confirms the imports resolve.",
+    "Run refactor: _add_range_arguments and _add_fee_arguments carry the same strings, in the same order, with --fast/--slow between them. _load passes identical load_klines arguments. _hold_line yields f\"{'buy and hold':<14}{pct:>8}\", which matches the old loop's f\"{label:<14}{value:>8}\". The only change is that buy and hold is now computed after the rows are printed, which matters only if run_backtest raised on a frame that already passed. tests/test_backtest_cli.py is not in the diff.",
+    "Proof: test.log, build.log and lint.log carry the deferred-to-runner mark. The runner owns those targets, so the deferred logs are not a gap. The verifier drove main() offline and exercised the table, skip counting, the 400 boundary (exit 0) and 441 (refused), each pre-load refusal, the defaults on 120 synthetic candles, run/sweep parity on the 2/23 pair, and the two-word negative list on 3.14. All 17 Proof test names exist in the new file.",
+    "Tests could pass with a bug? rows_match compares each summary with an independent run_backtest call and requires more than one distinct return with a descending order. The ties test feeds pairs in reverse order on constant closes, so a sort without the fast/slow key fails it. prints_table and skips_and_counts compare all of stdout with lines built independently, including the counts. loads_once counts the patched cli.load_klines calls (1) and compares the stub calls with one run on a fresh stub. The refusal tests assert empty stdout, one error line and no stub call.",
+    "Blast radius: no guardrail file is in the diff. app/data, inputs, engine, summary, strategy, __init__.py, pyproject.toml and the CI workflow are untouched. No new dependency (bisect, dataclasses, polars). Risk-list hits: none, so no brief was written.",
+    "Policies: input is validated and bounded before any fetch. count_pairs bisects without building the grid (security-baseline rule 2). There is no eval, exec, pickle or shell. Copy lives in module constants. Type hints are present. No stored data. A feature change only adds a new test file, and no existing test is weakened.",
+    "Skip markers: the new test file adds no skip, skipif or xfail. The ratchets record lists none, and the plan declares none.",
+    "Drive: commands.drive is not used by this change, and the change adds no drive files.",
+    "Edge inputs, checked by reading: '5,' and '5,,10' get the fast '' refusal. '-0' and '0' are refused. A huge slow is only skipped by the candle count. '1_000' parses as int, the same as run. A two-word '--fast -5,10' depends on the Python version, and the test accepts both paths, as panel #1 decided.",
+    "Nits, not reasons: the sweep tests cover neither the OSError cache-directory hint nor a futures sweep (main's shared handler and _add_range_arguments carry both unchanged). A single tried pair reads '1 pairs tried', which follows the spec's literal format."
+  ]
+}
